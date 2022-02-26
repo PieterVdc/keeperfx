@@ -103,6 +103,9 @@
 #include "game_loop.h"
 #include "music_player.h"
 
+#include "discord.h"
+
+
 #ifdef AUTOTESTING
 #include "event_monitoring.h"
 #endif
@@ -3947,7 +3950,7 @@ static TbBool wait_at_frontend(void)
 
 void game_loop(void)
 {
-    //_DK_game_loop(); return;
+    discord_callback();
     unsigned long total_play_turns;
     unsigned long playtime;
     playtime = 0;
@@ -4329,6 +4332,8 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
         LbErrorLogClose();
         return 0;
     }
+
+    initialise_discord();
 
     retval = setup_game();
     if (retval)

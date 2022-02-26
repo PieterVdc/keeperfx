@@ -180,6 +180,7 @@ obj/creature_states_tortr.o \
 obj/creature_states_train.o \
 obj/creature_states_tresr.o \
 obj/creature_states_wrshp.o \
+obj/discord.o \
 obj/dungeon_data.o \
 obj/dungeon_stats.o \
 obj/engine_arrays.o \
@@ -333,7 +334,7 @@ CU_OBJS = \
 	obj/cu/Util.o
 
 # include and library directories
-LINKLIB =  -L"sdl/lib" -mwindows obj/libkeeperfx.a \
+LINKLIB =  -L"sdl/lib" -mwindows obj/libkeeperfx.a lib/discord_game_sdk.dll.lib \
 	-lwinmm -lmingw32 -limagehlp -lSDL2main -lSDL2 -lSDL2_mixer -lSDL2_net \
 	-L"deps/zlib" -lz
 INCS =  -I"sdl/include" -I"sdl/include/SDL2"
