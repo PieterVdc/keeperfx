@@ -466,6 +466,10 @@ TbBool fill_game_catalogue_entry(struct CatalogueEntry *centry,const char *textn
     snprintf(centry->campaign_fname, DISKPATH_SIZE, "%s", campaign.fname);
     snprintf(centry->player_name, PLAYER_NAME_LENGTH, "%s", high_score_entry);
     set_flag(centry->flags, CEF_InUse);
+    centry->game_ver_major = VER_MAJOR;
+    centry->game_ver_minor = VER_MINOR;
+    centry->game_ver_release = VER_RELEASE;
+    centry->game_ver_build = VER_BUILD;
     return true;
 }
 
