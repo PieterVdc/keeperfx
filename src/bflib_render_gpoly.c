@@ -2971,7 +2971,7 @@ void draw_gpoly_sub7b_block3(void)
     }
 }
 
-void draw_gpoly_sub13()
+static int gpoly_clip_and_setup(void)
 {
 #if __GNUC__
     asm volatile (" \
@@ -2985,27 +2985,97 @@ void draw_gpoly_sub13()
     addl    _LOC_vec_screen,%%edi\n \
     movl    _gploc_pt_ay,%%eax\n \
     cmpl    _LOC_vec_window_height,%%eax\n \
-    jg  locret69a\n \
+    jg  clip_fail_return\n \
     movl    _gploc_pt_by,%%eax\n \
     cmpl    _LOC_vec_window_height,%%eax\n \
-    jle loc_783508\n \
+    jle clip_no_clip1\n \
     movl    _LOC_vec_window_height,%%eax\n \
-\n \
-loc_783508:         # 331\n \
+clip_no_clip1:         # 331\n \
     subl    _gploc_pt_ay,%%eax\n \
     movl    %%eax,_gploc_C0\n \
     movl    _gploc_pt_ax,%%esi\n \
     movl    %%esi,_gploc_74\n \
     movl    _gploc_pt_shax,%%eax\n \
     movl    %%eax,%%ebp\n \
-    jz  loc_783A68\n \
+    jz  clip_done_small\n \
     movl    _gploc_pt_ay,%%esi\n \
     orl %%esi,%%esi\n \
-    js  loc_7839E0\n \
+    js  clip_bottom\n \
     movl    _gploc_74,%%esi\n \
-    jmp loc_783899\n \
-# ---------------------------------------------------------------------------\n \
+    jmp clip_done_small\n \
 \n \
+clip_bottom:         # (original loc_7839E0…loc_783A60)\n \
+    addl    _gploc_60,%%ecx\n \
+    adcl    _gploc_CC,%%edx\n \
+    adcl    _gploc_C4,%%ebx\n \
+    movl    %%eax,_g_shadeAccumulator\n \
+    sarl    $0x10,%%eax\n \
+    subl    %%eax,_gploc_74\n \
+    movl    _g_shadeAccumulator,%%eax\n \
+    addl    _gploc_12C,%%eax\n \
+    addl    _gploc_128,%%ebp\n \
+    movl    %%eax,_g_shadeAccumulator\n \
+    sarl    $0x10,%%eax\n \
+    addl    %%eax,_gploc_74\n \
+    movl    _g_shadeAccumulator,%%eax\n \
+    addl    _gploc_104,%%edi\n \
+    decl _gploc_C0\n \
+    jz  clip_fail_return\n \
+    incl    %%esi\n \
+    js  clip_bottom\n \
+    movl    _gploc_74,%%esi\n \
+    jmp clip_done_small\n \
+\n \
+clip_done_small:         # (original loc_783A60…loc_783A68)\n \
+    movl    _gploc_74,%%esi\n \
+    nop \n \
+\n \
+    movl    %%eax,_g_shadeAccumulator\n \
+    movl    _factor_chk,%%eax\n \
+    orl %%eax,%%eax\n \
+    js  clip_bottom\n \
+    movl    _factor_cb,%%eax\n \
+    movl    %%eax,_gploc_12C\n \
+    movl    _gploc_64,%%eax\n \
+    movl    %%eax,_gploc_60\n \
+    movl    _gploc_98,%%eax\n \
+    movl    %%eax,_gploc_CC\n \
+    movl    _gploc_94,%%eax\n \
+    movl    %%eax,_gploc_C4\n \
+    xorl    %%ecx,%%ecx\n \
+    movl    _gploc_80,%%edx\n \
+    movl    _gploc_7C,%%ebx\n \
+    movl    _gploc_pt_cy,%%eax\n \
+    cmpl    _LOC_vec_window_height,%%eax\n \
+    jle clip_no_clip2\n \
+    movl    _LOC_vec_window_height,%%eax\n \
+clip_no_clip2:         # (original loc_783ADB)\n \
+    subl    _gploc_pt_by,%%eax\n \
+    movl    %%eax,_gploc_C0\n \
+    movl    _gploc_pt_bx,%%eax\n \
+    movl    %%eax,_gploc_74\n \
+    movl    _gploc_pt_shbx,%%eax\n \
+    jle clip_fail_return\n \
+    movl    _gploc_pt_by,%%esi\n \
+    orl %%esi,%%esi\n \
+    js  clip_bottom\n \
+    movl    _gploc_pt_bx,%%esi\n \
+    jmp clip_done_small\n \
+\n \
+clip_fail_return:      \n \
+    xorl    %%eax,%%eax\n \
+    popa   \n \
+    ret    \n \
+    " : : : "memory", "cc");
+#endif
+    return 0;  /* gcc needs a C‐level return, even though asm already did ret */ 
+}
+
+
+static void gpoly_draw_spans(void)
+{
+#if __GNUC__
+    asm volatile (" \
 loc_783542:         # 361C\n \
     xorl    %%eax,%%eax\n \
     movb    (%%ecx,%%esi),%%al\n \
@@ -3296,7 +3366,15 @@ loc_7837D5:         # 3EB4\n \
     addl    $0x10,%%edi\n \
     subl    $0x10,_gploc_D4\n \
     jg  loc_783542\n \
-\n \
+    ret\n \
+    " : : : "memory", "cc");
+#endif
+}
+
+static int gpoly_step_and_loop(void)
+{
+#if __GNUC__
+    asm volatile (" \
 loc_783812:         # 370B\n \
     movl    _g_shadeAccumulator,%%eax\n \
     movl    _g_shadeAccumulatorNext,%%ebp\n \
@@ -3318,7 +3396,7 @@ loc_783812:         # 370B\n \
     adcl    _gploc_CC,%%edx\n \
     adcl    _gploc_C4,%%ebx\n \
     addl    _gploc_104,%%edi\n \
-    decl _gploc_C0\n \
+    decl    _gploc_C0\n \
     jz  loc_783A68\n \
 \n \
 loc_783899:         # 334D\n \
@@ -3375,14 +3453,12 @@ loc_783960:         # 36C\n \
     cmpl    %%esi,%%eax\n \
     jge loc_7838C5\n \
     jmp loc_783960\n \
-# ---------------------------------------------------------------------------\n \
 \n \
 loc_783980:         # 36C\n \
-    orl %%esi,%%esi\n \
+    orl    %%esi,%%esi\n \
     jz  loc_7838C5\n \
     js  loc_783990\n \
     jmp loc_7839B0\n \
-# ---------------------------------------------------------------------------\n \
 \n \
 loc_783990:         # 3798\n \
     addl    _gploc_30,%%ecx\n \
@@ -3391,7 +3467,6 @@ loc_783990:         # 3798\n \
     incl    %%esi\n \
     jz  loc_7838C5\n \
     jmp loc_783990\n \
-# ---------------------------------------------------------------------------\n \
 \n \
 loc_7839B0:         # 379A\n \
     subl    _gploc_30,%%ecx\n \
@@ -3400,12 +3475,10 @@ loc_7839B0:         # 379A\n \
     decl    %%esi\n \
     jz  loc_7838C5\n \
     jmp loc_7839B0\n \
-# ---------------------------------------------------------------------------\n \
 \n \
 loc_7839D0:         # 370\n \
     movl    _LOC_vec_window_width,%%ebp\n \
     jmp loc_7838F7\n \
-# ---------------------------------------------------------------------------\n \
 \n \
 loc_7839E0:         # 3340\n \
     addl    _gploc_60,%%ecx\n \
@@ -3428,8 +3501,6 @@ loc_7839E0:         # 3340\n \
     js  loc_7839E0\n \
     movl    _gploc_74,%%esi\n \
     jmp loc_783899\n \
-# ---------------------------------------------------------------------------\n \
-\
 \n \
 loc_783A60:         # 385\n \
     movl    _gploc_74,%%esi\n \
@@ -3440,7 +3511,7 @@ loc_783A68:         # 333\n \
     jz  locret69a\n \
     movl    %%eax,_g_shadeAccumulator\n \
     movl    _factor_chk,%%eax\n \
-    orl %%eax,%%eax\n \
+    orl    %%eax,%%eax\n \
     js  loc_783B10\n \
     movl    _factor_cb,%%eax\n \
     movl    %%eax,_gploc_12C\n \
@@ -3470,7 +3541,6 @@ loc_783ADB:         # 38E\n \
     js  loc_7839E0\n \
     movl    _gploc_pt_bx,%%esi\n \
     jmp loc_783899\n \
-# ---------------------------------------------------------------------------\n \
 \n \
 loc_783B10:         # 388\n \
     movl    _factor_cb,%%ebp\n \
@@ -3513,9 +3583,29 @@ off_7840A0:\n \
 \n \
 locret69a:\n \
     popa    \n \
-" : : : "memory", "cc");
+    movl    $0,%%eax\n \
+    ret     \n \
+    " : : : "memory", "cc");
 #endif
+    return 0;  /* As soon as the asm does `movl $0,%%eax; ret`, this C function returns 0 */ 
 }
+
+
+void draw_gpoly_sub13(void)
+{
+    if (!gpoly_clip_and_setup()) {
+        return;
+    }
+    while (1) {
+        gpoly_draw_spans();
+        if (!gpoly_step_and_loop()) {
+            break;
+        }
+    }
+}
+
+
+
 
 void draw_gpoly_sub14()
 {
