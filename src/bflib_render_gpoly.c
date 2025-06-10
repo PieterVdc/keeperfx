@@ -337,6 +337,13 @@ static uint8_t * gploc_F4;
 static long gploc_D8,gploc_D4,gploc_CC,gploc_C4,gploc_C0,gploc_BC,gploc_B8,mapxhstep,mapyhstep,shadehstep,gploc_A4,gploc_A0;
 static long gploc_98,gploc_94,gploc_8C,gploc_88,gploc_80,gploc_7C,gploc_74,gploc_68,gploc_64,gploc_60;
 static long gploc_5C,startposshadetop,startposmapxtop,startposmapytop,startposshadebottom,startposmapxbottom,startposmapybottom,gploc_34,gploc_30,gploc_2C;
+
+static unsigned char *LOC_poly_screen;
+static unsigned char *LOC_vec_map;
+static unsigned char *LOC_vec_screen;
+static long LOC_vec_screen_width;
+static long LOC_vec_window_width;
+static long LOC_vec_window_height;
 /******************************************************************************/
 
 #undef __ROL4__
@@ -358,6 +365,17 @@ void draw_gpoly_sub7a();
 void draw_gpoly_sub7b();
 void draw_gpoly_sub13();
 void draw_gpoly_sub14();
+
+
+/*globals gpoly needs*/
+//poly_screen
+//vec_map
+//vec_screen_width
+//vec_screen_width
+//vec_window_width
+//vec_window_height
+//vec_mode
+//render_fade_tables
 
 void draw_gpoly(struct PolyPoint *point_a, struct PolyPoint *point_b, struct PolyPoint *point_c)
 {

@@ -6540,9 +6540,6 @@ static void display_drawlist(void) // Draws isometric and 1st person view. Not f
         struct BucketKindRoomFlag *roomFlag;
     } item;
     long bucket_num;
-    struct PolyPoint point_a;
-    struct PolyPoint point_b;
-    struct PolyPoint point_c;
     SYNCDBG(9,"Starting");
     // Color rendering array pointers used by draw_keepersprite()
     render_fade_tables = pixmap.fade_tables;
@@ -6564,117 +6561,8 @@ static void display_drawlist(void) // Draws isometric and 1st person view. Not f
                 vec_map = block_ptrs[item.polygonStandard->block];
                 draw_gpoly(&item.polygonStandard->p1, &item.polygonStandard->p2, &item.polygonStandard->p3);
                 break;
-            case QK_PolygonSimple: // Possibly unused
-                vec_mode = VM_Unknown7;
-                vec_colour = ((item.polygonSimple->p3.S + item.polygonSimple->p2.S + item.polygonSimple->p1.S)/3) >> 16;
-                vec_map = block_ptrs[item.polygonSimple->block];
-                trig(&item.polygonSimple->p1, &item.polygonSimple->p2, &item.polygonSimple->p3);
-                break;
-            case QK_PolyMode0: // Possibly unused
-                vec_mode = VM_Unknown0;
-                vec_colour = item.polyMode0->colour;
-                point_a.X = item.polyMode0->x1;
-                point_a.Y = item.polyMode0->y1;
-                point_b.X = item.polyMode0->x2;
-                point_b.Y = item.polyMode0->y2;
-                point_c.X = item.polyMode0->x3;
-                point_c.Y = item.polyMode0->y3;
-                draw_gpoly(&point_a, &point_b, &point_c);
-                break;
-            case QK_PolyMode4: // Possibly unused
-                vec_mode = VM_Unknown4;
-                vec_colour = item.polyMode4->colour;
-                point_a.X = item.polyMode4->x1;
-                point_a.Y = item.polyMode4->y1;
-                point_b.X = item.polyMode4->x2;
-                point_b.Y = item.polyMode4->y2;
-                point_c.X = item.polyMode4->x3;
-                point_c.Y = item.polyMode4->y3;
-                point_a.S = item.polyMode4->vf1 << 16;
-                point_b.S = item.polyMode4->vf2 << 16;
-                point_c.S = item.polyMode4->vf3 << 16;
-                draw_gpoly(&point_a, &point_b, &point_c);
-                break;
-            case QK_TrigMode2: // Possibly unused
-                vec_mode = VM_Unknown2;
-                point_a.X = item.trigMode2->x1;
-                point_a.Y = item.trigMode2->y1;
-                point_b.X = item.trigMode2->x2;
-                point_b.Y = item.trigMode2->y2;
-                point_c.X = item.trigMode2->x3;
-                point_c.Y = item.trigMode2->y3;
-                point_a.U = item.trigMode2->uf1 << 16;
-                point_a.V = item.trigMode2->vf1 << 16;
-                point_b.U = item.trigMode2->uf2 << 16;
-                point_b.V = item.trigMode2->vf2 << 16;
-                point_c.U = item.trigMode2->uf3 << 16;
-                point_c.V = item.trigMode2->vf3 << 16;
-                trig(&point_a, &point_b, &point_c);
-                break;
-            case QK_PolyMode5: // Possibly unused
-                vec_mode = VM_Unknown5;
-                point_a.X = item.polyMode5->x1;
-                point_a.Y = item.polyMode5->y1;
-                point_b.X = item.polyMode5->x2;
-                point_b.Y = item.polyMode5->y2;
-                point_c.X = item.polyMode5->x3;
-                point_c.Y = item.polyMode5->y3;
-                point_a.U = item.polyMode5->uf1 << 16;
-                point_a.V = item.polyMode5->vf1 << 16;
-                point_b.U = item.polyMode5->uf2 << 16;
-                point_b.V = item.polyMode5->vf2 << 16;
-                point_c.U = item.polyMode5->uf3 << 16;
-                point_c.V = item.polyMode5->vf3 << 16;
-                point_a.S = item.polyMode5->wf1 << 16;
-                point_b.S = item.polyMode5->wf2 << 16;
-                point_c.S = item.polyMode5->wf3 << 16;
-                draw_gpoly(&point_a, &point_b, &point_c);
-                break;
-            case QK_TrigMode3: // Possibly unused
-                vec_mode = VM_Unknown3;
-                point_a.X = item.trigMode3->x1;
-                point_a.Y = item.trigMode3->y1;
-                point_b.X = item.trigMode3->x2;
-                point_b.Y = item.trigMode3->y2;
-                point_c.X = item.trigMode3->x3;
-                point_c.Y = item.trigMode3->y3;
-                point_a.U = item.trigMode3->uf1 << 16;
-                point_a.V = item.trigMode3->vf1 << 16;
-                point_b.U = item.trigMode3->uf2 << 16;
-                point_b.V = item.trigMode3->vf2 << 16;
-                point_c.U = item.trigMode3->uf3 << 16;
-                point_c.V = item.trigMode3->vf3 << 16;
-                trig(&point_a, &point_b, &point_c);
-                break;
-            case QK_TrigMode6: // Possibly unused
-                vec_mode = VM_Unknown6;
-                point_a.X = item.trigMode6->x1;
-                point_a.Y = item.trigMode6->y1;
-                point_b.X = item.trigMode6->x2;
-                point_b.Y = item.trigMode6->y2;
-                point_c.X = item.trigMode6->x3;
-                point_c.Y = item.trigMode6->y3;
-                point_a.U = item.trigMode6->uf1 << 16;
-                point_a.V = item.trigMode6->vf1 << 16;
-                point_b.U = item.trigMode6->uf2 << 16;
-                point_b.V = item.trigMode6->vf2 << 16;
-                point_c.U = item.trigMode6->uf3 << 16;
-                point_c.V = item.trigMode6->vf3 << 16;
-                point_a.S = item.trigMode6->wf1 << 16;
-                point_b.S = item.trigMode6->wf2 << 16;
-                point_c.S = item.trigMode6->wf3 << 16;
-                trig(&point_a, &point_b, &point_c);
-                break;
-            case QK_RotableSprite: // Possibly unused
-                // draw_map_who did nothing
-                break;
             case QK_PolygonNearFP: // 'Near' textured polygons (closer to camera) in 1st person view
                 draw_unkn09(item.polygonNearFP);
-                break;
-            case QK_Unknown10: // Possibly unused
-                vec_mode = VM_Unknown0;
-                vec_colour = item.basicUnk10->field_6;
-                draw_gpoly(&item.basicUnk10->p1, &item.basicUnk10->p2, &item.basicUnk10->p3);
                 break;
             case QK_JontySprite: // All creatures and things in isometric and 1st person view
                 draw_jonty_mapwho(item.jontySprite);
