@@ -56,7 +56,6 @@ extern "C" {
 long LbFileLengthRnc(const char *fname);
 long LbFileLoadAt(const char *fname, void *buffer);
 long LbFileSaveAt(const char *fname, const void *buffer,unsigned long len);
-long UnpackM1(void *buffer, unsigned long bufsize);
 /******************************************************************************/
 #ifndef COMPRESSOR
 long rnc_unpack (const void *packed, void *unpacked, unsigned int flags);

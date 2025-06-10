@@ -4,10 +4,7 @@
 
 // SDL completely removed CD-ROM support, go native
 
-#if defined(__MINGW32__)
-// mingw is somewhat broken...
-typedef struct LPMSG *MSG;
-#endif
+
 
 // All the MCI stuff is not part of LEAN_AND_MEAN
 #include <windows.h>

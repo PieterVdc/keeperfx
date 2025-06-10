@@ -1180,29 +1180,7 @@ const char *get_conf_parameter_text(const struct NamedCommand commands[],int num
             return commands[i].name;
         i++;
   }
-  return lbEmptyString;
-}
-
-/**
- * Returns current language string.
- */
-const char *get_current_language_str(void)
-{
-  return get_conf_parameter_text(lang_type,install_info.lang_id);
-}
-
-/**
- * Returns copy of the requested language string in lower case.
- */
-const char *get_language_lwrstr(int lang_id)
-{
-  const char* src = get_conf_parameter_text(lang_type, lang_id);
-  if (strlen(src) != 3)
-    WARNLOG("Bad text code for language index %d", (int)lang_id);
-  static char lang_str[4];
-  snprintf(lang_str, 4, "%s", src);
-  make_lowercase(lang_str);
-  return lang_str;
+  return "";
 }
 
 /**
