@@ -18,11 +18,11 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
-#include "bflib_datetm.h"
-
 #include <chrono>
-#include "bflib_basics.h"
+#include <time.h>
 #include "globals.h"
+#include "bflib_datetm.h"
+#include "bflib_basics.h"
 #include "game_legacy.h"
 
 #if defined(_WIN32)
@@ -51,7 +51,7 @@ int debug_display_frametime = 0;
 void initial_time_point()
 {
   initialized_time_point = TimeNow;
-  gameadd.process_turn_time = 1.0; // Begin initial turn as soon as possible (like original game)
+  game.process_turn_time = 1.0; // Begin initial turn as soon as possible (like original game)
 }
 
 float get_delta_time()
@@ -77,7 +77,7 @@ void frametime_set_all_measurements_to_be_displayed()
     if (debug_display_frametime == 2)
     {
         // Once per half-second set the display text to highest frametime of the past half-second
-        frametime_measurements.max_timer += gameadd.delta_time;
+        frametime_measurements.max_timer += game.delta_time;
         if (frametime_measurements.max_timer > (game_num_fps/2)) {
             frametime_measurements.max_timer = 0;
             once_per_half_second = true;
@@ -152,8 +152,16 @@ TbClockMSec LbTimerClock_1024(void)
  */
 TbClockMSec LbTimerClock_any(void)
 {
-  long long clk = 500 * clock();
-  return (clk / CLOCKS_PER_SEC) << 1;
+  clock_t cclk = clock();
+  if (CLOCKS_PER_SEC > 1000) {
+    return cclk / (CLOCKS_PER_SEC / 1000);
+  } else if (CLOCKS_PER_SEC > 100) {
+    return (cclk / (CLOCKS_PER_SEC / 100)) * 10;
+  } else if (CLOCKS_PER_SEC > 10) {
+    return (cclk / (CLOCKS_PER_SEC / 10)) * 100;
+  } else {
+    return (cclk / CLOCKS_PER_SEC) * 1000;
+  }
 }
 
 /** Fills structure with current time.

@@ -28,7 +28,6 @@
 #include "bflib_basics.h"
 #include "globals.h"
 #include "bflib_video.h"
-#include "bflib_memory.h"
 #include "bflib_sprite.h"
 #include "bflib_vidraw.h"
 #include "bflib_mshandler.hpp"
@@ -85,6 +84,7 @@ TbResult LbMouseSetup(struct TbSprite *pointerSprite)
     ret = Lb_FAIL;
   lbMouseInstalled = (ret == Lb_SUCCESS);
   lbMouseOffline = false;
+  LbGrabMouseCheck(MG_OnFocusGained);
   return ret;
 }
 
@@ -176,7 +176,7 @@ TbBool IsMouseInsideWindow(void)
     return isMouseInsideWindow;
 }
 
-TbResult LbMouseChangeSprite(struct TbSprite *pointerSprite)
+TbResult LbMouseChangeSprite(const struct TbSprite *pointerSprite)
 {
   if (pointerSprite == NULL)
     LbDebugLog("Setting to %s", "NONE");
@@ -324,14 +324,14 @@ void mouseControl(unsigned int action, struct TbPoint *pos)
         }
         break;
     case MActn_WHEELMOVEUP:
-        lbDisplayEx.WhellPosition--;
-        lbDisplayEx.WhellMoveUp++;
+        lbDisplayEx.WhellPosition = lbDisplayEx.WhellPosition - 1;
+        lbDisplayEx.WhellMoveUp = lbDisplayEx.WhellMoveUp + 1;
         lbDisplayEx.WhellMoveDown = 0;
         break;
     case MActn_WHEELMOVEDOWN:
-        lbDisplayEx.WhellPosition++;
+        lbDisplayEx.WhellPosition = lbDisplayEx.WhellPosition + 1;
         lbDisplayEx.WhellMoveUp = 0;
-        lbDisplayEx.WhellMoveDown++;
+        lbDisplayEx.WhellMoveDown = lbDisplayEx.WhellMoveDown + 1;
         break;
     default:
         break;

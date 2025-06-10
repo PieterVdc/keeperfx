@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_memory.h"
 #include "bflib_video.h"
 #include "bflib_sprite.h"
 #include "bflib_vidraw.h"
@@ -138,8 +137,8 @@ void panel_map_draw_pixel(RealScreenCoord x, RealScreenCoord y, TbPixel col)
  */
 void draw_call_to_arms_circle(unsigned char owner, long x1, long y1, long x2, long y2, long zoom)
 {
-    const struct MagicStats *pwrdynst;
-    pwrdynst = get_power_dynamic_stats(PwrK_CALL2ARMS);
+    const struct PowerConfigStats *powerst;
+    powerst = get_power_model_stats(PwrK_CALL2ARMS);
     struct Dungeon *dungeon;
     dungeon = get_players_num_dungeon(owner);
     int units_per_px;
@@ -155,11 +154,11 @@ void draw_call_to_arms_circle(unsigned char owner, long x1, long y1, long x2, lo
     long long cscale;
     float circle_time;
     if ((game.operation_flags & GOF_Paused) == 0) {
-        circle_time = ((game.play_gameturn + owner) & 7) + gameadd.process_turn_time;
+        circle_time = ((game.play_gameturn + owner) & 7) + game.process_turn_time;
     } else {
         circle_time = ((game.play_gameturn + owner) & 7);
     }
-    cscale = circle_time * pwrdynst->strength[dungeon->cta_splevel];
+    cscale = circle_time * powerst->strength[dungeon->cta_power_level];
     int dxq1;
     int dyq1;
     int dxq2;
@@ -737,7 +736,7 @@ void panel_map_update_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSub
     }
     else if (map_block_revealed(mapblk, plyr_idx))
     {
-        if (slb->kind == SlbT_GOLD)
+        if ((slb->kind == SlbT_GOLD) || (slb->kind == SlbT_DENSEGOLD))
         {
             col = PnC_Gold;
             if ((mapblk->flags & SlbAtFlg_TaggedValuable) != 0)
@@ -812,20 +811,19 @@ void panel_map_update_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSub
 void panel_map_update(long x, long y, long w, long h)
 {
     SYNCDBG(17,"Starting for rect (%ld,%ld) at (%ld,%ld)",w,h,x,y);
-    struct PlayerInfo *player = get_my_player();
     MapSubtlCoord stl_x;
     MapSubtlCoord stl_y;
     for (stl_y = y; stl_y < y + h; stl_y++)
     {
-        if (stl_y > gameadd.map_subtiles_y)
+        if (stl_y > game.map_subtiles_y)
             break;
         for (stl_x = x; stl_x < x + w; stl_x++)
         {
-            if (stl_x > gameadd.map_subtiles_x)
+            if (stl_x > game.map_subtiles_x)
                 break;
             if (subtile_has_slab(stl_x, stl_y))
             {
-                panel_map_update_subtile(player->id_number, stl_x, stl_y);
+                panel_map_update_subtile(my_player_number, stl_x, stl_y); //player->id number is still unitialized when this function is called at level start
             }
         }
     }
@@ -947,12 +945,12 @@ void setup_background(long units_per_px)
     if (MapDiagonalLength != 2*(PANEL_MAP_RADIUS*units_per_px/16))
     {
         MapDiagonalLength = 2*(PANEL_MAP_RADIUS*units_per_px/16);
-        LbMemoryFree(MapBackground);
-        MapBackground = LbMemoryAlloc(MapDiagonalLength*MapDiagonalLength*sizeof(TbPixel));
-        LbMemoryFree(MapShapeStart);
-        MapShapeStart = (long *)LbMemoryAlloc(MapDiagonalLength*sizeof(long));
-        LbMemoryFree(MapShapeEnd);
-        MapShapeEnd = (long *)LbMemoryAlloc(MapDiagonalLength*sizeof(long));
+        free(MapBackground);
+        MapBackground = calloc(MapDiagonalLength*MapDiagonalLength, sizeof(TbPixel));
+        free(MapShapeStart);
+        MapShapeStart = (long *)calloc(MapDiagonalLength, sizeof(long));
+        free(MapShapeEnd);
+        MapShapeEnd = (long *)calloc(MapDiagonalLength, sizeof(long));
     }
     if ((MapBackground == NULL) || (MapShapeStart == NULL) || (MapShapeEnd == NULL)) {
         MapDiagonalLength = 0;
@@ -1310,7 +1308,7 @@ void panel_map_draw_slabs(long x, long y, long units_per_px, long zoom)
         subpos_x = shift_stl_y - shift_x * (end_w - 1);
         for (; end_w > start_w; end_w--)
         {
-            if ((subpos_y >= 0) && (subpos_x >= 0) && (subpos_y < (1<<16)*gameadd.map_subtiles_x) && (subpos_x < (1<<16)*gameadd.map_subtiles_y)) {
+            if ((subpos_y >= 0) && (subpos_x >= 0) && (subpos_y < (1<<16)*game.map_subtiles_x) && (subpos_x < (1<<16)*game.map_subtiles_y)) {
                 break;
             }
             subpos_y -= shift_y;
@@ -1320,7 +1318,7 @@ void panel_map_draw_slabs(long x, long y, long units_per_px, long zoom)
         subpos_x = shift_stl_y - shift_x * start_w;
         for (; start_w < end_w; start_w++)
         {
-            if ((subpos_y >= 0) && (subpos_x >= 0) && (subpos_y < (1<<16)*gameadd.map_subtiles_x) && (subpos_x < (1<<16)*gameadd.map_subtiles_y)) {
+            if ((subpos_y >= 0) && (subpos_x >= 0) && (subpos_y < (1<<16)*game.map_subtiles_x) && (subpos_x < (1<<16)*game.map_subtiles_y)) {
                 break;
             }
             subpos_y += shift_y;
@@ -1338,7 +1336,7 @@ void panel_map_draw_slabs(long x, long y, long units_per_px, long zoom)
         for (w = end_w-start_w; w > 0; w--)
         {
             int pnmap_idx;
-            pnmap_idx = ((precor_x>>16)) + (((precor_y>>16)) * (gameadd.map_subtiles_x + 1) );
+            pnmap_idx = ((precor_x>>16)) + (((precor_y>>16)) * (game.map_subtiles_x + 1) );
             int pncol_idx;
             //TODO reenable background
             pncol_idx = PanelMap[pnmap_idx] + (*bkgnd * PnC_End);

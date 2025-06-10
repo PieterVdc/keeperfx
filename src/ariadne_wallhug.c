@@ -228,6 +228,7 @@ static int hug_round(struct Thing *creatng, struct Coord3d *pos1, struct Coord3d
     return 0;
 }
 
+// Used only at `creature_states_combt
 long slab_wall_hug_route(struct Thing *thing, struct Coord3d *pos, long max_val)
 {
     struct Coord3d curr_pos;
@@ -396,16 +397,16 @@ static long get_map_index_of_first_block_thing_colliding_with_at(struct Thing *c
     if (start_stl_x <= 0)
         start_stl_x = 0;
     MapSubtlCoord end_stl_x = (pos->x.val + nav_radius) / COORD_PER_STL + 1;
-    if (end_stl_x >= gameadd.map_subtiles_x)
-        end_stl_x = gameadd.map_subtiles_x;
+    if (end_stl_x >= game.map_subtiles_x)
+        end_stl_x = game.map_subtiles_x;
         
 
     MapSubtlCoord start_stl_y = (pos->y.val - nav_radius) / COORD_PER_STL;
     if (start_stl_y <= 0)
         start_stl_y = 0;
     MapSubtlCoord end_stl_y = (pos->y.val + nav_radius) / COORD_PER_STL + 1;
-    if (end_stl_y >= gameadd.map_subtiles_y)
-        end_stl_y = gameadd.map_subtiles_y;
+    if (end_stl_y >= game.map_subtiles_y)
+        end_stl_y = game.map_subtiles_y;
 
     if (start_stl_y >= end_stl_y)
     {
@@ -2022,6 +2023,7 @@ SubtlCodedCoords dig_to_position(PlayerNumber plyr_idx, MapSubtlCoord basestl_x,
     return -1;
 }
 
+// used only by AI (get_hug_side, tool_dig_to_pos2)
 static inline void get_hug_side_next_step(MapSubtlCoord dst_stl_x, MapSubtlCoord dst_stl_y, int dirctn, PlayerNumber plyr_idx,
     char *state, MapSubtlCoord *ostl_x, MapSubtlCoord *ostl_y, SmallAroundIndex *round, int *maxdist)
 {
@@ -2072,6 +2074,7 @@ static inline void get_hug_side_next_step(MapSubtlCoord dst_stl_x, MapSubtlCoord
     *ostl_y = curr_stl_y;
 }
 
+// used only by AI (get_hug_side, tool_dig_to_pos2)
 short get_hug_side_options(MapSubtlCoord src_stl_x, MapSubtlCoord src_stl_y, MapSubtlCoord dst_stl_x, MapSubtlCoord dst_stl_y,
     SmallAroundIndex direction, PlayerNumber plyr_idx, MapSubtlCoord *ostla_x, MapSubtlCoord *ostla_y, MapSubtlCoord *ostlb_x, MapSubtlCoord *ostlb_y)
 {

@@ -28,7 +28,6 @@
 #include <SDL2/SDL.h>
 
 #include "bflib_datetm.h"
-#include "bflib_memory.h"
 #include "bflib_fileio.h"
 #include "post_inc.h"
 
@@ -127,15 +126,44 @@ unsigned long saturate_set_unsigned(unsigned long long val,unsigned short nbits)
 /******************************************************************************/
 const char *log_file_name=DEFAULT_LOG_FILENAME;
 
-char *buf_sprintf(const char *format, ...)
+/**
+ * Appends a string to the end of a buffer.
+ * Returns the total length of the resulting string.
+ * @param buffer The buffer to append the formatted string to.
+ * @param size The size of the buffer.
+ * @param str The string to append.
+ */
+int str_append(char * buffer, int size, const char * str)
 {
-    va_list val;
-    va_start(val, format);
-    static char text[TEXT_BUFFER_LENGTH + 1];
-    vsprintf(text, format, val);
-    text[TEXT_BUFFER_LENGTH]='\0';
-    va_end(val);
-    return text;
+    const int len = strlen(buffer);
+    const int available = size - len;
+    if (available <= 0) {
+        return len;
+    }
+    strncat(buffer, str, available);
+    return strlen(buffer);
+}
+
+/**
+ * Appends a formatted string to the end of a buffer.
+ * Returns the total length of the resulting string.
+ * @param buffer The buffer to append the formatted string to.
+ * @param size The size of the buffer.
+ * @param format The format string, similar to printf.
+ * @param ... The values to format and append to the buffer.
+ */
+int str_appendf(char * buffer, int size, const char * format, ...)
+{
+    const int len = strlen(buffer);
+    const int available = size - len;
+    if (available <= 0) {
+        return len;
+    }
+    va_list args;
+    va_start(args, format);
+    vsnprintf(&buffer[len], available, format, args);
+    va_end(args);
+    return strlen(buffer);
 }
 
 void error(const char *codefile,const int ecode,const char *message)
@@ -148,19 +176,19 @@ short warning_dialog(const char *codefile,const int ecode,const char *message)
   LbWarnLog("In source %s:\n %5d - %s\n",codefile,ecode,message);
 
   const SDL_MessageBoxButtonData buttons[] = {
-		{ .flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, .buttonid = 1, .text = "Ignore" },
+        { .flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, .buttonid = 1, .text = "Ignore" },
     { .flags = SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, .buttonid = 0, .text = "Abort" },
-	};
+    };
 
-	const SDL_MessageBoxData messageboxdata = {
-		.flags = SDL_MESSAGEBOX_WARNING,
-		.window = NULL,
-		.title = PROGRAM_FULL_NAME,
-		.message = message,
-		.numbuttons = SDL_arraysize(buttons),
-		.buttons = buttons,
-		.colorScheme = NULL //colorScheme not supported on windows
-	};
+    const SDL_MessageBoxData messageboxdata = {
+        .flags = SDL_MESSAGEBOX_WARNING,
+        .window = NULL,
+        .title = PROGRAM_FULL_NAME,
+        .message = message,
+        .numbuttons = SDL_arraysize(buttons),
+        .buttons = buttons,
+        .colorScheme = NULL //colorScheme not supported on windows
+    };
 
   int button = 0;
   SDL_ShowMessageBox(&messageboxdata, &button);
@@ -177,8 +205,8 @@ short error_dialog(const char *codefile,const int ecode,const char *message)
 short error_dialog_fatal(const char *codefile,const int ecode,const char *message)
 {
   LbErrorLog("In source %s:\n %5d - %s\n",codefile,ecode,message);
-  static char msg_text[2048];
-  sprintf(msg_text, "%s This error in '%s' makes the program unable to continue. See '%s' for details.", message, codefile, log_file_name);
+  char msg_text[2048];
+  snprintf(msg_text, sizeof(msg_text), "%s This error in '%s' makes the program unable to continue. See '%s' for details.", message, codefile, log_file_name);
   SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, PROGRAM_FULL_NAME, msg_text, NULL);
   return 0;
 }
@@ -296,6 +324,19 @@ void make_uppercase(char * string) {
   for (char * ptr = string; *ptr != 0; ++ptr) {
     *ptr = toupper(*ptr);
   }
+}
+
+int natoi(const char * str, int len) {
+  int value = -1;
+  for (int i = 0; i < len; ++i) {
+    if (!isdigit(str[i])) {
+      return value;
+    } else if (value < 0) {
+      value = 0;
+    }
+    value = (value * 10) + (str[i] - '0');
+  }
+  return value;
 }
 
 /******************************************************************************/

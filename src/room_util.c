@@ -22,6 +22,7 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "room_data.h"
+#include "room_garden.h"
 #include "map_utils.h"
 #include "map_blocks.h"
 #include "player_data.h"
@@ -78,10 +79,10 @@ void room_update_surrounding_flames(struct Room *room, const struct Coord3d *pos
     curoom = subtile_room_get(x,y);
     if (curoom->index != room->index)
     {
-        room->flame_slb += gameadd.small_around_slab[i];
+        room->flame_slb += game.small_around_slab[i];
         return;
     }
-    room->flame_slb += gameadd.small_around_slab[i] + gameadd.small_around_slab[k];
+    room->flame_slb += game.small_around_slab[i] + game.small_around_slab[k];
     room->flames_around_idx = k;
 }
 
@@ -266,7 +267,7 @@ TbBool delete_room_slab(MapSlabCoord slb_x, MapSlabCoord slb_y, TbBool is_destro
     struct Room* room = slab_room_get(slb_x, slb_y);
     if (room_is_invalid(room))
     {
-        ERRORLOG("Slab (%ld,%ld) is not a room",slb_x, slb_y);
+        ERRORLOG("Slab (%d,%d) is not a room",slb_x, slb_y);
         return false;
     }
     SYNCDBG(7,"Room on (%d,%d) had %d slabs",(int)slb_x,(int)slb_y,(int)room->slabs_count);
@@ -555,8 +556,8 @@ EventIndex update_cannot_find_room_of_role_wth_spare_capacity_event(PlayerNumber
         case RoRoF_CrHealSleep:
             // Find room with lair capacity
             {
-                struct CreatureStats* crstat = creature_stats_get_from_thing(creatng);
-                room = find_room_of_role_with_spare_capacity(plyr_idx, rrole, crstat->lair_size);
+                struct CreatureModelConfig* crconf = creature_stats_get_from_thing(creatng);
+                room = find_room_of_role_with_spare_capacity(plyr_idx, rrole, crconf->lair_size);
                 break;
             }
         // For Treasure rooms, the item capacity is the amount of gold, not the number of gold hoardes.
@@ -588,7 +589,7 @@ EventIndex update_cannot_find_room_of_role_wth_spare_capacity_event(PlayerNumber
                 break;
             }
             if (evidx > 0) {
-                output_message_room_related_from_computer_or_player_action(plyr_idx, find_first_roomkind_with_role(rrole), OMsg_RoomTooSmall);
+                output_room_message(plyr_idx, find_first_roomkind_with_role(rrole), OMsg_RoomTooSmall);
             }
         } else
         {
@@ -597,7 +598,7 @@ EventIndex update_cannot_find_room_of_role_wth_spare_capacity_event(PlayerNumber
             evidx = event_create_event_or_update_nearby_existing_event(
                 creatng->mappos.x.val, creatng->mappos.y.val, EvKind_WorkRoomUnreachable, plyr_idx, rkind);
             if (evidx > 0) {
-                output_message_room_related_from_computer_or_player_action(plyr_idx, rkind, OMsg_RoomNoRoute);
+                output_room_message(plyr_idx, rkind, OMsg_RoomNoRoute);
             }
         }
     } else
@@ -620,7 +621,7 @@ EventIndex update_cannot_find_room_of_role_wth_spare_capacity_event(PlayerNumber
                 break;
             }
             if (evidx > 0) {
-                output_message_room_related_from_computer_or_player_action(plyr_idx, find_first_roomkind_with_role(rrole), OMsg_RoomNeeded);
+                output_room_message(plyr_idx, find_first_roomkind_with_role(rrole), OMsg_RoomNeeded);
             }
         }
     }
@@ -629,19 +630,19 @@ EventIndex update_cannot_find_room_of_role_wth_spare_capacity_event(PlayerNumber
 
 void query_room(struct Room *room)
 {
-    const char title[26];
+    char title[26] = "";
     const char* name = room_code_name(room->kind);
-    const char owner[26]; 
-    const char health[26];
-    const char capacity[26];
-    const char efficiency[26] = "\0";
-    sprintf((char*)title, "Room ID: %d", room->index);
-    sprintf((char*)owner, "Owner: %d", room->owner);
-    sprintf((char*)health, "Health: %d", (int)room->health);
-    sprintf((char*)capacity, "Capacity: %d/%d", room->used_capacity, room->total_capacity);
+    char owner[26] = "";
+    char health[26] = "";
+    char capacity[26] = "";
+    char efficiency[26] = "";
+    snprintf(title, sizeof(title), "Room ID: %d", room->index);
+    snprintf(owner, sizeof(owner), "Owner: %d", room->owner);
+    snprintf(health, sizeof(health), "Health: %d", (int)room->health);
+    snprintf(capacity, sizeof(capacity), "Capacity: %d/%d", room->used_capacity, room->total_capacity);
     float room_efficiency_percent = ((float)room->efficiency / (float)ROOM_EFFICIENCY_MAX) * 100;
-    sprintf((char*)efficiency, "Efficiency: %d", (unsigned char)round(room_efficiency_percent));
-    create_message_box((const char*)&title, name, (const char*)&owner, (const char*)&health, (const char*)&capacity, (const char*)&efficiency);    
+    snprintf(efficiency, sizeof(efficiency), "Efficiency: %d", (unsigned char)round(room_efficiency_percent));
+    create_message_box((const char*)&title, name, (const char*)&owner, (const char*)&health, (const char*)&capacity, (const char*)&efficiency);
 }
 
 /******************************************************************************/

@@ -42,17 +42,16 @@ enum ThingHitTypes {
     THit_HeartOnlyNotOwn, // Affect only not own dungeon hearts
     THit_CrtrsNObjctsNShot, // Affect all creatures and all objects, also allow colliding with other shots
     THit_TrapsAll, // Affect all traps, not just the ones that are destructable
+    THit_CrtrsOnlyOwn, // Affect only own creatures
     THit_TypesCount, // Last item in enumeration, allows checking amount of valid types
 };
 
 enum AreaAffectTypes {
     AAffT_None = 0,
     AAffT_GasDamage,
-    AAffT_Unkn2,
-    AAffT_GasSlow,
+    AAffT_GasDamageEffect,
+    AAffT_GasEffect,
     AAffT_WOPDamage,
-    AAffT_GasSlowDamage,
-    AAffT_GasDisease,
 };
 
 enum ThingEffectKind {
@@ -134,6 +133,10 @@ enum ThingEffectKind {
     TngEff_BallPuffOrange,
     TngEff_FallingIceBlocks,
     TngEff_SlowKeeperPower,
+    TngEff_TinySparks,
+    TngEff_CoinFountain,
+    TngEff_FearCircle,
+    TngEff_CrazyGas,
 };
 
 enum ThingEffectElements {
@@ -254,7 +257,8 @@ enum ThingEffectElements {
     TngEffElm_OrangePuff,
     TngEffElm_TinyFlash3,
     TngEffElm_StepSand,
-    TngEffElm_StepGypsum
+    TngEffElm_StepGypsum,
+    TngEffElm_GoldCoin
 };
 
 /******************************************************************************/
@@ -272,20 +276,23 @@ TbBool thing_is_effect(const struct Thing *thing);
 struct Thing *create_effect(const struct Coord3d *pos, ThingModel effmodel, PlayerNumber owner);
 struct Thing *create_effect_generator(struct Coord3d *pos, ThingModel model, unsigned short range, unsigned short owner, long parent_idx);
 struct Thing *create_effect_element(const struct Coord3d *pos, ThingModel eelmodel, PlayerNumber owner);
-struct Thing* create_used_effect_or_element(const struct Coord3d* pos, EffectOrEffElModel effect_id, PlayerNumber plyr_idx);
+struct Thing* create_used_effect_or_element(const struct Coord3d* pos, EffectOrEffElModel effect_id, PlayerNumber plyr_idx, ThingIndex parent_idx);
 TngUpdateRet update_effect_element(struct Thing *thing);
 TngUpdateRet update_effect(struct Thing *thing);
 TngUpdateRet process_effect_generator(struct Thing *thing);
 void process_spells_affected_by_effect_elements(struct Thing *thing);
 TbBool destroy_effect_thing(struct Thing *thing);
 struct Thing *create_price_effect(const struct Coord3d *pos, long plyr_idx, long price);
+void process_fx_lines();
+struct Thing *script_create_effect(struct Coord3d *pos, EffectOrEffElModel mdl, long val);
+void create_effects_line(TbMapLocation from, TbMapLocation to, char curvature, unsigned char spatial_stepping, unsigned char temporal_stepping, EffectOrEffElModel effct_id);
 
 TbBool area_effect_can_affect_thing(const struct Thing *thing, HitTargetFlags hit_targets, PlayerNumber shot_owner);
 long explosion_affecting_area(struct Thing *tngsrc, const struct Coord3d *pos, MapCoord max_dist,
-    HitPoints max_damage, long blow_strength, HitTargetFlags hit_targets, DamageType damage_type);
+    HitPoints max_damage, long blow_strength, HitTargetFlags hit_targets);
     
 TbBool explosion_affecting_door(struct Thing *tngsrc, struct Thing *tngdst, const struct Coord3d *pos,
-    MapCoordDelta max_dist, HitPoints max_damage, long blow_strength, DamageType damage_type, PlayerNumber owner);    
+    MapCoordDelta max_dist, HitPoints max_damage, long blow_strength, PlayerNumber owner);    
 /******************************************************************************/
 #ifdef __cplusplus
 }

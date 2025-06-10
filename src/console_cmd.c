@@ -46,17 +46,18 @@
 #include "gui_msgs.h"
 #include "gui_soundmsgs.h"
 #include "keeperfx.hpp"
+#include "lvl_script_lib.h"
 #include "map_blocks.h"
 #include "map_columns.h"
 #include "map_utils.h"
 #include "math.h"
-#include "music_player.h"
 #include "packets.h"
 #include "player_computer.h"
 #include "player_instances.h"
 #include "config_players.h"
 #include "player_utils.h"
 #include "room_data.h"
+#include "room_treasure.h"
 #include "room_util.h"
 #include "slab_data.h"
 #include "thing_factory.h"
@@ -67,6 +68,7 @@
 #include "version.h"
 #include "frontmenu_ingame_map.h"
 #include <string.h>
+#include "lua_base.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -108,6 +110,11 @@ static TbBool script_set_pool(PlayerNumber player_idx, const char *creature, con
 
 static char cmd_comp_events_label[COMPUTER_EVENTS_COUNT][COMMAND_WORD_LEN + 8];
 
+static PlayerNumber get_player_number_for_command(char *msg);
+static char get_door_number_for_command(char* msg);
+static char get_trap_number_for_command(char* msg);
+static long get_creature_model_for_command(char *msg);
+
 static long cmd_comp_procs_click(struct GuiBox *gbox, struct GuiBoxOption *goptn, unsigned char btn, long *args)
 {
     struct Computer2 *comp;
@@ -115,9 +122,9 @@ static long cmd_comp_procs_click(struct GuiBox *gbox, struct GuiBoxOption *goptn
     struct ComputerProcess* cproc = &comp->processes[args[1]];
 
     if (flag_is_set(cproc->flags, ComProc_Unkn0020))
-        message_add_fmt(MsgType_Player, args[0], "resuming %s", cproc->name?cproc->name:"(null)");
+        message_add_fmt(MsgType_Player, args[0], "resuming %s", cproc->name);
     else
-        message_add_fmt(MsgType_Player, args[0], "suspending %s", cproc->name?cproc->name:"(null)");
+        message_add_fmt(MsgType_Player, args[0], "suspending %s", cproc->name);
 
     toggle_flag(cproc->flags, ComProc_Unkn0020); // Suspend, but do not update running time
     return 1;
@@ -139,7 +146,7 @@ static long cmd_comp_procs_update(struct GuiBox *gbox, struct GuiBoxOption *gopt
         }
     }
 
-    sprintf(cmd_comp_procs_label[i], "comp=%d, wait=%ld", 0, comp->gameturn_wait);
+    snprintf(cmd_comp_procs_label[i], sizeof(cmd_comp_procs_label[0]), "comp=%d, wait=%ld", 0, comp->gameturn_wait);
     return 1;
 }
 
@@ -153,8 +160,8 @@ long cmd_comp_checks_update(struct GuiBox *gbox, struct GuiBoxOption *goptn, lon
         struct ComputerCheck* check = &comp->checks[i];
         if (check != NULL)
         {
-            char *label = (char*)goptn[i].label;
-            sprintf(label, "%02lx", check->flags);
+            char *label = (char*)goptn[i].label; // this is probably referencing some element of cmd_comp_procs_label
+            snprintf(label, sizeof(cmd_comp_procs_label[0]), "%02lx", check->flags);
             label[2] = ' ';
         }
     }
@@ -177,10 +184,11 @@ int cmd_comp_list(PlayerNumber plyr_idx, int max_count,
     {
         unsigned long flags = get_flags(comp, i);
         const char *name = get_name(comp, i);
-        if (name == NULL)
-            sprintf(label_list[i], "%02lx %s", flags, "(null2)");
-        else
-          sprintf(label_list[i], "%02lx %s", flags, name);
+        if (name == NULL) {
+            snprintf(label_list[i], sizeof(label_list[i]), "%02lx %s", flags, "(null2)");
+        } else {
+            snprintf(label_list[i], sizeof(label_list[i]), "%02lx %s", flags, name);
+        }
         data_list[i].label = label_list[i];
 
         data_list[i].numfield_4 = 1;
@@ -220,9 +228,9 @@ static long cmd_comp_checks_click(struct GuiBox *gbox, struct GuiBoxOption *gopt
     struct ComputerCheck* ccheck = &comp->checks[args[1]];
 
     if (flag_is_set(ccheck->flags, ComChk_Unkn0001))
-        message_add_fmt(MsgType_Player, args[0], "resuming %s", ccheck->name?ccheck->name:"(null)");
+        message_add_fmt(MsgType_Player, args[0], "resuming %s", ccheck->name);
     else
-        message_add_fmt(MsgType_Player, args[0], "suspending %s", ccheck->name?ccheck->name:"(null)");
+        message_add_fmt(MsgType_Player, args[0], "suspending %s", ccheck->name);
 
     ccheck->flags ^= ComChk_Unkn0001;
     return 1;
@@ -281,8 +289,8 @@ static TbBool cmd_magic_instance(PlayerNumber plyr_idx, char * args)
         targeted_message_add(MsgType_Player, 10, plyr_idx, GUI_MESSAGES_DELAY, "Invalid instance");
         return false;
     }
-    struct CreatureStats* crstat = creature_stats_get(creature);
-    crstat->learned_instance_id[slot] = instance;
+    struct CreatureModelConfig* crconf = creature_stats_get(creature);
+    crconf->learned_instance_id[slot] = instance;
     for (long i = 0; i < THINGS_COUNT; i++) {
         struct Thing * thing = thing_get(i);
         if ((thing->alloc_flags & TAlF_Exists) != 0) {
@@ -402,7 +410,7 @@ TbBool cmd_game_save(PlayerNumber plyr_idx, char * args)
     set_flag(game.operation_flags, GOF_Paused); // games are saved in a paused state
     TbBool result = save_game(slot_num);
     if (result) {
-        output_message(SMsg_GameSaved, 0, true);
+        output_message(SMsg_GameSaved, 0);
     } else {
         ERRORLOG("Error in save!");
         create_error_box(GUIStr_ErrorSaving);
@@ -444,7 +452,7 @@ TbBool cmd_ver(PlayerNumber plyr_idx, char * args)
 
 TbBool cmd_volume(PlayerNumber plyr_idx, char * args)
 {
-    targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "%s: %d %s: %d", get_string(340), settings.sound_volume, get_string(341), settings.redbook_volume);
+    targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "%s: %d %s: %d", get_string(340), settings.sound_volume, get_string(341), settings.music_volume);
     return true;
 }
 
@@ -469,12 +477,12 @@ TbBool cmd_volume_music(PlayerNumber plyr_idx, char * args)
     if (pr2str == NULL || !parameter_is_number(pr2str)) {
         return false;
     }
-    settings.redbook_volume = atoi(pr2str);
-    if (settings.redbook_volume > 127) {
-        settings.redbook_volume = 127;
+    settings.music_volume = atoi(pr2str);
+    if (settings.music_volume > 127) {
+        settings.music_volume = 127;
     }
     save_settings();
-    SetMusicPlayerVolume(settings.redbook_volume);
+    set_music_volume(settings.music_volume);
     return true;
 }
 
@@ -496,13 +504,13 @@ TbBool cmd_compuchat(PlayerNumber plyr_idx, char * args)
                 targeted_message_add(MsgType_Player, i, plyr_idx, GUI_MESSAGES_DELAY, "Ai model %d", (int) comp->model);
             }
         }
-        gameadd.computer_chat_flags = CChat_TasksScarce;
+        game.computer_chat_flags = CChat_TasksScarce;
     } else if ((strcasecmp(pr2str, "frequent") == 0) || (strcasecmp(pr2str, "2") == 0)) {
         targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "%s", pr2str);
-        gameadd.computer_chat_flags = CChat_TasksScarce | CChat_TasksFrequent;
+        game.computer_chat_flags = CChat_TasksScarce | CChat_TasksFrequent;
     } else {
         targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "none");
-        gameadd.computer_chat_flags = CChat_None;
+        game.computer_chat_flags = CChat_None;
     }
     return true;
 }
@@ -627,7 +635,7 @@ TbBool cmd_conceal(PlayerNumber plyr_idx, char * args)
         MapSubtlCoord stl_y = coord_subtile((pckt->pos_y));
         conceal_map_area(player->id_number, stl_x - r2, stl_x + r - r2, stl_y - r2, stl_y + r - r2, false);
     } else {
-        conceal_map_area(player->id_number, 0, gameadd.map_subtiles_x - 1, 0, gameadd.map_subtiles_y - 1, false);
+        conceal_map_area(player->id_number, 0, game.map_subtiles_x - 1, 0, game.map_subtiles_y - 1, false);
     }
     return true;
 }
@@ -927,7 +935,7 @@ TbBool cmd_create_creature(PlayerNumber plyr_idx, char * args)
         return false;
     }
     char * pr3str = strsep(&args, " ");
-    int level = (pr3str != NULL) ? atoi(pr3str) : 0;
+    int level = (pr3str != NULL) ? (atoi(pr3str) - 1) : 0;
     char * pr4str = strsep(&args, " ");
     unsigned int count = (pr4str != NULL) ? atoi(pr4str) : 1;
     char * pr5str = strsep(&args, " ");
@@ -1333,7 +1341,7 @@ TbBool cmd_mapwho_info(PlayerNumber plyr_idx, char * args)
         pos.x.stl.num = atoi(pr2str);
         pos.y.stl.num = atoi(pr3str);
     }
-    if ((pos.x.stl.num >= gameadd.map_subtiles_x) || (pos.y.stl.num >= gameadd.map_subtiles_y)) {
+    if ((pos.x.stl.num >= game.map_subtiles_x) || (pos.y.stl.num >= game.map_subtiles_y)) {
         targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "invalid location");
         return false;
     }
@@ -1497,7 +1505,7 @@ TbBool cmd_move_thing(PlayerNumber plyr_idx, char * args)
     if (pr3str != NULL) {
         pos.x.stl.num = atoi(pr2str);
         pos.y.stl.num = atoi(pr3str);
-        if ((pos.x.stl.num >= gameadd.map_subtiles_x) || (pos.y.stl.num >= gameadd.map_subtiles_y)) {
+        if ((pos.x.stl.num >= game.map_subtiles_x) || (pos.y.stl.num >= game.map_subtiles_y)) {
             targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "invalid location");
             return false;
         }
@@ -1608,9 +1616,6 @@ TbBool cmd_creature_pool_add(PlayerNumber plyr_idx, char * args)
         return false;
     }
     game.pool.crtr_kind[crmodel] += atoi(pr3str);
-    if (game.pool.crtr_kind[crmodel] < 0) {
-        game.pool.crtr_kind[crmodel] = 0;
-    }
     return true;
 }
 
@@ -1633,9 +1638,6 @@ TbBool cmd_creature_pool_sub(PlayerNumber plyr_idx, char * args)
         return false;
     }
     game.pool.crtr_kind[crmodel] -= atoi(pr3str);
-    if (game.pool.crtr_kind[crmodel] < 0) {
-        game.pool.crtr_kind[crmodel] = 0;
-    }
     return true;
 }
 
@@ -1668,7 +1670,8 @@ TbBool cmd_freeze_creature(PlayerNumber plyr_idx, char * args)
         return false;
     }
     thing_play_sample(thing, 50, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
-    apply_spell_effect_to_thing(thing, SplK_Freeze, 8);
+    // Not sure how to handle this yet, for now simply hardcode the intended spell kind with a number.
+    apply_spell_effect_to_thing(thing, 3, 8, plyr_idx); // 3 was 'SplK_Freeze' in the enum.
     return true;
 }
 
@@ -1683,7 +1686,8 @@ TbBool cmd_slow_creature(PlayerNumber plyr_idx, char * args)
         return false;
     }
     thing_play_sample(thing, 50, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
-    apply_spell_effect_to_thing(thing, SplK_Slow, 8);
+    // Not sure how to handle this yet, for now simply hardcode the intended spell kind with a number.
+    apply_spell_effect_to_thing(thing, 12, 8, plyr_idx); // 12 was 'SplK_Slow' in the enum.
     return true;
 }
 
@@ -1697,13 +1701,11 @@ TbBool cmd_set_music(PlayerNumber plyr_idx, char * args)
         return false;
     }
     int track = atoi(pr2str);
-    if (track < FIRST_TRACK || track > max_track) {
-        return false;
+    if (track < 0) {
+        return play_music(pr2str);
+    } else {
+        return play_music_track(track);
     }
-    StopMusicPlayer();
-    game.audiotrack = track;
-    PlayMusicPlayer(track);
-    return true;
 }
 
 TbBool cmd_zoom_to(PlayerNumber plyr_idx, char * args)
@@ -1857,119 +1859,82 @@ TbBool cmd_speech_test(PlayerNumber plyr_idx, char * args)
     return true;
 }
 
-int str_to_log_chan(const char * input)
+TbBool cmd_player_colour(PlayerNumber plyr_idx, char * args)
 {
-    struct LogChanNames {
-        const char * name;
-        int chan;
-    };
-    static const struct LogChanNames chans[] = {
-        { "general", LOG_GENERAL },
-        { "net", LOG_NET },
-        { "ai", LOG_AI },
-        { "nav", LOG_NAV },
-        { "test", LOG_TEST },
-        { "script", LOG_SCRIPT },
-        { "config", LOG_CONFIG },
-        { "all", INT_MAX },
-    };
-    if (input == NULL) {
-        return -1;
-    }
-    for (int i = 0; i < sizeof(chans) / sizeof(*chans); ++i) {
-        if (strcasecmp(chans[i].name, input) == 0) {
-            return chans[i].chan;
-        }
-    }
-    return -1;
-}
-
-int str_to_log_level(const char * input)
-{
-    struct LogLevelNames {
-        const char * name;
-        int level;
-    };
-    static const struct LogLevelNames levels[] = {
-        { "debug", LOG_DEBUG },
-        { "info", LOG_INFO },
-        { "warning", LOG_WARNING },
-        { "error", LOG_ERROR },
-        { "off", LOG_OFF },
-    };
-    if (input == NULL) {
-        return -1;
-    }
-    for (int i = 0; i < sizeof(levels) / sizeof(*levels); ++i) {
-        if (strcasecmp(levels[i].name, input) == 0) {
-            return levels[i].level;
-        }
-    }
-    return -1;
-}
-
-const char * log_chan_to_str(int input) {
-    static const char * chans[] = {
-        "General",
-        "Networking",
-        "AI",
-        "Navigation",
-        "Test",
-        "Script",
-        "Config",
-    };
-    if (input < 0 || input >= sizeof(chans) / sizeof(*chans)) {
-        return "Unknown";
-    }
-    return chans[input];
-}
-
-const char * log_level_to_str(int input) {
-    static const char * levels[] = {
-        "debug",
-        "info",
-        "warning",
-        "error",
-        "off",
-    };
-    if (input < 0 || input >= sizeof(levels) / sizeof(*levels)) {
-        return "unknown";
-    }
-    return levels[input];
-}
-
-TbBool cmd_set_log_level(PlayerNumber plyr_idx, char * args)
-{
-    static const int chans[] = {
-        LOG_GENERAL,
-        LOG_NET,
-        LOG_AI,
-        LOG_NAV,
-        LOG_TEST,
-        LOG_SCRIPT,
-        LOG_CONFIG,
-    };
     char * pr2str = strsep(&args, " ");
-    const int chan = str_to_log_chan(pr2str);
-    if (chan < 0) {
-        return false;
-    }
+    int plr_start;
+    int plr_end;
+    PlayerNumber plr_range_id = get_player_number_for_command(pr2str);
+    get_players_range(plr_range_id, &plr_start, &plr_end);
+    
     char * pr3str = strsep(&args, " ");
-    const int level = str_to_log_level(pr3str);
-    if (level < 0) {
+    char colour_idx = get_rid(cmpgn_human_player_options, pr3str);
+    if (plr_start >= 0)
+    {
+            for (PlayerNumber plyr_id = plr_start; plyr_id < plr_end; plyr_id++)
+            {
+                if (plyr_id == PLAYER_NEUTRAL)
+                {
+                    continue;
+                }
+                set_player_colour(plyr_id, (unsigned char)colour_idx);
+            }
+            return true;
+    }
+    return false;
+}
+
+TbBool cmd_possession_lock(PlayerNumber plyr_idx, char * args)
+{
+    struct PlayerInfo * player = get_player(plyr_idx);
+    player->possession_lock = true;
+    return true;
+}
+
+TbBool cmd_possession_unlock(PlayerNumber plyr_idx, char * args)
+{
+    struct PlayerInfo * player = get_player(plyr_idx);
+    player->possession_lock = false;
+    return true;
+}
+
+TbBool cmd_string_show(PlayerNumber plyr_idx, char * args)
+{
+    char * pr2str = strsep(&args, " ");
+    long msg_id = atoi(pr2str);
+    if (msg_id >= 0)
+    {
+        set_general_information(msg_id, 0, 0, 0);
+    }
+    return true;
+}
+
+TbBool cmd_quick_show(PlayerNumber plyr_idx, char * args)
+{
+    char * pr2str = strsep(&args, " ");
+    long msg_id = atoi(pr2str);
+    if (msg_id >= 0)
+    {
+        set_quick_information(msg_id, 0, 0, 0);
+    }
+    return true;
+}
+
+TbBool cmd_lua(PlayerNumber plyr_idx, char * args)
+{
+    if ((game.flags_font & FFlg_AlexCheat) == 0) {
         return false;
     }
-    if (chan == INT_MAX) {
-        for (int i = 0; i < sizeof(chans) / sizeof(*chans); ++i) {
-            LbSetLogLevel(chans[i], level);
-            targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY,
-                "%s log level set to %s", log_chan_to_str(chans[i]), log_level_to_str(level));
-        }
-    } else {
-        LbSetLogLevel(chan, level);
-        targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY,
-            "%s log level set to %s", log_chan_to_str(chan), log_level_to_str(level));
+    execute_lua_code_from_console(args);
+    return true;
+}
+
+TbBool cmd_luatypedump(PlayerNumber plyr_idx, char * args)
+{
+    if ((game.flags_font & FFlg_AlexCheat) == 0) {
+        return false;
     }
+    generate_lua_types_file(args);
     return true;
 }
 
@@ -2072,7 +2037,14 @@ TbBool cmd_exec(PlayerNumber plyr_idx, char * args)
         { "herogate.zoomto", cmd_zoom_to_hero_gate },
         { "sound.test", cmd_sound_test },
         { "speech.test", cmd_speech_test },
-        { "log", cmd_set_log_level },
+        { "player.color", cmd_player_colour},
+        { "player.colour", cmd_player_colour},
+        { "possession.lock", cmd_possession_lock},
+        { "possession.unlock", cmd_possession_unlock},
+        { "string.show", cmd_string_show},
+        { "quick.show", cmd_quick_show},
+        { "lua", cmd_lua},
+        { "luatypedump", cmd_luatypedump},
     };
     SYNCDBG(2, "Command %d: %s",(int)plyr_idx, args);
     const char * command = strsep(&args, " ");
@@ -2110,7 +2082,7 @@ static TbBool script_set_pool(PlayerNumber plyr_idx, const char *creature, const
   return true;
 }
 
-long get_creature_model_for_command(char *msg)
+static long get_creature_model_for_command(char *msg)
 {
     long rid = get_rid(creature_desc, msg);
     if (rid >= 1)
@@ -2174,7 +2146,7 @@ long get_creature_model_for_command(char *msg)
     }
 }
 
-PlayerNumber get_player_number_for_command(char *msg)
+static PlayerNumber get_player_number_for_command(char *msg)
 {
     PlayerNumber id = (msg == NULL) ? my_player_number : get_rid(cmpgn_human_player_options, msg);
     if (id == -1)
@@ -2195,24 +2167,7 @@ PlayerNumber get_player_number_for_command(char *msg)
     return id;
 }
 
-TbBool parameter_is_number(const char* parstr)
-{
-    if (parstr == NULL)
-    {
-        return false;
-    }
-    for (int i = 0; parstr[i] != '\0'; i++)
-    {
-        TbBool digit = (i == 0) ? ( (parstr[i] == 0x2D) || (isdigit(parstr[i])) ) : (isdigit(parstr[i]));
-        if (!digit)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-char get_trap_number_for_command(char* msg)
+static char get_trap_number_for_command(char* msg)
 {
     char id = get_rid(trap_desc, msg);
     if (id < 0)
@@ -2236,7 +2191,7 @@ char get_trap_number_for_command(char* msg)
     return id;
 }
 
-char get_door_number_for_command(char* msg)
+static char get_door_number_for_command(char* msg)
 {
     long id = get_rid(door_desc, msg);
     if (id < 0)

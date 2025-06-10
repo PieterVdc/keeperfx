@@ -55,7 +55,7 @@ msgstr ""
 #. Syndika (lv206)
 #: guitext:4
 msgctxt "In-game message"
-msgid "The syndicate has been eradicated! Congratulations Keeper on your victory against the Director. "
+msgid "The syndicate has been eradicated! Congratulations Keeper on your victory against the Director."
 msgstr ""
 
 #. Kzelbatu (lv207)
@@ -529,4 +529,9 @@ msgstr ""
 #: guitext:211
 msgctxt "Level name"
 msgid "Syndika"
+msgstr ""
+
+#: guitext:212
+msgctxt "Level name"
+msgid "Under Kagi Juuji Shrine"
 msgstr ""

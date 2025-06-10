@@ -518,7 +518,7 @@ static TbBool imp_will_soon_be_converting_at_excluding(struct Thing *creatng, Ma
 
 
     while (!thing_is_invalid(thing))
-    {   
+    {
         if ((thing->alloc_flags & TAlF_IsInLimbo) == 0 && (thing->state_flags & TF1_InCtrldLimbo) == 0)
         {
           if (thing->active_state == CrSt_MoveToPosition)
@@ -553,10 +553,10 @@ TbBool check_out_unconverted_spot(struct Thing *creatng, MapSlabCoord slb_x, Map
 {
     MapSubtlCoord stl_x;
     MapSubtlCoord stl_y;
-    if ((slb_x < 0) || (slb_x >= gameadd.map_tiles_x)) {
+    if ((slb_x < 0) || (slb_x >= game.map_tiles_x)) {
         return false;
     }
-    if ((slb_y < 0) || (slb_y >= gameadd.map_tiles_y)) {
+    if ((slb_y < 0) || (slb_y >= game.map_tiles_y)) {
         return false;
     }
     if (!check_place_to_convert_excluding(creatng, slb_x, slb_y))
@@ -629,10 +629,10 @@ TbBool check_out_unprettied_spot(struct Thing *creatng, long slb_x, long slb_y)
 {
     MapSubtlCoord stl_x;
     MapSubtlCoord stl_y;
-    if ((slb_x < 0) || (slb_x >= gameadd.map_tiles_x)) {
+    if ((slb_x < 0) || (slb_x >= game.map_tiles_x)) {
         return false;
     }
-    if ((slb_y < 0) || (slb_y >= gameadd.map_tiles_y)) {
+    if ((slb_y < 0) || (slb_y >= game.map_tiles_y)) {
         return false;
     }
     if (!check_place_to_pretty_excluding(creatng, slb_x, slb_y)) {
@@ -846,7 +846,7 @@ static int check_out_unreinforced_spiral(struct Thing *thing, int number_of_iter
                 {
                     slb_x += ar->delta_x;
                     slb_y += ar->delta_y;
-                    if (slb_x >= 0 && slb_x < gameadd.map_tiles_x && slb_y >= 0 && slb_y < gameadd.map_tiles_y && check_place_to_reinforce(thing, slb_x, slb_y) > 0)
+                    if (slb_x >= 0 && slb_x < game.map_tiles_x && slb_y >= 0 && slb_y < game.map_tiles_y && check_place_to_reinforce(thing, slb_x, slb_y) > 0)
                     {
                         SubtlCodedCoords stl_num = get_subtile_number_at_slab_center(slb_x,slb_y);
                         if (check_out_uncrowded_reinforce_position(thing, stl_num, &stl_x, &stl_y))
@@ -869,7 +869,7 @@ static int check_out_unreinforced_spiral(struct Thing *thing, int number_of_iter
         ++current_iteration;
         v7 += 2;
     }
-    
+
     return 0;
 }
 
@@ -900,8 +900,8 @@ static long check_out_unreinforced_place(struct Thing *thing)
     }
 
     MapSubtlCoord uncrowded_stl_x,uncrowded_stl_y;
-    if (check_place_to_reinforce(thing, working_slb_x, working_slb_y) > 0 && 
-        check_out_uncrowded_reinforce_position(thing, cctrl->digger.working_stl, &uncrowded_stl_x, &uncrowded_stl_y) && 
+    if (check_place_to_reinforce(thing, working_slb_x, working_slb_y) > 0 &&
+        check_out_uncrowded_reinforce_position(thing, cctrl->digger.working_stl, &uncrowded_stl_x, &uncrowded_stl_y) &&
         setup_person_move_to_position(thing, uncrowded_stl_x, uncrowded_stl_y, 0))
     {
         thing->continue_state = CrSt_ImpArrivesAtReinforce;
@@ -1378,7 +1378,7 @@ long add_to_pretty_to_imp_stack_if_need_to(MapSlabCoord slb_x, MapSlabCoord slb_
                 return add_to_imp_stack_using_pos(get_subtile_number_at_slab_center(slb_x, slb_y), DigTsk_ConvertDungeon, dungeon);
             }
         }
-    } else 
+    } else
     if (slab_is_door(slb_x, slb_y)) // Door is in the way of claiming
     {
         struct Thing* doortng = get_door_for_position(stl_x, stl_y);
@@ -1440,18 +1440,18 @@ void add_pretty_and_convert_to_imp_stack_prepare(struct Dungeon *dungeon, unsign
     MapSlabCoord slb_x;
     MapSlabCoord slb_y;
     // Clear our slab options array and mark tall slabs with SlbCAOpt_Border
-    for (slb_y=0; slb_y < gameadd.map_tiles_y; slb_y++)
+    for (slb_y=0; slb_y < game.map_tiles_y; slb_y++)
     {
-        for (slb_x=0; slb_x < gameadd.map_tiles_x; slb_x++)
+        for (slb_x=0; slb_x < game.map_tiles_x; slb_x++)
         {
             SlabCodedCoords slb_num;
             struct SlabMap *slb;
             slb_num = get_slab_number(slb_x, slb_y);
             slb = get_slabmap_direct(slb_num);
-            struct SlabAttr *slbattr;
-            slbattr = get_slab_attrs(slb);
+            struct SlabConfigStats *slabst;
+            slabst = get_slab_stats(slb);
             slbopt[slb_num] = 0;
-            if ((slbattr->block_flags & (SlbAtFlg_Filled|SlbAtFlg_Digable|SlbAtFlg_Valuable)) != 0) {
+            if ((slabst->block_flags & (SlbAtFlg_Filled|SlbAtFlg_Digable|SlbAtFlg_Valuable)) != 0) {
                 slbopt[slb_num] |= SlbCAOpt_Border;
             }
         }
@@ -1598,7 +1598,7 @@ int add_pretty_and_convert_to_imp_stack(struct Dungeon *dungeon, int max_tasks)
     unsigned char *slbopt;
     struct SlabCoord *slblist;
     slbopt = big_scratch;
-    slblist = (struct SlabCoord *)(big_scratch + gameadd.map_tiles_x*gameadd.map_tiles_y);
+    slblist = (struct SlabCoord *)(big_scratch + game.map_tiles_x*game.map_tiles_y);
     add_pretty_and_convert_to_imp_stack_prepare(dungeon, slbopt);
     add_pretty_and_convert_to_imp_stack_starting_from_pos(dungeon, slbopt, slblist, &heartng->mappos, &remain_num);
     SYNCDBG(8,"Done, added %d tasks",(int)(max_tasks-remain_num));
@@ -1716,7 +1716,7 @@ struct Thing *get_next_unclaimed_gold_thing_pickable_by_digger(PlayerNumber owne
                       slb_owner = get_slab_owner_thing_is_on(thing);
                       if ((slb_owner == owner) || (slb_owner == game.neutral_player_num)) {
                           struct Room *room;
-                          room = find_any_navigable_room_for_thing_closer_than(thing, owner, RoRoF_GoldStorage, NavRtF_Default, gameadd.map_subtiles_x/2 + gameadd.map_subtiles_y/2);
+                          room = find_any_navigable_room_for_thing_closer_than(thing, owner, RoRoF_GoldStorage, NavRtF_Default, game.map_subtiles_x/2 + game.map_subtiles_y/2);
                           if (!room_is_invalid(room)) {
                               return thing;
                           }
@@ -1843,9 +1843,9 @@ int add_unclaimed_unconscious_bodies_to_imp_stack(struct Dungeon *dungeon, int m
 
 /**
  * @brief Adds tasks to save unconscious creatures to the imp stack.
- * 
+ *
  * only if drag_to_lair rule in activated
- *  
+ *
  * @param dungeon The player's dungeon where the imp stack is updated.
  * @param max_tasks The maximum number of tasks to add to the imp stack.
  * @return The number of tasks actually added to the imp stack.
@@ -1886,7 +1886,7 @@ int add_unsaved_unconscious_creature_to_imp_stack(struct Dungeon *dungeon, int m
             {
                 room = get_creature_lair_room(thing);
 
-                if ((game.conf.rules.workers.drag_to_lair == 1))
+                if (game.conf.rules.workers.drag_to_lair == 1)
                 {
                     // if the creature doesn't have a lair
                     if (room_is_invalid(room))
@@ -1895,9 +1895,9 @@ int add_unsaved_unconscious_creature_to_imp_stack(struct Dungeon *dungeon, int m
                         continue;
                     }
                 }
-                else if ((game.conf.rules.workers.drag_to_lair == 2))
+                else if (game.conf.rules.workers.drag_to_lair == 2)
                 {
-                    // if the creature doesn't have and doesn't need a lair 
+                    // if the creature doesn't have and doesn't need a lair
                     if (room_is_invalid(room) && !creature_can_do_healing_sleep(thing))
                     {
                         //skip thing
@@ -1956,7 +1956,7 @@ int add_unclaimed_dead_bodies_to_imp_stack(struct Dungeon *dungeon, int max_task
         if ( (dungeon->digger_stack_length >= DIGGER_TASK_MAX_COUNT) || (remain_num <= 0) ) {
             break;
         }
-        if (!thing_is_dragged_or_pulled(thing) && (thing->active_state == DCrSt_RigorMortis)
+        if (!thing_is_dragged_or_pulled(thing) && (thing->active_state == DCrSt_Dead)
            && (!corpse_laid_to_rest(thing)) && corpse_is_rottable(thing))
         {
             if (thing_revealed(thing, dungeon->owner))
@@ -2220,9 +2220,9 @@ TbBool slab_is_players_land(PlayerNumber plyr_idx, MapSlabCoord slb_x, MapSlabCo
     if ((slb->kind == SlbT_LAVA) || (slb->kind == SlbT_WATER)) {
         return false;
     }
-    struct SlabAttr *slbattr;
-    slbattr = get_slab_attrs(slb);
-    if (!slbattr->is_safe_land) {
+    struct SlabConfigStats *slabst;
+    slabst = get_slab_stats(slb);
+    if (!slabst->is_safe_land) {
         return false;
     }
     return (slabmap_owner(slb) == plyr_idx);
@@ -2296,7 +2296,7 @@ long check_out_uncrowded_reinforce_position(struct Thing *thing, SubtlCodedCoord
     basestl_y = stl_num_decode_y(stl_num);
     int i;
     int n;
-    n = get_nearest_small_around_side_of_slab(subtile_coord_center(basestl_x), subtile_coord_center(basestl_y), thing->mappos.x.val, thing->mappos.y.val);  
+    n = get_nearest_small_around_side_of_slab(subtile_coord_center(basestl_x), subtile_coord_center(basestl_y), thing->mappos.x.val, thing->mappos.y.val);
     for (i=0; i < SMALL_AROUND_LENGTH; i++)
     {
         MapSubtlCoord stl_x;
@@ -2314,7 +2314,7 @@ long check_out_uncrowded_reinforce_position(struct Thing *thing, SubtlCodedCoord
                     pos.x.val = subtile_coord_center(stl_x);
                     pos.y.val = subtile_coord_center(stl_y);
                     pos.z.val = get_thing_height_at(thing, &pos);
-                    if ( creature_can_navigate_to_with_storage(thing, &pos, NavRtF_Default) != -1 ) {
+                    if (creature_can_navigate_to_with_storage(thing, &pos, NavRtF_Default)) {
                         *retstl_x = stl_x;
                         *retstl_y = stl_y;
                         return 1;
@@ -2749,7 +2749,7 @@ long check_out_imp_last_did(struct Thing *creatng)
           dungeon = get_dungeon(creatng->owner);
       //don't reassign if it's the first gem dig since other tasks
       if (cctrl->digger.task_repeats != 0)
-      { 
+      {
         // If we were digging gems, after 5 repeats of this job, a 1 in 20 chance to select another dungeon job.
         // This allows to switch to other important tasks and not consuming all the diggers workforce forever
         if (( CREATURE_RANDOM(creatng,20) == 1) && ((cctrl->digger.task_repeats % 5) == 0) && (dungeon->digger_stack_length > 1))
@@ -2862,7 +2862,7 @@ long check_out_imp_last_did(struct Thing *creatng)
   SYNCDBG(9,"No job found");
   return false;
 }
-//Create list of up to 64 tasks. 
+//Create list of up to 64 tasks.
 TbBool imp_stack_update(struct Thing *creatng)
 {
     struct Dungeon *dungeon;
@@ -3034,12 +3034,12 @@ long check_out_worker_pickup_unconscious(struct Thing *thing, struct DiggerStack
 
 /**
  * @brief Assigns a special diggers to save an unconscious creature if possible.
- * 
+ *
  * only if drag_to_lair rule in activated
- * 
+ *
  * @param thing The special diggers creature attempting to perform the task.
  * @param dstack The digger stack task containing the task type and target coordinates.
- * @return 
+ * @return
  * 1 = task was successfully assigned, 0 = task remain, -1 = task is invalid.
  */
 long check_out_worker_save_unconscious(struct Thing *thing, struct DiggerStack *dstack)
@@ -3081,21 +3081,21 @@ long check_out_worker_save_unconscious(struct Thing *thing, struct DiggerStack *
     }
     // if the creature already has a lair, move towards it
     else if(get_creature_lair_room(sectng))
-    {    
+    {
         struct CreatureControl *cctrl_sectng = creature_control_get_from_thing(sectng);
         struct Thing* lairtng = thing_get(cctrl_sectng->lairtng_idx);
 
         if(!setup_person_move_to_coord(thing, &lairtng->mappos, NavRtF_Default))
         {
         // Do not delete the task - another digger might be able to reach it
-            return 0; 
+            return 0;
         }
     }
     else
-    {    
+    {
         return 0;
     }
-    
+
     //creature_can_navigate_to
     if (room_is_invalid(room))
     {
@@ -3300,7 +3300,7 @@ long check_out_worker_pickup_trap_for_workshop(struct Thing *thing, struct Digge
             {
                 if (sectng->owner == game.neutral_player_num)
                 {
-                    output_message(SMsg_DiscoveredTrap, 0, true);
+                    output_message(SMsg_DiscoveredTrap, 0);
                 }
             }
         }
@@ -3316,7 +3316,7 @@ long check_out_worker_pickup_trap_for_workshop(struct Thing *thing, struct Digge
             {
                 if (sectng->owner == game.neutral_player_num)
                 {
-                    output_message(SMsg_DiscoveredDoor, 0, true);
+                    output_message(SMsg_DiscoveredDoor, 0);
                 }
             }
         }
@@ -3372,11 +3372,11 @@ long check_out_worker_dig_or_mine(struct Thing *thing, struct DiggerStack *dstac
 
 long check_out_worker_pickup_gold_pile(struct Thing *thing, struct DiggerStack *dstack)
 {
-    struct CreatureStats *crstat;
+    struct CreatureModelConfig *crconf;
     struct CreatureControl *cctrl;
     cctrl = creature_control_get_from_thing(thing);
-    crstat = creature_stats_get_from_thing(thing);
-    if (crstat->gold_hold <= thing->creature.gold_carried)
+    crconf = creature_stats_get_from_thing(thing);
+    if (crconf->gold_hold <= thing->creature.gold_carried)
     {
         if (game.play_gameturn - cctrl->tasks_check_turn > 128)
         {

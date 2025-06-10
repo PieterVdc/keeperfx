@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_math.h"
-#include "bflib_memory.h"
 
 #include "thing_data.h"
 #include "thing_doors.h"
@@ -69,12 +68,12 @@ struct Thing *create_cave_in(struct Coord3d *pos, ThingModel cimodel, unsigned s
     memcpy(&thing->mappos,pos,sizeof(struct Coord3d));
     thing->owner = owner;
     thing->creation_turn = game.play_gameturn;
-    struct MagicStats* pwrdynst = get_power_dynamic_stats(PwrK_CAVEIN);
-    thing->cave_in.time = pwrdynst->duration;
+    struct PowerConfigStats * powerst = get_power_model_stats(PwrK_CAVEIN);
+    thing->cave_in.time = powerst->duration;
     thing->cave_in.x = pos->x.stl.num;
     thing->cave_in.y = pos->y.stl.num;
     thing->cave_in.model = cimodel;
-    thing->health = pwrdynst->duration;
+    thing->health = powerst->duration;
     if (owner != game.neutral_player_num)
     {
         struct Dungeon* dungeon = get_dungeon(owner);
@@ -151,9 +150,9 @@ TbBool thing_create_thing(struct InitThing *itng)
             else if (thing_is_custom_special_box(thing))
             {
                 thing->custom_box.box_kind = itng->params[1];
-                if (itng->params[1] > gameadd.max_custom_box_kind)
+                if (itng->params[1] > game.max_custom_box_kind)
                 {
-                    gameadd.max_custom_box_kind = itng->params[1];
+                    game.max_custom_box_kind = itng->params[1];
                 }
             }
             check_and_asimilate_thing_by_room(thing);
@@ -265,9 +264,9 @@ TbBool thing_create_thing_adv(VALUE *init_data)
                     if (box_kind == -1)
                         box_kind = 0;
                     thing->custom_box.box_kind = box_kind;
-                    if (box_kind > gameadd.max_custom_box_kind)
+                    if (box_kind > game.max_custom_box_kind)
                     {
-                        gameadd.max_custom_box_kind = box_kind;
+                        game.max_custom_box_kind = box_kind;
                     }
                 }
                 else if (object_is_gold_pile(thing))
@@ -436,7 +435,7 @@ struct Thing *create_thing_at_position_then_move_to_valid_and_add_light(struct C
     if (light_rand < 2)
     {
         struct InitLight ilght;
-        LbMemorySet(&ilght, 0, sizeof(struct InitLight));
+        memset(&ilght, 0, sizeof(struct InitLight));
         ilght.mappos.x.val = thing->mappos.x.val;
         ilght.mappos.y.val = thing->mappos.y.val;
         ilght.mappos.z.val = thing->mappos.z.val;

@@ -24,7 +24,7 @@
 #include "bflib_guibtns.h"
 #include "bflib_vidraw.h"
 #include "bflib_sprfnt.h"
-
+#include "custom_sprites.h"
 #include "player_data.h"
 #include "config_players.h"
 #include "player_utils.h"
@@ -32,7 +32,7 @@
 #include "creature_battle.h"
 #include "creature_graphics.h"
 #include "config_creature.h"
-#include "magic.h"
+#include "magic_powers.h"
 #include "gui_draw.h"
 #include "gui_frontbtns.h"
 #include "gui_frontmenu.h"
@@ -55,7 +55,7 @@ void gui_open_event(struct GuiButton *gbtn)
     struct Dungeon* dungeon = get_my_dungeon();
     EventIndex evidx;
     SYNCDBG(5,"Starting");
-    unsigned int evbtn_idx = (unsigned long)gbtn->content;
+    unsigned int evbtn_idx = gbtn->content.lval;
     if (evbtn_idx <= EVENT_BUTTONS_COUNT) {
         evidx = dungeon->event_button_index[evbtn_idx];
     } else {
@@ -75,7 +75,7 @@ void gui_kill_event(struct GuiButton *gbtn)
 {
     struct PlayerInfo* player = get_my_player();
     struct Dungeon* dungeon = get_players_dungeon(player);
-    unsigned long i = (unsigned long)gbtn->content;
+    unsigned long i = gbtn->content.lval;
     set_players_packet_action(player, PckA_Unknown092, dungeon->event_button_index[i], 0, 0, 0);
 }
 
@@ -141,12 +141,7 @@ void gui_get_creature_in_battle(struct GuiButton *gbtn)
     if (battle_creature_over <= 0) {
         return;
     }
-    PowerKind pwkind = 0;
-    if (myplyr->work_state < PLAYER_STATES_COUNT_MAX)
-    {
-        struct PlayerStateConfigStats* plrst_cfg_stat = get_player_state_stats(myplyr->work_state);
-        pwkind = plrst_cfg_stat->power_kind;
-    }
+    PowerKind pwkind = myplyr->chosen_power_kind;
     struct Thing* thing = thing_get(battle_creature_over);
     if (!thing_exists(thing)) {
         WARNLOG("Nonexisting thing %d in battle",(int)battle_creature_over);
@@ -208,7 +203,7 @@ void draw_battle_head(struct Thing *thing, long scr_x, long scr_y, int units_per
         return;
     }
     short spr_idx = get_creature_model_graphics(thing->model, CGI_HandSymbol);
-    struct TbSprite* spr = &gui_panel_sprites[spr_idx];
+    const struct TbSprite* spr = get_panel_sprite(spr_idx);
     if (spr->SHeight == 0)
     {
         ERRORLOG("Trying to draw non existing icon in battle menu for %s", thing_model_name(thing));
@@ -235,12 +230,12 @@ void draw_battle_head(struct Thing *thing, long scr_x, long scr_y, int units_per
         max_health = 1;
     LbDrawBox(curscr_x + 2*units_per_px/16, curscr_y + 2*units_per_px/16, ((12 * health)/max_health)*units_per_px/16, 2*units_per_px/16, player_room_colours[get_player_color_idx(thing->owner)]);
     // Draw experience level
-    spr = &button_sprite[GBS_creature_flower_level_01];
+    spr = get_button_sprite(GBS_creature_flower_level_01);
     int bs_units_per_px = (17 * units_per_px + spr->SHeight / 2) / spr->SHeight;
     TbBool high_res = (MyScreenHeight >= 400);
     curscr_y = (scr_y - ((spr->SHeight*bs_units_per_px/16) >> (unsigned char)high_res));
     curscr_x = (scr_x - ((spr->SWidth*bs_units_per_px/16) >> (unsigned char)high_res));
-    spr = &button_sprite[GBS_creature_flower_level_01 + cctrl->explevel];
+    spr = get_button_sprite(GBS_creature_flower_level_01 + cctrl->exp_level);
     LbSpriteDrawResized(curscr_x, curscr_y, ps_units_per_px, spr);
 }
 
@@ -365,15 +360,19 @@ short zoom_to_fight(PlayerNumber plyr_idx)
 void draw_bonus_timer(void)
 {
     int nturns = game.bonus_time - game.play_gameturn;
-    char* text;
-    if (gameadd.timer_real)
+    char text[32];
+    if (game.timer_real)
     {
         unsigned long total_seconds = ((nturns) / game_num_fps) + 1;
         unsigned char seconds = total_seconds % 60;
         unsigned long total_minutes = total_seconds / 60;
         unsigned char minutes = total_minutes % 60;
         unsigned char hours = total_minutes / 60;
-        text = (nturns >= 0) ? buf_sprintf("%02d:%02d:%02d", hours, minutes, seconds) : buf_sprintf("00:00:00");
+        if (nturns >= 0) {
+            snprintf(text, sizeof(text), "%02d:%02d:%02d", hours, minutes, seconds);
+        } else {
+            snprintf(text, sizeof(text), "%s", "00:00:00");
+        }
     }
     else
     {
@@ -385,7 +384,7 @@ void draw_bonus_timer(void)
         {
             nturns = 99999;
         }
-        text = buf_sprintf("%05d", nturns / 2);
+        snprintf(text, sizeof(text), "%05d", nturns / 2);
     }
     LbTextSetFont(winfont);
     long width = 10 * (LbTextCharWidth('0') * units_per_pixel / 16);
@@ -394,7 +393,7 @@ void draw_bonus_timer(void)
     {
         height *= 2;
         width *= 2;
-        if ((dbc_language) > 0 && (gameadd.timer_real))
+        if ((dbc_language) > 0 && (game.timer_real))
         {
             width += (width / 8);
         }
@@ -411,8 +410,8 @@ void draw_bonus_timer(void)
     draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
     int tx_units_per_px;
     int y;
-    if ( (MyScreenHeight < 400) && (dbc_language > 0) ) 
-    {        
+    if ( (MyScreenHeight < 400) && (dbc_language > 0) )
+    {
         tx_units_per_px = scale_ui_value(32);
         y = 0;
     }
@@ -425,7 +424,7 @@ void draw_bonus_timer(void)
     {
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
-    } 
+    }
     LbTextDrawResized(0, y, tx_units_per_px, text);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -440,14 +439,14 @@ TbBool bonus_timer_enabled(void)
 
 void draw_timer(void)
 {
-    char* text;
+    char text[32];
     if (TimerGame)
     {
         if (get_my_player()->victory_state != VicS_WonLevel)
         {
             TimerTurns = game.play_gameturn;
         }
-        text = buf_sprintf("%08ld", TimerTurns);
+        snprintf(text, sizeof(text), "%08ld", TimerTurns);
     }
     else
     {
@@ -455,7 +454,7 @@ void draw_timer(void)
         {
             update_time();
         }
-        text = buf_sprintf("%02d:%02d:%02d", Timer.Hours, Timer.Minutes, Timer.Seconds);
+        snprintf(text, sizeof(text), "%02d:%02d:%02d", Timer.Hours, Timer.Minutes, Timer.Seconds);
     }
     LbTextSetFont(winfont);
     long width = 10 * (LbTextCharWidth('0') * units_per_pixel >> 4);
@@ -487,8 +486,8 @@ void draw_timer(void)
     draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
     int tx_units_per_px;
     int y;
-    if ( (MyScreenHeight < 400) && (dbc_language > 0) ) 
-    {        
+    if ( (MyScreenHeight < 400) && (dbc_language > 0) )
+    {
         tx_units_per_px = scale_ui_value(32);
         y = 0;
     }
@@ -501,7 +500,7 @@ void draw_timer(void)
     {
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
-    } 
+    }
     LbTextDrawResized(0, y, tx_units_per_px, text);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -509,13 +508,13 @@ void draw_timer(void)
 void draw_gameturn_timer(void)
 {
     int nturns = game.play_gameturn;
-    char* text;
+    char text[32];
     {
         if (nturns < 0)
         {
             nturns = 0;
         }
-        text = buf_sprintf("GameTurn %lu", game.play_gameturn);
+        snprintf(text, sizeof(text), "GameTurn %lu", game.play_gameturn);
     }
     LbTextSetFont(winfont);
     int textLength = strlen(text);
@@ -524,14 +523,14 @@ void draw_gameturn_timer(void)
     {
         textCharWidth += LbTextCharWidth(text[i]);
     };
-    
+
     long width = textCharWidth * units_per_pixel / 16;
     long height = LbTextLineHeight() * units_per_pixel / 16 + (LbTextLineHeight() * units_per_pixel / 16) / 2;
     if (MyScreenHeight < 400)
     {
         height *= 2;
         width *= 2;
-        if ((dbc_language) > 0 && (gameadd.timer_real))
+        if ((dbc_language) > 0 && (game.timer_real))
         {
             width += (width / 8);
         }
@@ -539,13 +538,13 @@ void draw_gameturn_timer(void)
     lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
     long scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
     long scr_y = MyScreenHeight - height - 16 * units_per_pixel / 16;
-    
+
     LbTextSetWindow(scr_x, scr_y, width, height);
     //draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
     int tx_units_per_px;
     int y;
-    if ( (MyScreenHeight < 400) && (dbc_language > 0) ) 
-    {        
+    if ( (MyScreenHeight < 400) && (dbc_language > 0) )
+    {
         tx_units_per_px = scale_ui_value(32);
         y = 0;
     }
@@ -558,7 +557,7 @@ void draw_gameturn_timer(void)
     {
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
-    } 
+    }
     LbTextDrawResized(0, y, tx_units_per_px, text);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -597,7 +596,7 @@ void draw_script_timer(PlayerNumber plyr_idx, unsigned char timer_id, unsigned l
         game.flags_gui &= ~GGUI_ScriptTimer;
         return;
     }
-    char* text;
+    char text[32];
     if (real)
     {
         unsigned long total_seconds = ((nturns) / game_num_fps) + 1;
@@ -605,11 +604,15 @@ void draw_script_timer(PlayerNumber plyr_idx, unsigned char timer_id, unsigned l
         unsigned long total_minutes = total_seconds / 60;
         unsigned char minutes = total_minutes % 60;
         unsigned char hours = total_minutes / 60;
-        text = (nturns >= 0) ? buf_sprintf("%02d:%02d:%02d", hours, minutes, seconds) : buf_sprintf("00:00:00");
+        if (nturns >= 0) {
+            snprintf(text, sizeof(text), "%02d:%02d:%02d", hours, minutes, seconds);
+        } else {
+            snprintf(text, sizeof(text), "%s", "00:00:00");
+        }
     }
     else
     {
-        text = buf_sprintf("%08d", nturns);
+        snprintf(text, sizeof(text), "%08d", nturns);
     }
     LbTextSetFont(winfont);
     long width = 10 * (LbTextCharWidth('0') * units_per_pixel / 16);
@@ -635,8 +638,8 @@ void draw_script_timer(PlayerNumber plyr_idx, unsigned char timer_id, unsigned l
     draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
     int tx_units_per_px;
     int y;
-    if ( (MyScreenHeight < 400) && (dbc_language > 0) ) 
-    {        
+    if ( (MyScreenHeight < 400) && (dbc_language > 0) )
+    {
         tx_units_per_px = scale_ui_value(32);
         y = 0;
     }
@@ -649,7 +652,7 @@ void draw_script_timer(PlayerNumber plyr_idx, unsigned char timer_id, unsigned l
     {
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
-    } 
+    }
     LbTextDrawResized(0, y, tx_units_per_px, text);
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -680,7 +683,8 @@ void draw_script_variable(PlayerNumber plyr_idx, unsigned char valtype, unsigned
             value = 0;
         }
     }
-    char* text = buf_sprintf("%ld", value);
+    char text[16];
+    snprintf(text, sizeof(text), "%ld", value);
     LbTextSetFont(winfont);
     long width = 10 * (LbTextCharWidth('0') * units_per_pixel / 16);
     long height = LbTextLineHeight() * units_per_pixel / 16 + (LbTextLineHeight() * units_per_pixel / 16) / 2;
@@ -738,7 +742,7 @@ void draw_consolelog()
 
     int text_height = (consolelog_font_size * units_per_pixel) / LbTextLineHeight();
     int draw_ypos = text_height / 2; // Starting ypos
-    
+
     int totalLinesDrawn = 0;
 
     size_t startIdx = 0;
@@ -752,23 +756,26 @@ void draw_consolelog()
         while (text[offset] != '\0' && totalLinesDrawn < consolelog_simultaneous_message_count) {
             int currentLineWidth = 0; // Reset line width for each new line
             int sub_len = 1;
-            
+
             // Iterate over the characters in the string to find the substring length
             while (text[offset + sub_len] != '\0') {
                 int charWidth = LbTextCharWidth(text[offset + sub_len - 1]);
                 if (currentLineWidth + charWidth > consolelog_max_line_width) {
                     break; // Exit the loop if adding the next character would exceed the line width
                 }
-                
+
                 currentLineWidth += charWidth; // Add the width of the current character
                 sub_len++; // Move to the next character
             }
 
-            char line_buffer[sub_len + 1];
+            //char line_buffer[sub_len + 1];
+            char *line_buffer = (char*)malloc((sub_len + 1) * sizeof(char));
+            if (!line_buffer) continue;
             strncpy(line_buffer, text + offset, sub_len);
             line_buffer[sub_len] = '\0';
 
             LbTextDrawResized(text_height, draw_ypos, text_height, line_buffer);
+            free(line_buffer);
             draw_ypos += text_height; // Move to the next line position
             offset += sub_len;
             totalLinesDrawn++;
@@ -780,7 +787,7 @@ void draw_consolelog()
 void draw_frametime()
 {
     float display_value;
-    char *text;
+    char text[64];
     LbTextSetFont(winfont);
     lbDisplay.DrawFlags = Lb_TEXT_HALIGN_RIGHT;
     int tx_units_per_px = (11 * units_per_pixel) / LbTextLineHeight();
@@ -788,7 +795,7 @@ void draw_frametime()
     // FPS
     display_value = 1000 / frametime_measurements.frametime_display[Frametime_FullFrame];
 
-    text = buf_sprintf("FPS: %f", display_value);
+    snprintf(text, sizeof(text), "FPS: %f", display_value);
     LbTextDrawResized(0, 27*tx_units_per_px, tx_units_per_px, text);
 
     // Frametimes
@@ -796,16 +803,16 @@ void draw_frametime()
         display_value = frametime_measurements.frametime_display[i];
         switch (i) {
             case Frametime_FullFrame:
-                text = buf_sprintf("Frametime: %f ms", display_value);
+                snprintf(text, sizeof(text), "Frametime: %f ms", display_value);
                 break;
             case Frametime_Logic:
-                text = buf_sprintf("Logic: %f ms", display_value);
+                snprintf(text, sizeof(text), "Logic: %f ms", display_value);
                 break;
             case Frametime_Draw:
-                text = buf_sprintf("Draw: %f ms", display_value);
+                snprintf(text, sizeof(text), "Draw: %f ms", display_value);
                 break;
             case Frametime_Sleep:
-                text = buf_sprintf("Sleep: %f ms", display_value);
+                snprintf(text, sizeof(text), "Sleep: %f ms", display_value);
                 break;
         }
         LbTextDrawResized(0, (28+i)*tx_units_per_px, tx_units_per_px, text);

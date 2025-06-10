@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_memory.h"
 #include "bflib_math.h"
 #include "bflib_sound.h"
 #include "bflib_planar.h"
@@ -41,7 +40,7 @@
 #include "map_data.h"
 #include "map_columns.h"
 #include "map_utils.h"
-#include "magic.h"
+#include "magic_powers.h"
 #include "room_entrance.h"
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
@@ -52,6 +51,7 @@
 #include "keeperfx.hpp"
 #include "game_loop.h"
 #include "config_spritecolors.h"
+#include "lua_cfg_funcs.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -130,7 +130,7 @@ struct Thing *create_object(const struct Coord3d *pos, ThingModel model, unsigne
       thing->parent_idx = -1;
     else
       thing->parent_idx = parent_idx;
-    LbMemoryCopy(&thing->mappos, pos, sizeof(struct Coord3d));
+    memcpy(&thing->mappos, pos, sizeof(struct Coord3d));
     struct ObjectConfigStats* objst = get_object_model_stats(model);
     thing->clipbox_size_xy = objst->size_xy;
     thing->clipbox_size_z = objst->size_z;
@@ -167,8 +167,8 @@ struct Thing *create_object(const struct Coord3d *pos, ThingModel model, unsigne
     if (objst->ilght.radius != 0)
     {
         struct InitLight ilight;
-        LbMemorySet(&ilight, 0, sizeof(struct InitLight));
-        LbMemoryCopy(&ilight.mappos, &thing->mappos, sizeof(struct Coord3d));
+        memset(&ilight, 0, sizeof(struct InitLight));
+        memcpy(&ilight.mappos, &thing->mappos, sizeof(struct Coord3d));
         ilight.radius = objst->ilght.radius;
         ilight.intensity = objst->ilght.intensity;
         ilight.flags = objst->ilght.flags;
@@ -286,6 +286,24 @@ TbBool object_can_be_damaged (const struct Thing* thing)
     if (thing_is_dungeon_heart(thing) || object_is_mature_food(thing) || object_is_growing_food(thing))
         return true;
     return false;
+}
+
+TbBool thing_is_object_with_tooltip(const struct Thing* thing, TbBool is_optional)
+{
+    if (thing_is_invalid(thing))
+        return false;
+    if (thing->class_id != TCls_Object)
+        return false;
+    struct ObjectConfigStats* objst = get_object_model_stats(thing->model);
+    return ((objst->tooltip_stridx != GUIStr_Empty) && (objst->tooltip_optional == is_optional));
+}
+TbBool thing_is_object_with_mandatory_tooltip(const struct Thing* thing)
+{
+    return thing_is_object_with_tooltip(thing, 0);
+}
+TbBool thing_is_object_with_optional_tooltip(const struct Thing* thing)
+{
+    return thing_is_object_with_tooltip(thing, 1);
 }
 
 TbBool thing_is_object(const struct Thing *thing)
@@ -493,6 +511,7 @@ TbBool object_is_guard_flag(const struct Thing *thing)
       case ObjMdl_GuardFlagBlue:
       case ObjMdl_GuardFlagGreen:
       case ObjMdl_GuardFlagYellow:
+      case ObjMdl_GuardFlagWhite:
       case ObjMdl_GuardFlagPurple:
       case ObjMdl_GuardFlagBlack:
       case ObjMdl_GuardFlagOrange:
@@ -1050,7 +1069,7 @@ void process_object_sacrifice(struct Thing *thing, long sacowner)
         process_temple_special(thing, sacowner);
         kill_all_players_chickens(thing->owner);
         if (is_my_player_number(sacowner))
-            output_message(SMsg_SacrificePunish, 0, true);
+            output_message(SMsg_SacrificePunish, 0);
     } else
     if (object_is_gold_pile(thing))
     {
@@ -1079,7 +1098,7 @@ void process_object_sacrifice(struct Thing *thing, long sacowner)
             } else
             {
                 if (is_my_player_number(sacowner))
-                    output_message(SMsg_SacrificeWishing, 0, true);
+                    output_message(SMsg_SacrificeWishing, 0);
             }
         }
     }
@@ -1287,10 +1306,10 @@ static TngUpdateRet object_update_dungeon_heart(struct Thing *heartng)
         if (heartng->health <= 0)
         {
             struct Thing* efftng;
-            efftng = create_used_effect_or_element(&heartng->mappos, objst->effect.explosion1, heartng->owner);
+            efftng = create_used_effect_or_element(&heartng->mappos, objst->effect.explosion1, heartng->owner, heartng->index);
             if (!thing_is_invalid(efftng))
                 efftng->shot_effect.hit_type = THit_HeartOnlyNotOwn;
-            efftng = create_used_effect_or_element(&heartng->mappos, objst->effect.explosion2, heartng->owner);
+            efftng = create_used_effect_or_element(&heartng->mappos, objst->effect.explosion2, heartng->owner, heartng->index);
             if (!thing_is_invalid(efftng))
                 efftng->shot_effect.hit_type = THit_HeartOnlyNotOwn;
             destroy_dungeon_heart_room(heartng->owner, heartng);
@@ -1513,7 +1532,7 @@ static TngUpdateRet object_update_armour(struct Thing *objtng)
           cvect.z = pos.z.val;
         }
     }
-    objtng->state_flags |= 0x04;
+    objtng->state_flags |= TF1_PushAdd;
     objtng->veloc_push_add.x.val += cvect.x;
     objtng->veloc_push_add.y.val += cvect.y;
     objtng->veloc_push_add.z.val += cvect.z;
@@ -1529,7 +1548,7 @@ static TngUpdateRet object_update_object_scale(struct Thing *objtng)
     int spr_size;
     int start_frame = objtng->current_frame;
     if (objtng->lair.belongs_to) {
-        spr_size = game.conf.crtr_conf.sprite_size + (game.conf.crtr_conf.sprite_size * cctrl->explevel * game.conf.crtr_conf.exp.size_increase_on_exp) / 100;
+        spr_size = game.conf.crtr_conf.sprite_size + (game.conf.crtr_conf.sprite_size * cctrl->exp_level * game.conf.crtr_conf.exp.size_increase_on_exp) / 100;
     } else {
         spr_size = objst->sprite_size_max;
     }
@@ -1574,10 +1593,9 @@ static TngUpdateRet object_update_power_sight(struct Thing *objtng)
         thing_play_sample(objtng, powerst->select_sound_idx, NORMAL_PITCH, -1, 3, 1, 3, FULL_LOUDNESS);
     }
 
-    int sight_casted_splevel = dungeon->sight_casted_splevel;
-
-    const struct MagicStats *pwrdynst = get_power_dynamic_stats(PwrK_SIGHT);
-    int max_time_active = pwrdynst->strength[sight_casted_splevel];
+    KeepPwrLevel sight_casted_power_level = dungeon->sight_casted_power_level;
+    int max_time_active = powerst->strength[sight_casted_power_level];
+    int strength = min(powerst->strength[sight_casted_power_level], (MAX_SOE_RADIUS * COORD_PER_STL / 4));
 
     if ( game.play_gameturn - objtng->creation_turn >= max_time_active
         && game.play_gameturn - dungeon->sight_casted_gameturn < max_time_active )
@@ -1592,12 +1610,12 @@ static TngUpdateRet object_update_power_sight(struct Thing *objtng)
         {
             time_active = 0;
         }
-        const int v32 = (max_time_active / 16) / power_sight_close_instance_time[sight_casted_splevel];
-        dungeon->sight_casted_gameturn = game.play_gameturn - max_time_active + time_active / v32 - power_sight_close_instance_time[sight_casted_splevel];
+        const int v32 = (max_time_active / 16) / power_sight_close_instance_time[sight_casted_power_level];
+        dungeon->sight_casted_gameturn = game.play_gameturn - max_time_active + time_active / v32 - power_sight_close_instance_time[sight_casted_power_level];
     }
     if ( max_time_active <= game.play_gameturn - dungeon->sight_casted_gameturn )
     {
-        if ( power_sight_close_instance_time[dungeon->sight_casted_splevel] <= (game.play_gameturn - dungeon->sight_casted_gameturn) - max_time_active )
+        if ( power_sight_close_instance_time[dungeon->sight_casted_power_level] <= (game.play_gameturn - dungeon->sight_casted_gameturn) - max_time_active )
         {
             if ( (dungeon->computer_enabled & 4) != 0 )
             {
@@ -1624,9 +1642,9 @@ static TngUpdateRet object_update_power_sight(struct Thing *objtng)
             // draw 32 particles in a collapsing starburst pattern
             const int anim_time = (game.play_gameturn - dungeon->sight_casted_gameturn);
             const int anim_radius = 4 * anim_time;
-            const int close_radius = 32 * (power_sight_close_instance_time[dungeon->sight_casted_splevel] - (anim_time - max_time_active));
+            const int close_radius = 32 * (power_sight_close_instance_time[dungeon->sight_casted_power_level] - (anim_time - max_time_active));
             const int max_duration_radius = max_time_active / 4;
-            const int strength_radius = pwrdynst->strength[dungeon->sight_casted_splevel] / 4;
+            const int strength_radius = strength/4;
             const int radius = max(0, min(min(min(close_radius, max_duration_radius), anim_radius), strength_radius));
             for (int i = 0; i < 32; ++i) {
                 const int step = ((2*LbFPMath_PI) / 32);
@@ -1646,7 +1664,7 @@ static TngUpdateRet object_update_power_sight(struct Thing *objtng)
         const int anim_time = (game.play_gameturn - dungeon->sight_casted_gameturn);
         const int anim_radius = 4 * anim_time;
         const int max_duration_radius = max_time_active / 4;
-        const int strength_radius = pwrdynst->strength[dungeon->sight_casted_splevel] / 4;
+        const int strength_radius = strength/4;
         const int radius = max(0, min(min(max_duration_radius, anim_radius), strength_radius));
         for (int i = 0; i < 4; ++i) {
             const int step = ((2*LbFPMath_PI) / 32);
@@ -1658,10 +1676,10 @@ static TngUpdateRet object_update_power_sight(struct Thing *objtng)
             pos.y.val = pos_y;
             pos.z.val = 1408;
             create_effect_element(&pos, twinkle_eff_elements[get_player_color_idx(objtng->owner)], objtng->owner);
-            if ( pos_x >= 0 && pos_x < gameadd.map_subtiles_x * COORD_PER_STL && pos_y >= 0 && pos_y < gameadd.map_subtiles_y * COORD_PER_STL ) {
-                const int shift_x = pos.x.stl.num - objtng->mappos.x.stl.num + 13;
-                const int shift_y = pos.y.stl.num - objtng->mappos.y.stl.num + 13;
-                dungeon->soe_explored_flags[shift_y][shift_x] = pos.x.val < gameadd.map_subtiles_x * COORD_PER_STL && pos.y.val < gameadd.map_subtiles_y * COORD_PER_STL;
+            if ( pos_x >= 0 && pos_x < game.map_subtiles_x * COORD_PER_STL && pos_y >= 0 && pos_y < game.map_subtiles_y * COORD_PER_STL ) {
+                const int shift_x = pos.x.stl.num - objtng->mappos.x.stl.num + MAX_SOE_RADIUS;
+                const int shift_y = pos.y.stl.num - objtng->mappos.y.stl.num + MAX_SOE_RADIUS;
+                dungeon->soe_explored_flags[shift_y][shift_x] = pos.x.val < game.map_subtiles_x * COORD_PER_STL && pos.y.val < game.map_subtiles_y * COORD_PER_STL;
             }
         }
         return 1;
@@ -1690,8 +1708,8 @@ static TngUpdateRet object_update_power_lightning(struct Thing *objtng)
         }
         variation++;
     }
-    const struct MagicStats* pwrdynst = get_power_dynamic_stats(PwrK_LIGHTNING);
-    if (exist_turns > abs(pwrdynst->strength[objtng->lightning.spell_level]))
+    const struct PowerConfigStats *powerst = get_power_model_stats(PwrK_LIGHTNING);
+    if (exist_turns > abs(powerst->strength[objtng->lightning.power_level]))
     {
         delete_thing_structure(objtng, 0);
         return TUFRet_Deleted;
@@ -1763,7 +1781,8 @@ TngUpdateRet move_object(struct Thing *thing)
                 {
                     if (!find_free_position_on_slab(thing, &pos))
                     {
-                        SYNCDBG(7, "Found no free position next to (%ld,%ld) due to blocked flag %d. Move to valid position.", pos.x.val, pos.y.val, blocked_flags);
+                        SYNCDBG(7, "Found no free position next to (%ld,%ld) due to blocked flag %ld. Move to valid position.",
+                            pos.x.val, pos.y.val, blocked_flags);
                         move_creature_to_nearest_valid_position(thing);
                     }
                 }
@@ -1797,16 +1816,27 @@ TngUpdateRet update_object(struct Thing *thing)
     SYNCDBG(18,"Starting for %s",thing_model_name(thing));
     TRACE_THING(thing);
 
-    Thing_Class_Func upcallback = NULL;
+    
     struct ObjectConfigStats* objst = get_object_model_stats(thing->model);
-    upcallback = object_update_functions[objst->updatefn_idx];
 
-    if (upcallback != NULL)
+    if (objst->updatefn_idx > 0)
     {
-        if (upcallback(thing) <= 0) {
+        Thing_Class_Func upcallback = NULL;
+        upcallback = object_update_functions[objst->updatefn_idx];
+        if (upcallback != NULL)
+        {
+            if (upcallback(thing) <= 0) {
+                return TUFRet_Deleted;
+            }
+        }
+    }
+    else if (objst->updatefn_idx < 0)
+    {
+        if (luafunc_obj_update_func(objst->updatefn_idx, thing) <= 0) {
             return TUFRet_Deleted;
         }
     }
+
     Thing_State_Func stcallback = NULL;
     if (thing->active_state < sizeof(object_state_functions)/sizeof(object_state_functions[0])) {
         stcallback = object_state_functions[thing->active_state];

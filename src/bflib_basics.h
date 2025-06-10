@@ -22,6 +22,7 @@
 
 #include <io.h>
 #include <time.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +52,7 @@ enum TbErrorCode {
 /******************************************************************************/
 #pragma pack(1)
 
+// These types should be deprecated because we have stdint.h now.
 typedef unsigned long ulong;
 typedef unsigned int uint;
 typedef unsigned short ushort;
@@ -74,7 +76,7 @@ typedef time_t TbTimeSec;
 typedef unsigned char TbChecksum;
 typedef unsigned long TbBigChecksum;
 typedef long Offset;
-typedef int TbFileHandle;
+typedef FILE * TbFileHandle;
 typedef unsigned char TbBool;
 typedef short TbScreenPos;
 
@@ -132,11 +134,12 @@ extern char consoleLogArray[MAX_CONSOLE_LOG_COUNT][MAX_TEXT_LENGTH];
 extern size_t consoleLogArraySize;
 
 // High level functions - DK specific
-void error(const char *codefile,const int ecode,const char *message);
-short warning_dialog(const char *codefile,const int ecode,const char *message);
-short error_dialog(const char *codefile,const int ecode,const char *message);
-short error_dialog_fatal(const char *codefile,const int ecode,const char *message);
-char *buf_sprintf(const char *format, ...);
+void error(const char *codefile,const int ecode,const char *message) __attribute__ ((nonnull(1, 3)));
+short warning_dialog(const char *codefile,const int ecode,const char *message) __attribute__ ((nonnull(1, 3)));
+short error_dialog(const char *codefile,const int ecode,const char *message) __attribute__ ((nonnull(1, 3)));
+short error_dialog_fatal(const char *codefile,const int ecode,const char *message) __attribute__ ((nonnull(1, 3)));
+int str_append(char * buffer, int size, const char * str) __attribute__ ((nonnull(1, 3)));
+int str_appendf(char * buffer, int size, const char * format, ...) __attribute__ ((format(printf, 3, 4), nonnull(1, 3)));
 /******************************************************************************/
 
 void LbLog(int chan, int level, const char * format, ...);
@@ -162,14 +165,15 @@ void LbLogClose(void);
 /******************************************************************************/
 typedef void (*TbNetworkCallbackFunc)(struct TbNetworkCallbackData *, void *);
 /******************************************************************************/
-unsigned long blong (unsigned char *p);
-unsigned long llong (unsigned char *p);
-unsigned long bword (unsigned char *p);
-unsigned long lword (unsigned char *p);
+unsigned long blong (unsigned char *p) __attribute__ ((nonnull(1)));
+unsigned long llong (unsigned char *p) __attribute__ ((nonnull(1)));
+unsigned long bword (unsigned char *p) __attribute__ ((nonnull(1)));
+unsigned long lword (unsigned char *p) __attribute__ ((nonnull(1)));
 long saturate_set_signed(long long val,unsigned short nbits);
 unsigned long saturate_set_unsigned(unsigned long long val,unsigned short nbits);
-void make_lowercase(char *);
-void make_uppercase(char *);
+void make_lowercase(char *) __attribute__ ((nonnull(1)));
+void make_uppercase(char *) __attribute__ ((nonnull(1)));
+int natoi(const char * str, int len) __attribute__ ((nonnull(1))); // like atoi but stops after len bytes
 
 /**
  * Converts an index number to a flag - by creating a bitmask where only the nth bit is set to 1.
