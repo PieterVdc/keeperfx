@@ -51,22 +51,6 @@ extern "C" {
 #endif
 /******************************************************************************/
 
-// Declarations for font testing screen
-struct TbSetupSprite setup_testfont[] = {
-  {&testfont[0],          &testfont_end[0],       &testfont_data[0]},
-  {&testfont[1],          &testfont_end[1],       &testfont_data[1]},
-  {&testfont[2],          &testfont_end[2],       &testfont_data[2]},
-  {&testfont[3],          &testfont_end[3],       &testfont_data[3]},
-  {&testfont[4],          &testfont_end[4],       &testfont_data[4]},
-  {&testfont[5],          &testfont_end[5],       &testfont_data[5]},
-  {&testfont[6],          &testfont_end[6],       &testfont_data[6]},
-  {&testfont[7],          &testfont_end[7],       &testfont_data[7]},
-  {&testfont[8],          &testfont_end[8],       &testfont_data[8]},
-  {&testfont[9],          &testfont_end[9],       &testfont_data[9]},
-  {&testfont[10],         &testfont_end[10],      &testfont_data[10]},
-  {NULL,                  NULL,                   NULL},
-};
-
 struct TbLoadFiles testfont_load_files[] = {
   {"data/frontend.pal",  (unsigned char **)&testfont_palette[0],NULL,                                           0, 0, 0},
   {"data/palette.dat",   (unsigned char **)&testfont_palette[1],NULL,                                           0, 0, 0},

@@ -741,10 +741,10 @@ void process_timebomb(struct Thing *creatng)
 
 void timebomb_explode(struct Thing *creatng)
 {
-    struct SpellConfig* spconf = get_spell_config(SplK_TimeBomb);
-    struct ShotConfigStats* shotst = get_shot_model_stats(spconf->shot_model);
+    struct CreatureControl *cctrl = creature_control_get_from_thing(creatng);
+    struct SpellConfig *spconf = get_spell_config(cctrl->active_timebomb_spell);
+    struct ShotConfigStats *shotst = get_shot_model_stats(spconf->shot_model);
     SYNCDBG(8, "Explode Timebomb");
-    //struct Thing* castng = creatng; //todo cleanup
     long weight = compute_creature_weight(creatng);
     if (shotst->area_range != 0)
     {
