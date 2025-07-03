@@ -44,8 +44,6 @@ enum LightFlags {
     LgtF_Enabled      = 0x02,
     LgtF_Dynamic      = 0x04,
     LgtF_Changed      = 0x08,
-    LgtF_Unkn10       = 0x10,
-    LgtF_Unkn20       = 0x20,
     LgtF_NeverCached  = 0x40,
     LgtF_Unkn80       = 0x80,
 };
@@ -58,20 +56,12 @@ struct Light {
   unsigned char flags;
   unsigned char flags2;
   unsigned char intensity;
-  unsigned char intensity_toggling_field;//toggles between 1 and 2 when flags has LgtF_Unkn20
-  unsigned char intensity_delta;//seems never assigned
   unsigned char range;
   unsigned char field_6;
-  unsigned char max_intensity;//seems never assigned
   unsigned char min_radius;
   unsigned short index;
   unsigned short shadow_index;
-  long attached_slb;
   unsigned short radius;
-  unsigned short field_1C;
-  unsigned short radius_delta;//seems never assigned
-  unsigned short max_radius;//seems never assigned
-  unsigned short min_radius2;//seems never assigned
   unsigned short min_intensity;
   unsigned short next_in_list;
   struct Coord3d mappos;

@@ -2224,63 +2224,6 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
         ++light_rendered_dynamic_lights;
         if ( (lgt->flags & LgtF_Changed) == 0 )
           ++light_rendered_optimised_dynamic_lights;
-        if ( (lgt->flags & LgtF_Unkn10) != 0 )
-        {
-          if ( lgt->field_6 == 1 )
-          {
-            if ( lgt->radius_delta + lgt->radius >= lgt->max_radius )
-            {
-              lgt->radius = lgt->max_radius;
-              lgt->field_6 = 2;
-            }
-            else
-            {
-              lgt->radius += lgt->radius_delta;
-            }
-          }
-          else if ( lgt->radius - lgt->radius_delta <= lgt->min_radius2 )
-          {
-            lgt->radius = lgt->min_radius2;
-            lgt->field_6 = 1;
-          }
-          else
-          {
-            lgt->radius -= lgt->radius_delta;
-          }
-          lgt->flags |= LgtF_Changed;
-        }
-        if ( (lgt->flags & LgtF_Unkn20) != 0 )
-        {
-          if ( lgt->intensity_toggling_field == 1 )
-          {
-            if ( lgt->intensity_delta + lgt->intensity >= lgt->max_intensity )
-            {
-              lgt->intensity = lgt->max_intensity;
-              lgt->intensity_toggling_field = 2;
-            }
-            else
-            {
-              lgt->intensity = lgt->intensity_delta + lgt->intensity;
-            }
-          }
-          else
-          {
-            if ( lgt->intensity - lgt->intensity_delta <= lgt->max_intensity )
-            {
-              lgt->intensity = lgt->max_intensity;
-              lgt->intensity_toggling_field = 1;
-            }
-            else
-            {
-              lgt->intensity = lgt->intensity - lgt->intensity_delta;
-            }
-          }
-          lgt->flags |= LgtF_Changed;
-        }
-        if ( lgt->field_1C )
-        {
-          lgt->flags |= LgtF_Changed;
-        }
         light_render_light(lgt);
       }
     }
