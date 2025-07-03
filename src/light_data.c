@@ -169,8 +169,8 @@ long light_create_light(struct InitLight *ilght)
         light_add_light_to_list(lgt, &game.thing_lists[TngList_StaticLights]);
         stat_light_needs_updating = 1;
     }
-    lgt->flags |= LgtF_Unkn02;
-    lgt->flags |= LgtF_Unkn08;
+    lgt->flags |= LgtF_Enabled;
+    lgt->flags |= LgtF_Changed;
     lgt->mappos.x.val = ilght->mappos.x.val;
     lgt->mappos.y.val = ilght->mappos.y.val;
     lgt->mappos.z.val = ilght->mappos.z.val;
@@ -210,8 +210,8 @@ TbBool light_create_light_adv(VALUE *init_data)
         stat_light_needs_updating = 1;
         clear_flag(lgt->flags, LgtF_Dynamic);
     }
-    lgt->flags |= LgtF_Unkn02;
-    lgt->flags |= LgtF_Unkn08;
+    lgt->flags |= LgtF_Enabled;
+    lgt->flags |= LgtF_Changed;
     lgt->mappos.x.val = value_read_stl_coord(value_dict_get(init_data, "SubtileX"));
     lgt->mappos.y.val = value_read_stl_coord(value_dict_get(init_data, "SubtileY"));
     lgt->mappos.z.val = value_read_stl_coord(value_dict_get(init_data, "SubtileZ"));
@@ -465,7 +465,7 @@ void light_set_light_position(long lgt_id, struct Coord3d *pos)
     lgt->mappos.x.val = pos->x.val;
     lgt->mappos.y.val = pos->y.val;
     lgt->mappos.z.val = pos->z.val;
-    lgt->flags |= LgtF_Unkn08;
+    lgt->flags |= LgtF_Changed;
   }
 }
 
@@ -536,7 +536,7 @@ void light_signal_stat_light_update_in_area(long x1, long y1, long x2, long y2)
         {
           stat_light_needs_updating = 1;
           i++;
-          lgt->flags |= LgtF_Unkn08;
+          lgt->flags |= LgtF_Changed;
           lgt->flags &= ~LgtF_Unkn80;
         }
       }
@@ -561,7 +561,7 @@ void light_signal_update_in_area(long sx, long sy, long ex, long ey)
         MapSubtlCoord x = lgt->mappos.x.stl.num;
         MapSubtlCoord y = lgt->mappos.y.stl.num;
         if ( range + x >= sx && x - range <= ex && range + y >= sy && y - range <= ey )
-          lgt->flags |= LgtF_Unkn08;
+          lgt->flags |= LgtF_Changed;
       }
     }
     lgt++;
@@ -601,10 +601,10 @@ void light_turn_light_off(long idx)
         ERRORLOG("Attempt to turn off unallocated light structure");
         return;
     }
-    if ((lgt->flags & LgtF_Unkn02) == 0) {
+    if ((lgt->flags & LgtF_Enabled) == 0) {
         return;
     }
-    lgt->flags &= ~LgtF_Unkn02;
+    lgt->flags &= ~LgtF_Enabled;
     if ((lgt->flags & LgtF_Dynamic) != 0) {
         light_remove_light_from_list(lgt, &game.thing_lists[TngList_DynamLights]);
     } else {
@@ -625,19 +625,19 @@ void light_turn_light_on(long idx)
         ERRORLOG("Attempt to turn on unallocated light structure %d",(int)idx);
         return;
     }
-    if ((lgt->flags & LgtF_Unkn02) != 0) {
+    if ((lgt->flags & LgtF_Enabled) != 0) {
         return;
     }
-    lgt->flags |= LgtF_Unkn02;
+    lgt->flags |= LgtF_Enabled;
     if ((lgt->flags & LgtF_Dynamic) != 0)
     {
         light_add_light_to_list(lgt, &game.thing_lists[TngList_DynamLights]);
-        lgt->flags |= LgtF_Unkn08;
+        lgt->flags |= LgtF_Changed;
     } else
     {
         light_add_light_to_list(lgt, &game.thing_lists[TngList_StaticLights]);
         stat_light_needs_updating = 1;
-        lgt->flags |= LgtF_Unkn08;
+        lgt->flags |= LgtF_Changed;
     }
 }
 
@@ -691,7 +691,7 @@ void light_set_light_intensity(long idx, unsigned char intensity)
         }
         lgt->intensity = intensity;
         if ( lgt->min_intensity < intensity )
-          lgt->flags |= LgtF_Unkn08;
+          lgt->flags |= LgtF_Changed;
       }
     }
     else
@@ -2073,10 +2073,10 @@ static char light_render_light(struct Light* lgt)
       {
         lighting_tables_idx = light_render_light_dynamic_uncached(lgt, radius, render_intensity, lighting_tables_idx);
       }
-      else if ( (lgt->flags & LgtF_Unkn08) != 0 )
+      else if ( (lgt->flags & LgtF_Changed) != 0 )
       {
         lighting_tables_idx = light_render_light_dynamic(lgt, radius, render_intensity, lighting_tables_idx);
-        lgt->flags &= ~LgtF_Unkn08;
+        lgt->flags &= ~LgtF_Changed;
       }
       else
       {
@@ -2175,7 +2175,7 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
           lgt > game.lish.lights;
           lgt = &game.lish.lights[lgt->next_in_list] )
     {
-      if ( (lgt->flags & (LgtF_Unkn80 | LgtF_Unkn08)) != 0 )
+      if ( (lgt->flags & (LgtF_Unkn80 | LgtF_Changed)) != 0 )
       {
         ++light_out_of_date_stat_lights;
         range = lgt->range;
@@ -2187,7 +2187,7 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
         {
           ++light_updated_stat_lights;
           light_render_light(lgt);
-          lgt->flags &= ~(LgtF_Unkn80 | LgtF_Unkn08);
+          lgt->flags &= ~(LgtF_Unkn80 | LgtF_Changed);
         }
       }
     }
@@ -2222,7 +2222,7 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
         && (int)abs(half_width_y + starty - lgt->mappos.y.stl.num) < half_width_y + range )
       {
         ++light_rendered_dynamic_lights;
-        if ( (lgt->flags & LgtF_Unkn08) == 0 )
+        if ( (lgt->flags & LgtF_Changed) == 0 )
           ++light_rendered_optimised_dynamic_lights;
         if ( (lgt->flags & LgtF_Unkn10) != 0 )
         {
@@ -2247,7 +2247,7 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
           {
             lgt->radius -= lgt->radius_delta;
           }
-          lgt->flags |= LgtF_Unkn08;
+          lgt->flags |= LgtF_Changed;
         }
         if ( (lgt->flags & LgtF_Unkn20) != 0 )
         {
@@ -2275,11 +2275,11 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
               lgt->intensity = lgt->intensity - lgt->intensity_delta;
             }
           }
-          lgt->flags |= LgtF_Unkn08;
+          lgt->flags |= LgtF_Changed;
         }
         if ( lgt->field_1C )
         {
-          lgt->flags |= LgtF_Unkn08;
+          lgt->flags |= LgtF_Changed;
         }
         light_render_light(lgt);
       }
@@ -2347,9 +2347,9 @@ void light_set_light_minimum_size_to_cache(long lgt_id, long min_radius, long mi
     lgt = &game.lish.lights[lgt_id];
     if ( lgt->flags & LgtF_Allocated )
     {
-      if ( lgt->flags & LgtF_Unkn02 )
+      if ( lgt->flags & LgtF_Enabled )
       {
-        lgt->flags &= ~LgtF_Unkn02;
+        lgt->flags &= ~LgtF_Enabled;
         if ( lgt->flags & LgtF_Dynamic )
         {
           lgt->min_radius = min_radius;

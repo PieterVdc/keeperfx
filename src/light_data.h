@@ -41,9 +41,9 @@ enum ShadowCacheFlags {
 
 enum LightFlags {
     LgtF_Allocated    = 0x01,
-    LgtF_Unkn02       = 0x02,
+    LgtF_Enabled      = 0x02,
     LgtF_Dynamic      = 0x04,
-    LgtF_Unkn08       = 0x08,
+    LgtF_Changed      = 0x08,
     LgtF_Unkn10       = 0x10,
     LgtF_Unkn20       = 0x20,
     LgtF_NeverCached  = 0x40,
