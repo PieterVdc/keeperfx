@@ -45,7 +45,6 @@ enum LightFlags {
     LgtF_Dynamic      = 0x04,
     LgtF_Changed      = 0x08,
     LgtF_NeverCached  = 0x40,
-    LgtF_Unkn80       = 0x80,
 };
 
 enum LightFlags2 {
@@ -57,10 +56,10 @@ struct Light {
   unsigned char flags2;
   unsigned char intensity;
   unsigned char range;
-  unsigned char field_6;
   unsigned char min_radius;
   unsigned short index;
   unsigned short shadow_index;
+  SlabCodedCoords attached_slb;
   unsigned short radius;
   unsigned short min_intensity;
   unsigned short next_in_list;
@@ -68,11 +67,11 @@ struct Light {
   TbBool interp_has_been_initialized;
   struct Coord3d previous_mappos;
   struct Coord3d interp_mappos;
-  long last_turn_drawn;
-  long disable_interp_for_turns;
+  GameTurn last_turn_drawn;
+  GameTurnDelta disable_interp_for_turns;
 };
 
-struct InitLight { // sizeof=0x14
+struct InitLight {
     short radius;
     unsigned char intensity;
     unsigned char flags;

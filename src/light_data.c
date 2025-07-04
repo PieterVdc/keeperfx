@@ -537,7 +537,6 @@ void light_signal_stat_light_update_in_area(long x1, long y1, long x2, long y2)
           stat_light_needs_updating = 1;
           i++;
           lgt->flags |= LgtF_Changed;
-          lgt->flags &= ~LgtF_Unkn80;
         }
       }
     }
@@ -2175,7 +2174,7 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
           lgt > game.lish.lights;
           lgt = &game.lish.lights[lgt->next_in_list] )
     {
-      if ( (lgt->flags & (LgtF_Unkn80 | LgtF_Changed)) != 0 )
+      if (flag_is_set(lgt->flags,LgtF_Changed))
       {
         ++light_out_of_date_stat_lights;
         range = lgt->range;
@@ -2187,7 +2186,7 @@ static void light_render_area(MapSubtlCoord startx, MapSubtlCoord starty, MapSub
         {
           ++light_updated_stat_lights;
           light_render_light(lgt);
-          lgt->flags &= ~(LgtF_Unkn80 | LgtF_Changed);
+          clear_flag(lgt->flags, LgtF_Changed);
         }
       }
     }
