@@ -29,7 +29,7 @@
 extern "C" {
 #endif
 /******************************************************************************/
-#define PLAYERS_COUNT       9
+#define PLAYERS_COUNT       6
 #define COLOURS_COUNT       9
 
 #define INVALID_PLAYER (&bad_player)

@@ -44,7 +44,7 @@
 extern "C" {
 #endif
 /******************************************************************************/
-#define DUNGEONS_COUNT              9
+#define DUNGEONS_COUNT              PLAYERS_COUNT
 #define DIGGER_TASK_MAX_COUNT       64
 #define DUNGEON_RESEARCH_COUNT      2000
 #define MAX_THINGS_IN_HAND          64

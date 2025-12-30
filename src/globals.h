@@ -153,10 +153,10 @@ extern TbBool detailed_multiplayer_logging;
   #define SCRIPTDBG(dblv,format, ...)
 #endif
 
-#define MAX_TILES_X 170
-#define MAX_TILES_Y 170
-#define MAX_SUBTILES_X 511
-#define MAX_SUBTILES_Y 511
+#define MAX_TILES_X 85
+#define MAX_TILES_Y 85
+#define MAX_SUBTILES_X 256
+#define MAX_SUBTILES_Y 256
 
 enum AnglesAndDegrees {
     // Cardinal directions (clockwise from North)

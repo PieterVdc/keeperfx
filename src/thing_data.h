@@ -23,7 +23,7 @@
 #include "bflib_basics.h"
 
 /** Max amount of creatures supported on any map. */
-#define CREATURES_COUNT       1024
+#define CREATURES_COUNT       256
 
 
 #ifdef __cplusplus
@@ -190,8 +190,7 @@ struct Thing {
         short target_idx;
         CrtrExpLevel shot_level;
         struct Coord3d originpos;
-        int num_wind_affected;
-        CctrlIndex wind_affected_creature[CREATURES_COUNT];  //list of wind affected Creatures
+
       } shot;
       struct {
         long x;
@@ -308,6 +307,7 @@ struct Thing {
     long last_turn_drawn;
     float time_spent_displaying_hurt_colour; // Used for delta time interpolated render position
     unsigned short previous_floor_height;
+
     unsigned short interp_floor_height;
     struct Coord3d previous_mappos;
     struct Coord3d interp_mappos;
@@ -315,6 +315,7 @@ struct Thing {
     long interp_minimap_pos_y;
     long previous_minimap_pos_x;
     long previous_minimap_pos_y;
+    
     uint32_t random_seed;
     long interp_minimap_update_turn;
     PlayerNumber holding_player;

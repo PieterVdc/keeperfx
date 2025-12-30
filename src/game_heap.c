@@ -81,6 +81,7 @@ long get_best_heap_size(long sh_mem_size)
 
 TbBool setup_heap_manager(void)
 {
+  JUSTLOG ("size of gamestructure: %d bytes", sizeof(struct Game));
     SYNCDBG(8,"Starting");
     if (heap == NULL)
     {

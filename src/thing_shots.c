@@ -1860,15 +1860,7 @@ static TngUpdateRet affect_thing_by_wind(struct Thing *thing, ModTngFilterParam 
                     creature_distance = origin_distance;
 
                     // Check the the spell instance for already affected creatures
-                    for (int i = 0; i < shotng->shot.num_wind_affected; i++)
-                    {
-                        if (shotng->shot.wind_affected_creature[i] == cctrl->index)
-                        {
-                            creatureAlreadyAffected = true;
-                            set_flag(cctrl->spell_flags, CSAfF_Wind);
-                            break;
-                        }
-                    }
+
                 }
                 if ((creature_distance < blow_distance) && !creature_is_immune_to_spell_effect(thing, CSAfF_Wind) && !creatureAlreadyAffected)
                 {
@@ -1880,7 +1872,7 @@ static TngUpdateRet affect_thing_by_wind(struct Thing *thing, ModTngFilterParam 
                 else if (game.conf.rules[thing->owner].magic.weight_calculate_push > 0 && creature_distance >= blow_distance && !creatureAlreadyAffected)
                 {
                     // Add creature index to wind_affected_creature array.
-                    shotng->shot.wind_affected_creature[shotng->shot.num_wind_affected++] = cctrl->index;
+                    //shotng->shot.wind_affected_creature[shotng->shot.num_wind_affected++] = cctrl->index;
                 }
             }
             break;
