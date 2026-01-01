@@ -41,7 +41,6 @@
 #include "sprites.h"
 #include "keeperfx.hpp"
 #include "custom_sprites.h"
-#include "bflib_enet.h"
 #include "post_inc.h"
 
 /******************************************************************************/
@@ -338,58 +337,7 @@ void frontnet_draw_alliance_box_tab(struct GuiButton *gbtn)
 
 void frontnet_draw_net_start_players(struct GuiButton *gbtn)
 {
-    int i;
-    i = frontend_button_caption_font(gbtn, 0);
-    lbDisplay.DrawFlags = 0;
-    LbTextSetFont(frontend_font[i]);
-    int height;
-    height = 0;
-    long netplyr_idx;
-    int shift_y;
-    netplyr_idx = net_player_scroll_offset;
-    int tx_units_per_px;
-    tx_units_per_px = gbtn->height * 16 / (4*LbTextLineHeight());
-    const struct TbSprite *spr;
-    spr = get_frontend_sprite(GFS_bullfrog_red_med);
-    int fs_units_per_px;
-    fs_units_per_px = gbtn->height * 16 / (4*(spr->SHeight*13/8));
-    height = LbTextLineHeight() * tx_units_per_px / 16;
-    for (shift_y=0; shift_y < gbtn->height; shift_y += height, netplyr_idx++)
-    {
-        const char *text;
-        text = net_player[netplyr_idx].name;
-        if (netplyr_idx >= net_number_of_enum_players)
-            break;
 
-        long subplyr_idx;
-        for (subplyr_idx = 0; subplyr_idx < net_number_of_enum_players; subplyr_idx++)
-        {
-            if (subplyr_idx >= NET_PLAYERS_COUNT)
-                break;
-            if (net_player_info[subplyr_idx].active)
-            {
-                if (subplyr_idx == netplyr_idx)
-                    break;
-            }
-        }
-        spr = get_frontend_sprite(GFS_bullfrog_red_med+netplyr_idx);
-        i = height - spr->SHeight * fs_units_per_px / 16;
-        LbSpriteDrawResized(gbtn->scr_pos_x, gbtn->scr_pos_y + shift_y + abs(i)/2, fs_units_per_px, spr);
-
-        char player_text[128];
-        unsigned long ping = 0;
-        if (netplyr_idx != my_player_number) {
-            ping = GetPing(netplyr_idx);
-        }
-        if (ping > 0) {
-            snprintf(player_text, sizeof(player_text), "%s - %lums", text, ping);
-        } else {
-            snprintf(player_text, sizeof(player_text), "%s", text);
-        }
-
-        LbTextSetWindow(gbtn->scr_pos_x + spr->SWidth * fs_units_per_px / 16, gbtn->scr_pos_y + shift_y, gbtn->width - spr->SWidth * fs_units_per_px / 16, height);
-        LbTextDrawResized(0, 0, tx_units_per_px, player_text);
-    }
 }
 
 void frontnet_select_alliance(struct GuiButton *gbtn)

@@ -20,7 +20,6 @@
 #include "pre_inc.h"
 #include "bflib_network.h"
 #include "bflib_network_internal.h"
-#include "bflib_enet.h"
 #include "bflib_datetm.h"
 #include "bflib_network_exchange.h"
 #include "bflib_netsession.h"
@@ -120,7 +119,6 @@ TbError LbNetwork_Init(unsigned long srvcindex, unsigned long maxplayrs, struct 
         NETMSG("Selecting TCP/IP SP");
         netstate.sp = &tcpSP;
     } else if (srvcindex == NS_ENET_UDP) {
-        netstate.sp = InitEnetSP();
         NETMSG("Selecting UDP");
     } else {
         WARNLOG("The serviceIndex value of %lu is out of range", srvcindex);
