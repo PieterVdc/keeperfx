@@ -30,7 +30,7 @@ extern "C" {
 #endif
 /******************************************************************************/
 
-#define TERRAIN_ITEMS_MAX    256
+#define TERRAIN_ITEMS_MAX    64
 #define SLABSETS_PER_SLAB   (9*3+1)
 
 

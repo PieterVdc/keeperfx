@@ -373,9 +373,6 @@ struct Game {
     short small_around_slab[SMALL_AROUND_SLAB_LENGTH];
 
     unsigned short skip_initial_input_turns;
-
-    struct DesyncChecksums host_checksums;
-    struct LogDetailedSnapshot log_snapshot;
 };
 
 #pragma pack()
