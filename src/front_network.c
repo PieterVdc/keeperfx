@@ -357,23 +357,7 @@ void frontnet_session_update(void)
 
 void frontnet_rewite_net_messages(void)
 {
-    struct NetMessage lmsg[NET_MESSAGES_COUNT];
-    long k = 0;
-    long i = net_number_of_messages;
-    for (i=0; i < NET_MESSAGES_COUNT; i++)
-      memset(&lmsg[i], 0, sizeof(struct NetMessage));
-    for (i=0; i < net_number_of_messages; i++)
-    {
-        struct NetMessage* nmsg = &net_message[i];
-        if (network_player_active(nmsg->plyr_idx))
-        {
-            memcpy(&lmsg[k], nmsg, sizeof(struct NetMessage));
-            k++;
-      }
-    }
-    net_number_of_messages = k;
-    for (i=0; i < NET_MESSAGES_COUNT; i++)
-      memcpy(&net_message[i], &lmsg[i], sizeof(struct NetMessage));
+
 }
 
 TbBool frontnet_is_waiting_for_ping_stabilization(void)
