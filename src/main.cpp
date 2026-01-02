@@ -119,7 +119,6 @@
 #include "ariadne.h"
 #include "sounds.h"
 #include "vidfade.h"
-#include "KeeperSpeech.h"
 #include "config_settings.h"
 #include "config_keeperfx.h"
 #include "game_legacy.h"
@@ -1163,20 +1162,6 @@ short setup_game(void)
       setup_stuff();
       init_lookups();
   }
-
-  if (result == 1)
-  {
-      KEEPERSPEECH_REASON reason = KeeperSpeechInit();
-      if (reason == KSR_NO_LIB_INSTALLED) {
-          SYNCLOG("Speech recognition disabled: %s",
-              KeeperSpeechErrorMessage(reason));
-      } else
-      if (reason != KSR_OK) {
-          ERRORLOG("Failed to initialize Speech recognition module: %s",
-              KeeperSpeechErrorMessage(reason));
-      }
-  }
-
   return result;
 }
 
@@ -3534,7 +3519,6 @@ void keeper_gameplay_loop(void)
         initialise_eye_lenses();
     }
     SYNCDBG(0,"Entering the gameplay loop for level %d",(int)get_loaded_level_number());
-    KeeperSpeechClearEvents();
     LbErrorParachuteUpdate(); // For some reasone parachute keeps changing; Remove when won't be needed anymore
 
     initial_time_point();
@@ -3980,8 +3964,6 @@ void game_loop(void)
 short reset_game(void)
 {
     SYNCDBG(6,"Starting");
-
-    KeeperSpeechExit();
 
     LbMouseSuspend();
     LbIKeyboardClose();

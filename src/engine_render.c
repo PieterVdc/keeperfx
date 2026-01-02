@@ -6678,8 +6678,8 @@ static void display_drawlist(void) // Draws isometric and 1st person view. Not f
                 break;
             case QK_CreatureShadow: // Shadows of creatures in isometric and 1st person view
                 // TODO: this could be cached
-                draw_keepsprite_unscaled_in_buffer(item.creatureShadow->anim_sprite, item.creatureShadow->angle, item.creatureShadow->current_frame, big_scratch);
-                vec_map = big_scratch;
+                draw_keepsprite_unscaled_in_buffer(item.creatureShadow->anim_sprite, item.creatureShadow->angle, item.creatureShadow->current_frame, scratch);
+                vec_map = scratch;
                 vec_mode = VM_SpriteTranslucent;
                 vec_colour = item.creatureShadow->vertex_first.S;
                 trig(&item.creatureShadow->vertex_first, &item.creatureShadow->vertex_second, &item.creatureShadow->vertex_third);

@@ -89,9 +89,6 @@ unsigned char base_pal[PALETTE_SIZE];
 
 int total_sprite_zip_count = 0;
 
-static unsigned char big_scratch_data[1024*1024*16] = {0};
-unsigned char *big_scratch = big_scratch_data;
-
 static void compress_raw(struct TbHugeSprite *sprite, unsigned char *src_buf, int x, int y, int w, int h);
 
 static TbBool add_custom_sprite(const char *path);
@@ -329,6 +326,7 @@ static void load_sprites_for_mod_list(LevelNumber lvnum, const struct ModConfigI
  */
 void init_custom_sprites(LevelNumber lvnum)
 {
+    return;
     SYNCDBG(8, "Starting");
     free_spritesheet(&custom_sprites);
     custom_sprites = create_spritesheet();
@@ -714,7 +712,7 @@ static int read_png_icon(unzFile zip, const char *path, const char *subpath, int
         return 0;
     }
 
-    unsigned char *dst_buf = big_scratch;
+    unsigned char *dst_buf = scratch;
     spng_decode_image(ctx, dst_buf, out_size, fmt, SPNG_DECODE_TRNS);
 
     if (sprite.SWidth >= 255 || sprite.SHeight >= 255)
@@ -795,7 +793,7 @@ static int read_png_data(unzFile zip, const char *path, struct SpriteContext *co
         return 0;
     }
 
-    unsigned char *dst_buf = big_scratch;
+    unsigned char *dst_buf = scratch;
     if (spng_decode_image(ctx, dst_buf, out_size, fmt, SPNG_DECODE_TRNS))
     {
         ERRORLOG("Unable to decode %s/%s", path, subpath);
@@ -1291,19 +1289,19 @@ add_custom_json(const char *path, const char *name, TbBool (*process)(const char
         goto end;
     }
 
-    if (unzReadCurrentFile(zip, big_scratch, zip_info.uncompressed_size) != zip_info.uncompressed_size)
+    if (unzReadCurrentFile(zip, scratch, zip_info.uncompressed_size) != zip_info.uncompressed_size)
     {
         WARNLOG("Unable to read %s/%s", path, name);
         goto end;
     }
-    big_scratch[zip_info.uncompressed_size] = 0;
+    scratch[zip_info.uncompressed_size] = 0;
 
     if (UNZ_OK != unzCloseCurrentFile(zip))
     {
         goto end;
     }
 
-    int ret = json_dom_parse((char *) big_scratch, zip_info.uncompressed_size, NULL, 0, &root, &json_input_pos);
+    int ret = json_dom_parse((char *) scratch, zip_info.uncompressed_size, NULL, 0, &root, &json_input_pos);
     if (ret)
     {
 

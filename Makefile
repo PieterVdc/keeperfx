@@ -95,10 +95,8 @@ obj/ariadne_points.o \
 obj/ariadne_regions.o \
 obj/ariadne_tringls.o \
 obj/ariadne_wallhug.o \
-obj/bflib_base_tcp.o \
 obj/bflib_basics.o \
 obj/bflib_coroutine.o \
-obj/bflib_client_tcp.o \
 obj/bflib_cpu.o \
 obj/bflib_crash.o \
 obj/bflib_datetm.o \
@@ -123,7 +121,6 @@ obj/bflib_planar.o \
 obj/bflib_render.o \
 obj/bflib_render_gpoly.o \
 obj/bflib_render_trig.o \
-obj/bflib_server_tcp.o \
 obj/bflib_sndlib.o \
 obj/bflib_sound.o \
 obj/bflib_sprfnt.o \
@@ -332,7 +329,6 @@ obj/value_util.o \
 obj/vidfade.o \
 obj/vidmode_data.o \
 obj/vidmode.o \
-obj/KeeperSpeechImp.o \
 obj/spritesheet.o \
 obj/windows.o \
 $(FTEST_OBJS) \

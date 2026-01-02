@@ -598,9 +598,9 @@ void fill_in_explored_area(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlC
         { 0, 0}
     };
 
-    char *first_scratch = (char*) &big_scratch[game.map_tiles_x];
-    struct XY *second_scratch = (struct XY *)big_scratch + game.map_tiles_x * (game.map_tiles_y + 1);
-    memset((void *)&big_scratch[game.map_tiles_x], 0, game.map_tiles_x * game.map_tiles_y);
+    char *first_scratch = (char*) &scratch[game.map_tiles_x];
+    struct XY *second_scratch = (struct XY *)scratch + game.map_tiles_x * (game.map_tiles_y + 1);
+    memset((void *)&scratch[game.map_tiles_x], 0, game.map_tiles_x * game.map_tiles_y);
 
     for(MapSlabCoord slb_y_2 = 0;slb_y_2 < game.map_tiles_y;slb_y_2++)
     {
@@ -997,7 +997,7 @@ long wander_point_initialise(struct Wander *wandr, PlayerNumber plyr_idx, unsign
     wandr->search_limiting_enabled = 0;
 
     long stl_num_list_count = 0;
-    SubtlCodedCoords* stl_num_list = (SubtlCodedCoords*)big_scratch;
+    SubtlCodedCoords* stl_num_list = (SubtlCodedCoords*)scratch;
     SlabCodedCoords slb_num = 0;
     while (1)
     {

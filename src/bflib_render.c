@@ -41,13 +41,13 @@ struct PolyPoint *polyscans = NULL;
 
 void setup_bflib_render()
 {
-    polyscans = malloc(sizeof(struct PolyPoint) * 4096);
-    memset(polyscans, 0, sizeof(struct PolyPoint) * 4096);
+    polyscans = malloc(sizeof(struct PolyPoint) * 1024);
+    memset(polyscans, 0, sizeof(struct PolyPoint) * 1024);
 }
 
 void reset_bflib_render()
 {
-    memset(polyscans, 0, sizeof(struct PolyPoint) * 4096);
+    memset(polyscans, 0, sizeof(struct PolyPoint) * 1024);
 }
 
 void finish_bflib_render()

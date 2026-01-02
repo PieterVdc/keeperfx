@@ -1597,8 +1597,8 @@ int add_pretty_and_convert_to_imp_stack(struct Dungeon *dungeon, int max_tasks)
     remain_num = max_tasks;
     unsigned char *slbopt;
     struct SlabCoord *slblist;
-    slbopt = big_scratch;
-    slblist = (struct SlabCoord *)(big_scratch + game.map_tiles_x*game.map_tiles_y);
+    slbopt = scratch;
+    slblist = (struct SlabCoord *)(scratch + game.map_tiles_x*game.map_tiles_y);
     add_pretty_and_convert_to_imp_stack_prepare(dungeon, slbopt);
     add_pretty_and_convert_to_imp_stack_starting_from_pos(dungeon, slbopt, slblist, &heartng->mappos, &remain_num);
     SYNCDBG(8,"Done, added %d tasks",(int)(max_tasks-remain_num));

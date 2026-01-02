@@ -73,7 +73,6 @@
 #include "console_cmd.h"
 
 #include "keeperfx.hpp"
-#include "KeeperSpeech.h"
 
 #include <math.h>
 #include "post_inc.h"
@@ -88,8 +87,6 @@ unsigned short const zoom_key_room_order[] =
      RoK_TORTURE, RoK_TRAINING, RoK_DUNGHEART, RoK_WORKSHOP,
      RoK_SCAVENGER, RoK_TEMPLE, RoK_GRAVEYARD, RoK_BARRACKS,
      RoK_GARDEN, RoK_GUARDPOST, RoK_BRIDGE, RoK_ENTRANCE, RoK_NONE,};
-
-KEEPERSPEECH_EVENT last_speech_event;
 
 // define the current GUI layer as the default
 struct GuiLayer gui_layer = {GuiLayer_Default};
@@ -1867,28 +1864,19 @@ void get_packet_control_mouse_clicks(void)
       synthetic_right = 2;
     }
 
-    if ( left_button_clicked || last_speech_event.type == KS_HAND_CHOOSE )
+    if ( left_button_clicked )
     {
       set_players_packet_control(player, PCtr_LBtnClick);
 
-      if ( last_speech_event.type == KS_HAND_CHOOSE ) {
-        synthetic_left = 1;
-      }
-      else {
-        synthetic_left = 0; //good idea to cancel current pick up, mouse takes precedence
-      }
+      synthetic_left = 0; //good idea to cancel current pick up, mouse takes precedence
+      
     }
 
-    if ( right_button_clicked || last_speech_event.type == KS_HAND_ACTION )
+    if ( right_button_clicked )
     {
       set_players_packet_control(player, PCtr_RBtnClick);
-
-      if ( last_speech_event.type == KS_HAND_ACTION ) {
-        synthetic_right = 1;
-      }
-      else {
         synthetic_right = 0; //good idea to cancel current slap
-      }
+      
     }
 
     if ( left_button_released || synthetic_left == 3)
@@ -2547,106 +2535,6 @@ void get_creature_control_nonaction_inputs(void)
     }
 }
 
-static void speech_pickup_of_gui_job(int job_idx)
-{
-    SYNCDBG(7, "Picking up creature of breed %s for job of type %d",
-        last_speech_event.u.creature.model_name, job_idx);
-    int kind = creature_model_id(last_speech_event.u.creature.model_name);
-    if (kind < 0) {
-        SYNCDBG(0, "No such creature");
-        return;
-    }
-
-    unsigned short pick_flags = TPF_PickableCheck;
-    if (lbKeyOn[KC_LCONTROL] || lbKeyOn[KC_RCONTROL] || (job_idx == -1))
-        pick_flags |= TPF_OrderedPick;
-    if (lbKeyOn[KC_LSHIFT] || lbKeyOn[KC_RSHIFT])
-        pick_flags |= TPF_ReverseOrder;
-    pick_up_creature_of_model_and_gui_job(kind, job_idx, my_player_number, pick_flags);
-}
-
-/**
- * Processes speech inputs that can be handled separately without interfacing with
- * mouse/keyboard code.
- */
-static void get_dungeon_speech_inputs(void)
-{
-    SYNCDBG(8,"Starting");
-
-    int id;
-    switch (last_speech_event.type)
-    {
-    case KS_PICKUP_IDLE:
-        speech_pickup_of_gui_job(CrGUIJob_Wandering);
-        break;
-    case KS_PICKUP_WORKING:
-        speech_pickup_of_gui_job(CrGUIJob_Working);
-        break;
-    case KS_PICKUP_FIGHTING:
-        speech_pickup_of_gui_job(CrGUIJob_Fighting);
-        break;
-    case KS_PICKUP_ANY:
-        speech_pickup_of_gui_job(CrGUIJob_Any);
-        break;
-    case KS_SELECT_ROOM:
-    {
-        struct RoomConfigStats* room_stats = get_room_kind_stats(last_speech_event.u.room.id);
-        activate_room_build_mode(last_speech_event.u.room.id, room_stats->tooltip_stridx);
-        break;
-    }
-    case KS_SELECT_POWER:
-        id = power_model_id(last_speech_event.u.power.model_name);
-        if (id < 0) {
-            WARNLOG("Bad power string %s", last_speech_event.u.power.model_name);
-        }
-        else {
-            choose_spell(id, 2); //TODO: see what happens with tool tip
-        }
-        break;
-    case KS_SELECT_TRAP:
-        id = trap_model_id(last_speech_event.u.trapdoor.model_name);
-        if (id < 0) {
-            WARNLOG("Bad trap string %s", last_speech_event.u.trapdoor.model_name);
-        }
-        else if ((id = get_manufacture_data_index_for_thing(TCls_Trap, id)) > 0) {
-            choose_workshop_item(id, 2); //TODO: see what happens with tool tip
-        }
-        else {
-            WARNLOG("Trap %s is not in trap data array", last_speech_event.u.trapdoor.model_name);
-        }
-        break;
-    case KS_SELECT_DOOR:
-        id = door_model_id(last_speech_event.u.trapdoor.model_name);
-        if (id < 0) {
-            WARNLOG("Bad door string %s", last_speech_event.u.trapdoor.model_name);
-        }
-        else if ((id = get_manufacture_data_index_for_thing(TCls_Door, id)) > 0) {
-            choose_workshop_item(id, 2); //TODO: see what happens with tool tip
-        }
-        else {
-            WARNLOG("Door %s is not in trap data array", last_speech_event.u.trapdoor.model_name);
-        }
-        break;
-    case KS_VIEW_INFO:
-        set_menu_mode(BID_INFO_TAB); //TODO SPEECH not working for some reason, debug
-        break;
-    case KS_VIEW_ROOMS:
-        set_menu_mode(BID_ROOM_TAB);
-        break;
-    case KS_VIEW_POWERS:
-        set_menu_mode(BID_SPELL_TAB);
-        break;
-    case KS_VIEW_TRAPS:
-        set_menu_mode(BID_MNFCT_TAB);
-        break;
-    case KS_VIEW_CREATURES:
-        set_menu_mode(BID_CREATR_TAB);
-        break;
-    default:
-        break; //don't care
-    }
-}
-
 TbBool active_menu_functions_while_paused()
 {
     return (menu_is_active(GMnu_QUIT) || menu_is_active(GMnu_OPTIONS) || menu_is_active(GMnu_LOAD) || menu_is_active(GMnu_SAVE)
@@ -2737,7 +2625,6 @@ short get_inputs(void)
         get_dungeon_control_nonaction_inputs();
         get_player_gui_clicks();
         get_packet_control_mouse_clicks();
-        get_dungeon_speech_inputs();
         return inp_handled;
     case PVT_CreatureContrl:
         if (!inp_handled)
@@ -2790,10 +2677,6 @@ void input(void)
     update_mouse();
     update_key_modifiers();
     update_gui_layer();
-
-    if (KeeperSpeechPopEvent(&last_speech_event)) {
-      last_speech_event.type = KS_UNUSED;
-    }
 
     if ((game_is_busy_doing_gui_string_input()) && (lbInkey>0))
     {
