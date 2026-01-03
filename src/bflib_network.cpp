@@ -117,7 +117,6 @@ TbError LbNetwork_Init(unsigned long srvcindex, unsigned long maxplayrs, struct 
     }
     if (srvcindex == NS_TCP_IP) {
         NETMSG("Selecting TCP/IP SP");
-        netstate.sp = &tcpSP;
     } else if (srvcindex == NS_ENET_UDP) {
         NETMSG("Selecting UDP");
     } else {

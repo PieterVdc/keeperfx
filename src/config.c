@@ -33,7 +33,6 @@
 #include "bflib_sound.h"
 #include "sounds.h"
 #include "engine_render.h"
-#include "bflib_fmvids.h"
 #include "custom_sprites.h"
 #include "lvl_script_lib.h"
 

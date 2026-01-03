@@ -27,7 +27,6 @@
 #include "bflib_datetm.h"
 #include "bflib_mouse.h"
 #include "bflib_sound.h"
-#include "bflib_fmvids.h"
 #include "config_campaigns.h"
 #include "engine_render.h"
 #include "frontend.h"
@@ -164,17 +163,7 @@ const struct NamedCommand conf_commands[] = {
   {"FALSE",        0},
   {"NO",           0},
   {"0",            0},
-  {"FIT",          SMK_FullscreenFit}, // Fit to fullscreen, using letterbox and pillarbox as necessary
-  {"ON",           SMK_FullscreenFit}, // Duplicate of FIT, for legacy reasons
-  {"ENABLED",      SMK_FullscreenFit},
-  {"TRUE",         SMK_FullscreenFit},
-  {"YES",          SMK_FullscreenFit},
-  {"1",            SMK_FullscreenFit},
-  {"STRETCH",      SMK_FullscreenStretch}, // Stretch to fullscreen - ignores aspect ratio difference between source and destination
-  {"CROP",         SMK_FullscreenCrop}, // Fill fullscreen and crop - no letterbox or pillarbox
-  {"4BY3",         SMK_FullscreenFit | SMK_FullscreenStretch}, // [Aspect Ratio correction mode] - stretch 320x200 to 4:3 (i.e. increase height by 1.2)
-  {"PIXELPERFECT", SMK_FullscreenFit | SMK_FullscreenCrop}, // integer multiple scale only (FIT)
-  {"4BY3PP",       SMK_FullscreenFit | SMK_FullscreenStretch | SMK_FullscreenCrop}, // integer multiple scale only (4BY3)
+
   {NULL,           0},
   };
 
@@ -195,7 +184,7 @@ const struct NamedCommand conf_commands[] = {
   {NULL,       0},
   };
 
-unsigned int vid_scale_flags = SMK_FullscreenFit;
+unsigned int vid_scale_flags = 0;
 
 
 /******************************************************************************/
@@ -397,7 +386,6 @@ static void load_file_configuration(const char *fname, const char *sname, const 
                 COMMAND_TEXT(cmd_num),config_textname);
             break;
           }
-          screenshot_format = i;
           break;
       case 6: // FRONTEND_RES
           for (i=0; i<3; i++)

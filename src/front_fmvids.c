@@ -23,7 +23,6 @@
 #include "bflib_basics.h"
 #include "bflib_sound.h"
 #include "bflib_video.h"
-#include "bflib_fmvids.h"
 #include "bflib_mouse.h"
 #include "bflib_fileio.h"
 
@@ -68,7 +67,7 @@ short play_smacker_file(char *filename, FrontendMenuState nstate)
     movie_flags |= vid_scale_flags; // get new scaling settings from command line
   }
   if ( SoundDisabled )
-    movie_flags |= SMK_NoSound;
+    movie_flags |= 0;
 
   short result = 1;
   if ((result)&&(nstate>-2))
@@ -86,11 +85,7 @@ short play_smacker_file(char *filename, FrontendMenuState nstate)
   }
   if (result)
   {
-    if (!play_smk(filename, movie_flags))
-    {
-      ERRORLOG("Smacker play error");
-      result=0;
-    }
+
   }
   if (nstate>-2)
   {

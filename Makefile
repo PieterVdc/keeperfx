@@ -85,7 +85,6 @@ endif
 OBJS = \
 $(DEPS) \
 obj/actionpt.o \
-obj/api.o \
 obj/ariadne.o \
 obj/ariadne_edge.o \
 obj/ariadne_findcache.o \
@@ -103,7 +102,6 @@ obj/bflib_datetm.o \
 obj/bflib_dernc.o \
 obj/bflib_fileio.o \
 obj/bflib_filelst.o \
-obj/bflib_fmvids.o \
 obj/bflib_guibtns.o \
 obj/bflib_inputctrl.o \
 obj/bflib_keybrd.o \
@@ -125,7 +123,6 @@ obj/bflib_sndlib.o \
 obj/bflib_sound.o \
 obj/bflib_sprfnt.o \
 obj/bflib_string.o \
-obj/bflib_tcpsp.o \
 obj/bflib_video.o \
 obj/bflib_vidraw.o \
 obj/bflib_vidraw_spr_norm.o \
@@ -306,7 +303,6 @@ obj/room_util.o \
 obj/room_workshop.o \
 obj/roomspace.o \
 obj/roomspace_detection.o \
-obj/scrcapt.o \
 obj/slab_data.o \
 obj/sounds.o \
 obj/spdigger_stack.o \
@@ -331,6 +327,7 @@ obj/vidmode_data.o \
 obj/vidmode.o \
 obj/spritesheet.o \
 obj/windows.o \
+obj/platform_wii.o \
 $(FTEST_OBJS) \
 $(RES)
 
@@ -351,11 +348,7 @@ CU_OBJS = \
 
 # include and library directories
 LINKLIB = -mwindows \
-	-L"sdl/lib" -lSDL2 -lSDL2_mixer -lSDL2_net -lSDL2_image \
-	-L"deps/ffmpeg/libavformat" -lavformat \
-	-L"deps/ffmpeg/libavcodec" -lavcodec \
-	-L"deps/ffmpeg/libswresample" -lswresample \
-	-L"deps/ffmpeg/libavutil" -lavutil \
+	-L"sdl/lib" -lSDL2 -lSDL2_mixer \
 	-L"deps/openal" -lOpenAL32 \
 	-L"deps/astronomy" -lastronomy \
 	-L"deps/spng" -lspng \
@@ -371,7 +364,6 @@ INCS = \
 	-I"deps/centijson/include" \
 	-I"deps/centitoml" \
 	-I"deps/astronomy/include" \
-	-I"deps/ffmpeg" \
 	-I"deps/openal/include" \
 	-I"deps/luajit/include"
 CXXINCS =  $(INCS)
@@ -414,7 +406,7 @@ WARNFLAGS = -Wall -W -Wshadow -Wno-sign-compare -Wno-unused-parameter -Wno-maybe
 # disabled warnings: -Wextra -Wtype-limits
 CXXFLAGS = $(CXXINCS) -c -std=gnu++1y -fmessage-length=0 $(WARNFLAGS) $(DEPFLAGS) $(OPTFLAGS) $(DBGFLAGS) $(FTEST_DBGFLAGS) $(INCFLAGS)
 CFLAGS = $(INCS) -c -std=gnu11 -fmessage-length=0 $(WARNFLAGS) -Werror=implicit $(DEPFLAGS) $(FTEST_DBGFLAGS) $(OPTFLAGS) $(DBGFLAGS) $(INCFLAGS)
-LDFLAGS = $(LINKLIB) $(OPTFLAGS) $(DBGFLAGS) $(FTEST_DBGFLAGS) $(LINKFLAGS) -Wl,-Map,"$(@:%.exe=%.map)"
+LDFLAGS = $(LINKLIB) $(OPTFLAGS) $(DBGFLAGS) $(FTEST_DBGFLAGS) $(LINKFLAGS) -Wl,-Map,"$(@:%.exe=%.map)",--cref,--print-memory-usage
 
 ifeq ($(USE_PRE_FILE), 1)
 CXXFLAGS += -DUSE_PRE_FILE=1
@@ -625,7 +617,7 @@ clean-libexterns: libexterns.mk
 	-$(RM) -rf deps/zlib deps/spng deps/astronomy deps/centijson deps/luajit
 	-$(RM) libexterns
 
-deps/zlib deps/spng deps/astronomy deps/centijson deps/ffmpeg deps/openal deps/luajit:
+deps/zlib deps/spng deps/astronomy deps/centijson deps/openal deps/luajit:
 	$(MKDIR) $@
 
 src/api.c: deps/centijson/include/json.h
@@ -633,7 +625,6 @@ src/custom_sprites.c: deps/zlib/include/zlib.h deps/spng/include/spng.h deps/cen
 src/moonphase.c: deps/astronomy/include/astronomy.h
 deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
-src/bflib_fmvids.cpp: deps/ffmpeg/libavformat/avformat.h
 src/bflib_sndlib.cpp: deps/openal/include/AL/al.h
 src/net_resync.cpp: deps/zlib/include/zlib.h
 src/console_cmd.c: deps/luajit/include/lua.h
@@ -662,12 +653,6 @@ deps/centijson-mingw32.tar.gz:
 deps/centijson/include/json.h: deps/centijson-mingw32.tar.gz | deps/centijson
 	tar xzmf $< -C deps/centijson
 
-deps/ffmpeg-mingw32.tar.gz:
-	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/initial/ffmpeg-mingw32.tar.gz"
-
-deps/ffmpeg/libavformat/avformat.h: deps/ffmpeg-mingw32.tar.gz | deps/ffmpeg
-	tar xzmf $< -C deps/ffmpeg
-
 deps/openal-mingw32.tar.gz:
 	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/2024-11-14/openal-mingw32.tar.gz"
 
@@ -689,7 +674,6 @@ cppcheck: | deps/astronomy/include/astronomy.h
 cppcheck: | deps/centijson/include/json.h
 cppcheck: | deps/luajit/include/lua.h
 cppcheck: | deps/openal/include/AL/al.h
-cppcheck: | deps/ffmpeg/libavformat/avformat.h
 
 cppcheck:
 	$(MKDIR) cppcheck.cache
@@ -709,7 +693,6 @@ cppcheck:
 		-I deps/centijson/include \
 		-I deps/centitoml \
 		-I deps/astronomy/include \
-		-I deps/ffmpeg \
 		-I deps/openal/include \
 		-I deps/luajit/include \
 		-I obj \
