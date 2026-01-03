@@ -114,7 +114,6 @@ obj/bflib_netsession.o \
 obj/bflib_netsp.o \
 obj/bflib_network.o \
 obj/bflib_network_exchange.o \
-obj/net_resync.o \
 obj/bflib_planar.o \
 obj/bflib_render.o \
 obj/bflib_render_gpoly.o \

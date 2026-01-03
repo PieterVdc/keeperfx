@@ -23,35 +23,12 @@
 
 
 //scrcapt.c functions
-TbBool take_screenshot(char *fname)
-{
-    return false;
-}
-
-TbBool cumulative_screen_shot(void)
-{
-    return false;
-}
-
-TbBool movie_record_start(void)
-{
-  return false;
-}
-
-TbBool movie_record_stop(void)
-{
-    return false;
-}
-
-TbBool movie_record_frame(void)
-{
-  return false;
-}
-
-TbBool perform_any_screen_capturing(void)
-{
-    return false;
-}
+TbBool take_screenshot(char *fname){ return false; }
+TbBool cumulative_screen_shot(void){ return false; }
+TbBool movie_record_start(void){ return false; }
+TbBool movie_record_stop(void){ return false; }
+TbBool movie_record_frame(void){ return false; }
+TbBool perform_any_screen_capturing(void){ return false; }
 
 /******************************************************************************/
 //api.c functions
@@ -62,3 +39,12 @@ void api_close_server(){}
 int api_init_server(){
     return 0;
 }
+
+/******************************************************************************/
+//net_resync.cpp functions
+TbBool detailed_multiplayer_logging = false;
+
+void resync_game(void) {}
+void LbNetwork_TimesyncBarrier(void) {}
+
+/******************************************************************************/
