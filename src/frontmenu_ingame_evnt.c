@@ -515,7 +515,7 @@ void draw_gameturn_timer(void)
         {
             nturns = 0;
         }
-        snprintf(text, sizeof(text), "GameTurn %lu", game.play_gameturn);
+        snprintf(text, sizeof(text), "GameTurn %u", game.play_gameturn);
     }
     LbTextSetFont(winfont);
     int textLength = strlen(text);
