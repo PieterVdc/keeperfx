@@ -36,9 +36,7 @@ void api_check_var_update(){}
 void api_event(const char *event_name){}
 void api_update_server(){}
 void api_close_server(){}
-int api_init_server(){
-    return 0;
-}
+int api_init_server(){ return 0; }
 
 /******************************************************************************/
 //net_resync.cpp functions
@@ -48,3 +46,9 @@ void resync_game(void) {}
 void LbNetwork_TimesyncBarrier(void) {}
 
 /******************************************************************************/
+
+//net_checksums.c functions
+short checksums_different(void) { return 0; }
+void update_turn_checksums(void) {}
+void pack_desync_history_for_resync(void) {}
+void compare_desync_history_from_host(void) {}
