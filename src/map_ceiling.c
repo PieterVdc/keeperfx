@@ -21,7 +21,6 @@
 #include "globals.h"
 #include "bflib_planar.h"
 #include "map_columns.h"
-#include "front_simple.h"
 #include "globals.h"
 #include "game_legacy.h"
 #include "post_inc.h"

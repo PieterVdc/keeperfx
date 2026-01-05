@@ -21,7 +21,6 @@
 #include "thing_physics.h"
 #include "thing_navigate.h"
 #include "dungeon_data.h"
-#include "lvl_filesdk1.h"
 #include "creature_states_pray.h"
 #include "magic_powers.h"
 #include "config_creature.h"

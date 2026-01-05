@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_network.h"
 #include "packets.h"
 #include "player_data.h"
 #include "game_legacy.h"

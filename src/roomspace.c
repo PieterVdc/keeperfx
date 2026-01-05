@@ -21,7 +21,6 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
-#include "game_legacy.h"
 #include "kjm_input.h"
 #include "front_input.h"
 #include "player_utils.h"
@@ -30,7 +29,6 @@
 #include "config_settings.h"
 #include "slab_data.h"
 
-#include "keeperfx.hpp"
 #include "post_inc.h"
 
 #ifdef __cplusplus

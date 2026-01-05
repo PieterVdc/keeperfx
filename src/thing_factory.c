@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_math.h"
 
 #include "thing_data.h"
 #include "thing_doors.h"
@@ -42,7 +41,6 @@
 #include "config_magic.h"
 #include "game_legacy.h"
 
-#include "keeperfx.hpp"
 #include "value_util.h"
 
 #include "post_inc.h"

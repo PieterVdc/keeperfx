@@ -20,7 +20,6 @@
 #include "gui_soundmsgs.h"
 #include "config_settings.h"
 #include "game_legacy.h"
-#include "bflib_sndlib.h"
 #include "bflib_planar.h"
 #include <deque>
 #include <algorithm>

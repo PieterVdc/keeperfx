@@ -39,7 +39,6 @@
 #include "game_merge.h"
 #include "game_legacy.h"
 #include "sprites.h"
-#include "keeperfx.hpp"
 #include "custom_sprites.h"
 #include "bflib_enet.h"
 #include "post_inc.h"

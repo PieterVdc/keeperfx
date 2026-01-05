@@ -23,11 +23,9 @@
 #include "bflib_basics.h"
 #include "bflib_coroutine.h"
 #include "bflib_network.h"
-#include "bflib_network_exchange.h"
 #include "net_resync.h"
 
 #include "player_data.h"
-#include "front_landview.h"
 #include "player_utils.h"
 #include "packets.h"
 #include "frontend.h"
@@ -36,7 +34,6 @@
 #include "game_legacy.h"
 #include "net_input_lag.h"
 #include "net_checksums.h"
-#include "keeperfx.hpp"
 #include "post_inc.h"
 
 #ifdef __cplusplus

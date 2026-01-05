@@ -22,9 +22,7 @@
 #include "bflib_basics.h"
 #include "bflib_math.h"
 #include "bflib_guibtns.h"
-#include "bflib_sprite.h"
 #include "bflib_sprfnt.h"
-#include "bflib_vidraw.h"
 #include "bflib_sndlib.h"
 #include "bflib_guibtns.h"
 #include "player_data.h"
@@ -38,9 +36,6 @@
 #include "config_settings.h"
 #include "keeperfx.hpp"
 #include "gui_topmsg.h"
-#include "lvl_script_commands.h"
-#include "lvl_script.h"
-#include "sounds.h"
 #include "post_inc.h"
 
 #include <SDL2/SDL_mixer.h>

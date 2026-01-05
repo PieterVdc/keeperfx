@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_sound.h"
 
 #include "slab_data.h"
 #include "room_data.h"
@@ -30,7 +29,6 @@
 #include "thing_objects.h"
 #include "thing_physics.h"
 #include "config_terrain.h"
-#include "config_settings.h"
 #include "config_creature.h"
 #include "creature_senses.h"
 #include "player_utils.h"
@@ -38,7 +36,6 @@
 #include "spdigger_stack.h"
 #include "frontmenu_ingame_map.h"
 #include "game_legacy.h"
-#include "engine_render.h"
 #include "thing_navigate.h"
 #include "thing_physics.h"
 #include "config_spritecolors.h"

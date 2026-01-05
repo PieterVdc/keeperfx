@@ -21,7 +21,6 @@
 #include "keeperfx.hpp"
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_math.h"
 #include "room_data.h"
 #include "room_lair.h"
 #include "player_data.h"

@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_math.h"
 
 #include "thing_creature.h"
 #include "thing_navigate.h"
@@ -37,14 +36,12 @@
 #include "thing_corpses.h"
 #include "thing_objects.h"
 #include "front_simple.h"
-#include "frontend.h"
 #include "frontmenu_ingame_map.h"
 #include "gui_frontmenu.h"
 #include "gui_soundmsgs.h"
 #include "game_legacy.h"
 #include "lua_triggers.h"
 
-#include "keeperfx.hpp"
 #include "post_inc.h"
 
 #ifdef __cplusplus

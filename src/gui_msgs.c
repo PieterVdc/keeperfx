@@ -24,7 +24,6 @@
 #include "bflib_basics.h"
 #include "bflib_sprfnt.h"
 #include "bflib_vidraw.h"
-#include "config_spritecolors.h"
 #include "creature_graphics.h"
 #include "creature_instances.h"
 #include "gui_draw.h"

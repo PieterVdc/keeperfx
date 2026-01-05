@@ -20,7 +20,6 @@
 #include "gui_frontmenu.h"
 
 #include "globals.h"
-#include "bflib_basics.h"
 #include "bflib_guibtns.h"
 #include "kjm_input.h"
 #include "frontend.h"
@@ -30,7 +29,6 @@
 #include "game_legacy.h"
 #include "gui_boxmenu.h"
 
-#include "keeperfx.hpp"
 #include "post_inc.h"
 
 /******************************************************************************/

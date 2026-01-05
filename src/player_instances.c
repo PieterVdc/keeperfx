@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_datetm.h"
-#include "bflib_math.h"
 #include "bflib_sound.h"
 #include "bflib_planar.h"
 
@@ -48,7 +47,6 @@
 #include "magic_powers.h"
 #include "gui_frontmenu.h"
 #include "gui_soundmsgs.h"
-#include "engine_arrays.h"
 #include "engine_camera.h"
 #include "local_camera.h"
 #include "engine_redraw.h"

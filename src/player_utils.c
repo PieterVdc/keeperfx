@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_math.h"
 #include "bflib_sound.h"
 #include "bflib_sndlib.h"
 #include "api.h"
@@ -55,7 +54,6 @@
 #include "frontmenu_ingame_map.h"
 #include "gui_frontbtns.h"
 #include "keeperfx.hpp"
-#include "kjm_input.h"
 #include "post_inc.h"
 
 /******************************************************************************/

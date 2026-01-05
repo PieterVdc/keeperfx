@@ -28,7 +28,6 @@
 #include "thing_creature.h"
 #include "game_legacy.h"
 #include "map_data.h"
-#include "bflib_math.h"
 #include "frontmenu_ingame_map.h"
 #include "post_inc.h"
 

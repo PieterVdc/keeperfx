@@ -21,27 +21,7 @@
 #include "player_computer.h"
 
 #include <limits.h>
-
-#include "globals.h"
-#include "bflib_basics.h"
-#include "bflib_fileio.h"
-#include "bflib_dernc.h"
-#include "bflib_math.h"
-
-#include "config.h"
-#include "config_compp.h"
-#include "config_terrain.h"
-#include "config_creature.h"
-#include "creature_states.h"
-#include "ariadne_wallhug.h"
-#include "spdigger_stack.h"
-#include "magic_powers.h"
-#include "thing_traps.h"
-#include "thing_navigate.h"
-#include "player_complookup.h"
-#include "power_hand.h"
 #include "room_data.h"
-#include "game_legacy.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus

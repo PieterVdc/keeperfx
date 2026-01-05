@@ -23,7 +23,6 @@
 #include "bflib_basics.h"
 #include "bflib_sound.h"
 #include "bflib_sndlib.h"
-#include "bflib_fileio.h"
 #include "bflib_math.h"
 #include "bflib_planar.h"
 #include "engine_render.h"
@@ -32,7 +31,6 @@
 #include "local_camera.h"
 #include "gui_soundmsgs.h"
 #include "gui_topmsg.h"
-#include "front_landview.h"
 #include "frontmenu_ingame_evnt.h"
 #include "thing_data.h"
 #include "thing_navigate.h"
@@ -44,12 +42,8 @@
 #include "creature_senses.h"
 #include "map_data.h"
 #include "creature_states.h"
-#include "thing_objects.h"
-#include "config.h"
-#include "lvl_script_commands.h"
 
 #include "keeperfx.hpp"
-#include "game_heap.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus

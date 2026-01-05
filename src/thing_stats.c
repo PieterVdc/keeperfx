@@ -19,7 +19,6 @@
 #include "pre_inc.h"
 
 #include "bflib_basics.h"
-#include "bflib_math.h"
 #include "config_creature.h"
 #include "config_crtrstates.h"
 #include "config_effects.h"

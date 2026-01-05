@@ -38,7 +38,6 @@
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
 #include "game_legacy.h"
-#include "keeperfx.hpp"
 #include "post_inc.h"
 
 #ifdef __cplusplus

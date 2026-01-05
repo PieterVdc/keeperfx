@@ -26,12 +26,9 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_planar.h"
-#include "bflib_fileio.h"
-#include "bflib_dernc.h"
 #include "bflib_sound.h"
 #include "bflib_math.h"
 
-#include "config.h"
 #include "config_creature.h"
 #include "config_terrain.h"
 #include "creature_states.h"

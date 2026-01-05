@@ -40,7 +40,6 @@
 #include "config_creature.h"
 #include "gui_soundmsgs.h"
 #include "game_legacy.h"
-#include "keeperfx.hpp"
 #include "frontend.h"
 #include <math.h>
 #include "post_inc.h"

@@ -53,7 +53,6 @@
 #include "power_hand.h"
 #include "game_legacy.h"
 #include "room_list.h"
-#include "room_workshop.h"
 #include "frontmenu_ingame_tabs.h"
 #include "vidfade.h"
 #include "sprites.h"

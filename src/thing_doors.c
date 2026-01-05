@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 
-#include "bflib_math.h"
 #include "bflib_planar.h"
 #include "cursor_tag.h"
 #include "thing_objects.h"

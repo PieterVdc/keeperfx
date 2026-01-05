@@ -29,7 +29,6 @@
 #include "room_data.h"
 #include "power_hand.h"
 #include "config_terrain.h"
-#include "game_merge.h"
 #include "game_legacy.h"
 #include "post_inc.h"
 

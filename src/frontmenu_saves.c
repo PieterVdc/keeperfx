@@ -22,12 +22,10 @@
 #include "bflib_basics.h"
 
 #include "bflib_guibtns.h"
-#include "bflib_sprite.h"
 #include "bflib_sprfnt.h"
 #include "config_strings.h"
 #include "game_saves.h"
 #include "gui_draw.h"
-#include "gui_frontbtns.h"
 #include "gui_soundmsgs.h"
 #include "player_data.h"
 #include "packets.h"

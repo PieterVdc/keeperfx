@@ -24,7 +24,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_math.h"
 
 #include "config.h"
 #include "magic_powers.h"

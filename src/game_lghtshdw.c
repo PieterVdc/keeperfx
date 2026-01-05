@@ -20,7 +20,6 @@
 #include "game_lghtshdw.h"
 
 #include "globals.h"
-#include "bflib_basics.h"
 
 #include "map_data.h"
 #include "game_legacy.h"

@@ -20,10 +20,8 @@
 #include "scrcapt.h"
 #include "bflib_basics.h"
 #include "bflib_fileio.h"
-#include "bflib_dernc.h"
 #include "bflib_fmvids.h"
 #include "bflib_video.h"
-#include "bflib_sprite.h"
 #include "bflib_sprfnt.h"
 #include "bflib_vidsurface.h"
 #include "globals.h"
@@ -31,7 +29,6 @@
 #include "gui_topmsg.h"
 #include "game_legacy.h"
 #include "frontend.h"
-#include "config.h"
 
 #include <string.h>
 #include <SDL2/SDL.h>

@@ -21,13 +21,9 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_sound.h"
-#include "bflib_sndlib.h"
 #include "bflib_fileio.h"
 #include "config.h"
-#include "front_simple.h"
 #include "engine_render.h"
-#include "sounds.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus

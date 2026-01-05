@@ -25,7 +25,6 @@
 #include "bflib_dernc.h"
 #include "bflib_fileio.h"
 
-#include "front_simple.h"
 #include "config.h"
 #include "config_campaigns.h"
 #include "config_slabsets.h"

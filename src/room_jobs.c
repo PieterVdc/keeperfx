@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 
-#include "bflib_math.h"
 #include "creature_control.h"
 #include "creature_states.h"
 #include "creature_jobs.h"

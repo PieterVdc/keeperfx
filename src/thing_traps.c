@@ -21,7 +21,6 @@
 
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_math.h"
 #include "bflib_planar.h"
 
 #include "cursor_tag.h"
@@ -38,9 +37,7 @@
 #include "map_utils.h"
 #include "room_util.h"
 #include "game_legacy.h"
-#include "frontend.h"
 #include "engine_arrays.h"
-#include "engine_render.h"
 #include "gui_topmsg.h"
 
 #include "keeperfx.hpp"

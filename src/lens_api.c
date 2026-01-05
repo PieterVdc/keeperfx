@@ -22,7 +22,6 @@
 #include <math.h>
 #include "globals.h"
 #include "bflib_basics.h"
-#include "bflib_fileio.h"
 #include "bflib_dernc.h"
 
 #include "config_lenses.h"

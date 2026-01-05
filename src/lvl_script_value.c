@@ -28,13 +28,11 @@
 #include "magic_powers.h"
 #include "map_blocks.h"
 #include "map_data.h"
-#include "map_locations.h"
 #include "player_data.h"
 #include "player_utils.h"
 #include "power_hand.h"
 #include "power_specials.h"
 #include "room_library.h"
-#include "room_util.h"
 #include "thing_data.h"
 #include "thing_list.h"
 

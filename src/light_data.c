@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_math.h"
-#include "bflib_planar.h"
 
 #include "engine_render.h"
 #include "player_data.h"

@@ -4,21 +4,12 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-#include "bflib_basics.h"
-#include "bflib_sndlib.h"
 #include "globals.h"
 #include "thing_data.h"
 #include "creature_states.h"
 #include "creature_states_pray.h"
-#include "gui_msgs.h"
 #include "thing_navigate.h"
-#include "map_data.h"
-#include "game_legacy.h"
-#include "player_utils.h"
 #include "lvl_script_lib.h"
-#include "room_library.h"
-#include "room_util.h"
-#include "keeperfx.hpp"
 #include "power_specials.h"
 #include "thing_creature.h"
 #include "thing_effects.h"

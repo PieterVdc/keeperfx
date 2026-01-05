@@ -18,19 +18,14 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "frontmenu_net.h"
-#include "globals.h"
-#include "bflib_basics.h"
 
-#include "bflib_netsp.hpp"
 #include "bflib_guibtns.h"
 #include "bflib_video.h"
 #include "bflib_vidraw.h"
 #include "bflib_sprite.h"
 #include "bflib_sprfnt.h"
 
-#include "config_strings.h"
 #include "front_network.h"
-#include "gui_frontbtns.h"
 #include "gui_draw.h"
 #include "frontend.h"
 #include "front_landview.h"

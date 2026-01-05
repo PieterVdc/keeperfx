@@ -44,7 +44,6 @@
 #include "config_trapdoor.h"
 #include "config_terrain.h"
 #include "config_spritecolors.h"
-#include "engine_render.h"
 #include "room_workshop.h"
 #include "room_list.h"
 #include "gui_frontbtns.h"

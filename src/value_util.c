@@ -3,15 +3,11 @@
 // Created by Sim on 12/31/22.
 
 #include "pre_inc.h"
-#include "value_util.h"
 #include "config.h"
 #include "config_objects.h"
 #include "bflib_basics.h"
-#include "bflib_fileio.h"
 #include "bflib_dernc.h"
-#include "value_util.h"
 #include "custom_sprites.h"
-#include "thing_objects.h"
 
 #include "thing_list.h"
 

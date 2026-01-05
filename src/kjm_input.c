@@ -24,7 +24,6 @@
 
 #include "bflib_video.h"
 #include "bflib_keybrd.h"
-#include "bflib_mouse.h"
 #include "bflib_math.h"
 
 #include "config_settings.h"

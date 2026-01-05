@@ -20,11 +20,8 @@
 #include "lens_flyeye.h"
 
 #include "globals.h"
-#include "bflib_basics.h"
 #include <cmath>
-#include "engine_render.h"
 #include "lens_api.h"
-#include "bflib_vidraw.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus

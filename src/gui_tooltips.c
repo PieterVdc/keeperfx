@@ -36,7 +36,6 @@
 #include "config_creature.h"
 #include "config_terrain.h"
 #include "config_trapdoor.h"
-#include "room_workshop.h"
 #include "player_instances.h"
 #include "config_players.h"
 #include "config_settings.h"

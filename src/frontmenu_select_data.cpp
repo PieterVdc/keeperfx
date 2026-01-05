@@ -18,21 +18,12 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "frontmenu_select.h"
-#include "globals.h"
-#include "bflib_basics.h"
 
 #include "bflib_guibtns.h"
-#include "bflib_sprite.h"
-#include "bflib_sprfnt.h"
-#include "bflib_vidraw.h"
 
-#include "gui_frontbtns.h"
 #include "gui_draw.h"
 #include "frontend.h"
 #include "frontmenu_saves.h"
-#include "config_settings.h"
-#include "config_strings.h"
-#include "game_legacy.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
