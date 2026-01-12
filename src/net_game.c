@@ -75,7 +75,27 @@ long network_session_join(void)
 
 void sync_various_data()
 {
- 
+   if ((game.system_flags & GSF_NetworkActive) == 0) {
+      return;
+   }
+
+   struct {
+      uint32_t action_random_seed;
+      int input_lag_turns;
+   } initial_sync_data;
+
+   initial_sync_data.action_random_seed = game.action_random_seed;
+   initial_sync_data.input_lag_turns = game.input_lag_turns;
+   if (!LbNetwork_Resync(&initial_sync_data, sizeof(initial_sync_data))) {
+      ERRORLOG("Initial sync failed");
+      return;
+   }
+   game.action_random_seed = initial_sync_data.action_random_seed;
+   game.ai_random_seed = game.action_random_seed * 9377 + 9391;
+   game.player_random_seed = game.action_random_seed * 9473 + 9479;
+   game.input_lag_turns = initial_sync_data.input_lag_turns;
+   game.skip_initial_input_turns = calculate_skip_input();
+   NETLOG("Initial network state synced: action_seed=%u, input_lag=%d", game.action_random_seed, game.input_lag_turns);
 }
 /******************************************************************************/
 #ifdef __cplusplus
