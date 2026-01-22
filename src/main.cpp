@@ -130,7 +130,14 @@
 #include "net_input_lag.h"
 #include "moonphase.h"
 #include "frontmenu_ingame_map.h"
+
+#include <stdio.h>
 #include <stdint.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
 
 #ifdef FUNCTESTING
   #include "ftests/ftest.h"
@@ -222,6 +229,10 @@ struct TimerTime Timer;
 TbBool TimerGame = false;
 TbBool TimerNoReset = false;
 TbBool TimerFreeze = false;
+/******************************************************************************/
+
+static void storage_sanity_check(const char *path);
+
 /******************************************************************************/
 
 
@@ -990,6 +1001,8 @@ short setup_game(void)
         const auto wine_host = get_wine_host();
         SYNCMSG("Wine Host: %s", wine_host);
   }
+
+  storage_sanity_check("keeperfx.cfg");
 
   // Enable features that require more than 32 megs of memory
   features_enabled |= Ft_HiResCreatr;
@@ -4349,6 +4362,57 @@ const char* determine_log_filename(unsigned short argument_count, char *argument
     }
     return log_file_name;
 }
+
+static uint64_t monotonic_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+
+static void storage_sanity_check(const char *path)
+{
+    int fd;
+    uint8_t buf[4096];
+    uint64_t t0, t1;
+    ssize_t r;
+
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        WARNLOG(
+            "Storage check: unable to open '%s' (%s)",
+            path, strerror(errno));
+        return;
+    }
+
+    /* Force a real read, avoid page cache tricks */
+#ifdef POSIX_FADV_DONTNEED
+    posix_fadvise(fd, 0, sizeof(buf), POSIX_FADV_DONTNEED);
+#endif
+
+    t0 = monotonic_ns();
+    r = read(fd, buf, sizeof(buf));
+    t1 = monotonic_ns();
+
+    close(fd);
+
+    if (r < 0) {
+        WARNLOG("Storage check: read error on '%s' (%s)", path, strerror(errno));
+        return;
+    }
+
+    double ms = (t1 - t0) / 1000000.0;
+
+    if (ms > 100.0) {
+        WARNLOG(
+            "Storage check: 4K read latency %.1f ms (very slow storage detected), This may cause long load times, stutter, or instability.",ms);
+    } else if (ms > 25.0) {
+        SYNCMSG("Storage check: 4K read latency %.1f ms (slow)",ms);
+    } else {
+        SYNCMSG("Storage check: 4K read latency %.1f ms (OK)",ms);
+    }
+}
+
 
 int LbBullfrogMain(unsigned short argc, char *argv[])
 {
