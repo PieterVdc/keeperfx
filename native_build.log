@@ -1,0 +1,22 @@
+cc -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json.c -o deps/centijson/json.o
+echo "#define VER_MAJOR   1" > src/ver_defs.h.swp
+echo "#define VER_MINOR   3" >> src/ver_defs.h.swp
+echo "#define VER_RELEASE 1" >> src/ver_defs.h.swp
+echo "#define VER_BUILD   0" >> src/ver_defs.h.swp
+echo "#define VER_STRING  \"1.3.1.0 Prototype\"" >> src/ver_defs.h.swp
+echo "#define PACKAGE_SUFFIX  \"Prototype\"" >> src/ver_defs.h.swp
+echo "#define GIT_REVISION  \"cecdca610\"" >> src/ver_defs.h.swp
+mv -f src/ver_defs.h.swp src/ver_defs.h
+mkdir -p obj
+cc -c -O3 -fPIC deps/astronomy/source/c/astronomy.c -o deps/astronomy/astronomy.o
+cc -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/value.c -o deps/centijson/value.o
+cc -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json-dom.c -o deps/centijson/json-dom.o
+cc -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json-ptr.c -o deps/centijson/json-ptr.o
+ar rcs deps/centijson/libjson.a deps/centijson/json.o deps/centijson/value.o deps/centijson/json-dom.o deps/centijson/json-ptr.o
+mkdir -p obj/centitoml
+mkdir -p deps/centijson/include
+cp deps/centijson/src/json.h deps/centijson/include/
+cp: cannot create regular file 'deps/centijson/include/json.h': Permission denied
+make: *** [linux.mk:373: deps/centijson/include/json.h] Error 1
+make: *** Waiting for unfinished jobs....
+ar rcs deps/astronomy/libastronomy.a deps/astronomy/astronomy.o
