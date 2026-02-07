@@ -1,0 +1,90 @@
+# Build for PortMaster Arkos (ARM) using dated ubuntu:19.10 for glibc compatibility
+FROM ubuntu:19.10
+
+# Set environment for ARM64 builds
+ENV DEBIAN_FRONTEND=noninteractive \
+    ARCH=arm64
+
+RUN sed -i \
+    -e 's|archive.ubuntu.com|old-releases.ubuntu.com|g' \
+    -e 's|security.ubuntu.com|old-releases.ubuntu.com|g' \
+    -e 's|ports.ubuntu.com/ubuntu-ports|old-releases.ubuntu.com/ubuntu|g' \
+    /etc/apt/sources.list
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    pkg-config \
+    cmake \
+    meson \
+    ninja-build \
+    python3 \
+    curl \
+    ca-certificates \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    libasound2-dev \
+    libpulse-dev \
+    libsndfile1-dev \
+    libflac-dev \
+    libogg-dev \
+    libvorbis-dev \
+    libopus-dev \
+    libmpg123-dev \
+    libmp3lame-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libwebp-dev \
+    libzstd-dev \
+    liblzma-dev \
+    libjbig-dev \
+    libdeflate-dev \
+    libfreetype6-dev \
+    libgl1-mesa-dev \
+    libsdl2-dev \
+    libsdl2-mixer-dev \
+    libsdl2-image-dev \
+    libsdl2-net-dev \
+    libenet-dev \
+    libopenal-dev \
+    libavformat-dev \
+    libavcodec-dev \
+    libswresample-dev \
+    libavutil-dev \
+    libluajit-5.1-dev \
+    libminiupnpc-dev \
+    libminizip-dev \
+    libnatpmp-dev \
+    zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Build and install libspng from source (not available in Eoan)
+RUN curl -L -o /tmp/libspng.tar.gz https://github.com/randy408/libspng/archive/refs/tags/v0.7.4.tar.gz \
+ && tar -xzf /tmp/libspng.tar.gz -C /tmp \
+ && cd /tmp/libspng-0.7.4 \
+ && meson setup build --prefix=/usr \
+ && ninja -C build \
+ && ninja -C build install \
+ && rm -rf /tmp/libspng*
+
+# Set up build directory  
+WORKDIR /build
+
+# Copy workspace files first
+COPY . /build/
+
+# Download astronomy library source (after COPY to ensure it overwrites workspace version)
+RUN mkdir -p /build/deps/astronomy \
+ && curl -L https://github.com/cosinekitty/astronomy/archive/refs/tags/v2.1.19.tar.gz -o /tmp/astronomy.tar.gz \
+ && tar -xzf /tmp/astronomy.tar.gz -C /build/deps/astronomy --strip-components=1 \
+ && rm /tmp/astronomy.tar.gz
+
+# Download centijson library source (after COPY to ensure it overwrites workspace version)
+RUN mkdir -p /build/deps/centijson \
+ && curl -L https://github.com/mity/centijson/archive/refs/heads/master.tar.gz -o /tmp/centijson.tar.gz \
+ && tar -xzf /tmp/centijson.tar.gz -C /build/deps/centijson --strip-components=1 \
+ && rm /tmp/centijson.tar.gz
+
+# Build command
+CMD ["bash", "-c", "make -f linux.mk clean && make -f linux.mk -j$(nproc)"]

@@ -1228,7 +1228,7 @@ TbBool can_place_trap_on(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoo
         else
         {
             HasTrap = subtile_has_trap_on(stl_x, stl_y);
-            switch(get_door_orientation(slb_x, slb_y))
+            switch ((int)get_door_orientation(slb_x, slb_y))
             {
                 case -1:
                 {

@@ -273,16 +273,19 @@ KFX_INCLUDES = \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
+	$(shell pkg-config --cflags-only-I sdl2) \
+	$(shell pkg-config --cflags-only-I SDL2_mixer) \
+	$(shell pkg-config --cflags-only-I SDL2_net) \
 	$(shell pkg-config --cflags-only-I luajit)
 
-KFX_CFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=x86-64 $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-absolute-value -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare
-KFX_CXXFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=x86-64 $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare
+KFX_CFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=armv8-a $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-absolute-value -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -Wno-type-limits -Wno-narrowing
+KFX_CXXFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=armv8-a $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -Wno-type-limits -Wno-narrowing
 
 KFX_LDFLAGS += \
 	-g \
 	-Wall -Wextra -Werror \
-	-Ldeps/astronomy -lastronomy \
-	-Ldeps/centijson -ljson \
+	deps/astronomy/libastronomy.a \
+	deps/centijson/libjson.a \
 	$(shell pkg-config --libs-only-l sdl2) \
 	$(shell pkg-config --libs-only-l SDL2_mixer) \
 	$(shell pkg-config --libs-only-l SDL2_net) \
@@ -298,7 +301,8 @@ KFX_LDFLAGS += \
 	$(shell pkg-config --libs-only-l minizip) \
 	$(shell pkg-config --libs-only-l zlib) \
 	-lminiupnpc \
-	-lnatpmp
+	-lnatpmp \
+	-lpthread
 
 TOML_SOURCES = \
 	deps/centitoml/toml_api.c
@@ -306,9 +310,10 @@ TOML_SOURCES = \
 TOML_OBJECTS = $(patsubst deps/centitoml/%.c,obj/centitoml/%.o,$(TOML_SOURCES))
 
 TOML_INCLUDES = \
-	-Ideps/centijson/include
+	-Ideps/centijson/include \
+	-Ideps/centitoml
 
-TOML_CFLAGS += -O3 -march=x86-64 $(TOML_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter
+TOML_CFLAGS += -O3 -march=armv8-a $(TOML_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter
 
 ifeq ($(ENABLE_LTO), 1)
 KFX_CFLAGS += -flto
@@ -320,20 +325,23 @@ endif
 all: bin/keeperfx
 
 clean:
-	rm -rf obj bin src/ver_defs.h deps/astronomy deps/centijson
+	rm -rf obj bin src/ver_defs.h
+	rm -f deps/astronomy/libastronomy.a deps/astronomy/astronomy.o deps/astronomy/include/astronomy.h
+	rm -f deps/centijson/libjson.a deps/centijson/json.o deps/centijson/value.o deps/centijson/json-dom.o deps/centijson/json-ptr.o deps/centijson/include/json.h deps/centijson/include/json-dom.h deps/centijson/include/json-ptr.h deps/centijson/include/value.h deps/centitoml/value.h
 
 .PHONY: all clean
 
-bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) | bin
+bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) deps/astronomy/libastronomy.a deps/centijson/libjson.a
+	@mkdir -p bin
 	$(CXX) -o $@ $(KFX_OBJECTS) $(TOML_OBJECTS) $(KFX_LDFLAGS)
 
-$(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h | obj
+$(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h deps/centijson/include/json.h | obj
 	$(CC) $(KFX_CFLAGS) -c $< -o $@
 
-$(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h | obj
+$(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h deps/centijson/include/json.h | obj
 	$(CXX) $(KFX_CXXFLAGS) -c $< -o $@
 
-$(TOML_OBJECTS): obj/centitoml/%.o: deps/centitoml/%.c | obj/centitoml
+$(TOML_OBJECTS): obj/centitoml/%.o: deps/centitoml/%.c deps/centijson/include/json.h | obj/centitoml
 	$(CC) $(TOML_CFLAGS) -c $< -o $@
 
 bin obj deps/astronomy deps/centijson obj/centitoml:
@@ -345,17 +353,27 @@ src/moonphase.c: deps/astronomy/include/astronomy.h
 deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
 
-deps/astronomy-lin64.tar.gz:
-	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/20250418/astronomy-lin64.tar.gz"
+deps/astronomy/libastronomy.a: | deps/astronomy
+	$(CC) -c -O3 -fPIC deps/astronomy/source/c/astronomy.c -o deps/astronomy/astronomy.o
+	$(AR) rcs $@ deps/astronomy/astronomy.o
 
-deps/astronomy/include/astronomy.h: deps/astronomy-lin64.tar.gz | deps/astronomy
-	tar xzmf $< -C deps/astronomy
+deps/astronomy/include/astronomy.h: deps/astronomy/libastronomy.a
+	$(MKDIR) deps/astronomy/include
+	cp deps/astronomy/source/c/astronomy.h deps/astronomy/include/
 
-deps/centijson-lin64.tar.gz:
-	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/20250418/centijson-lin64.tar.gz"
+deps/centijson/libjson.a: | deps/centijson
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json.c -o deps/centijson/json.o
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/value.c -o deps/centijson/value.o
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json-dom.c -o deps/centijson/json-dom.o
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json-ptr.c -o deps/centijson/json-ptr.o
+	$(AR) rcs $@ deps/centijson/json.o deps/centijson/value.o deps/centijson/json-dom.o deps/centijson/json-ptr.o
 
-deps/centijson/include/json.h: deps/centijson-lin64.tar.gz | deps/centijson
-	tar xzmf $< -C deps/centijson
+deps/centijson/include/json.h: deps/centijson/libjson.a
+	$(MKDIR) deps/centijson/include
+	cp deps/centijson/src/json.h deps/centijson/include/
+	cp deps/centijson/src/json-dom.h deps/centijson/include/
+	cp deps/centijson/src/json-ptr.h deps/centijson/include/
+	cp deps/centijson/src/value.h deps/centijson/include/
 
 src/ver_defs.h: version.mk
 	$(ECHO) "#define VER_MAJOR   $(VER_MAJOR)" > $@.swp

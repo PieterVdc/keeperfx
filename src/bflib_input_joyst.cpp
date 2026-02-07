@@ -48,6 +48,15 @@ static SDL_Joystick *joystick = NULL;
 static TbBool lt_pressed = false;
 static TbBool rt_pressed = false;
 
+static TbBool gamecontroller_has_axis(SDL_GameController *gc, SDL_GameControllerAxis axis)
+{
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+    return SDL_GameControllerHasAxis(gc, axis);
+#else
+    SDL_GameControllerButtonBind bind = SDL_GameControllerGetBindForAxis(gc, axis);
+    return (bind.bindType != SDL_CONTROLLER_BINDTYPE_NONE);
+#endif
+}
 
 static Uint8 prev_back = 0;
 static Uint8 prev_leftshoulder = 0;
@@ -327,11 +336,11 @@ void poll_controller()
     if (controller != NULL) {
         
         TbBool has_right_stick =
-            SDL_GameControllerHasAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX) &&
-            SDL_GameControllerHasAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
+            gamecontroller_has_axis(controller, SDL_CONTROLLER_AXIS_RIGHTX) &&
+            gamecontroller_has_axis(controller, SDL_CONTROLLER_AXIS_RIGHTY);
         TbBool has_left_stick =
-            SDL_GameControllerHasAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) &&
-            SDL_GameControllerHasAxis(controller, SDL_CONTROLLER_AXIS_LEFTY);
+            gamecontroller_has_axis(controller, SDL_CONTROLLER_AXIS_LEFTX) &&
+            gamecontroller_has_axis(controller, SDL_CONTROLLER_AXIS_LEFTY);
 
         //analog sticks and dpad, layout based on what's available, with mouse being most important, then movement, then cam rotation/zoom
 
@@ -373,8 +382,8 @@ void poll_controller()
         }
 
         TbBool has_triggers =
-            SDL_GameControllerHasAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) &&
-            SDL_GameControllerHasAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+            gamecontroller_has_axis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) &&
+            gamecontroller_has_axis(controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
 
         if(has_triggers)
         {
