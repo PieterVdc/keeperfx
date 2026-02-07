@@ -50,7 +50,7 @@ static TbBool rt_pressed = false;
 
 static TbBool gamecontroller_has_axis(SDL_GameController *gc, SDL_GameControllerAxis axis)
 {
-#if SDL_VERSION_ATLEAST(2, 0, 14)
+#if SDL_VERSION_ATLEAST(2, 24, 0)
     return SDL_GameControllerHasAxis(gc, axis);
 #else
     SDL_GameControllerButtonBind bind = SDL_GameControllerGetBindForAxis(gc, axis);
