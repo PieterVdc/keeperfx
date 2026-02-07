@@ -1,0 +1,2 @@
+﻿  The system cannot find the path specified.
+C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.MakeFile.Targets(54,5): error MSB3073: The command "%windir%\Sysnative\wsl.exe make clean" exited with code 3.
