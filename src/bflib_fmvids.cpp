@@ -284,7 +284,11 @@ struct movie_t {
 
 	int m_output_audio_channels;
 	int m_output_audio_frequency;
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 28, 100)
 	AVChannelLayout m_output_audio_layout;
+#else
+	uint64_t m_output_audio_layout;
+#endif
 	AVSampleFormat m_output_audio_format;
 
 	movie_t(const char * filename, const int flags) {
@@ -344,6 +348,7 @@ struct movie_t {
 		}
 	}
 
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 28, 100)
 	AVChannelLayout channels_to_ffmpeg_layout(int channels) {
 		switch (channels) {
 			case 1: return AV_CHANNEL_LAYOUT_MONO;
@@ -357,6 +362,21 @@ struct movie_t {
 			default: return {};
 		}
 	}
+#else
+	uint64_t channels_to_ffmpeg_layout(int channels) {
+		switch (channels) {
+			case 1: return AV_CH_LAYOUT_MONO;
+			case 2: return AV_CH_LAYOUT_STEREO;
+			case 3: return AV_CH_LAYOUT_SURROUND;
+			case 4: return AV_CH_LAYOUT_QUAD;
+			case 5: return AV_CH_LAYOUT_4POINT1;
+			case 6: return AV_CH_LAYOUT_5POINT1;
+			case 7: return AV_CH_LAYOUT_6POINT1;
+			case 8: return AV_CH_LAYOUT_7POINT1;
+			default: return 0;
+		}
+	}
+#endif
 
 	void open_audio_device() {
         if (!flag_is_set(m_flags, SMK_NoSound))
@@ -462,6 +482,7 @@ struct movie_t {
 	}
 
 	void make_resampler() {
+#if LIBSWRESAMPLE_VERSION_INT >= AV_VERSION_INT(4, 5, 100)
 		if (swr_alloc_set_opts2(
 			&m_resampler,
 			&m_output_audio_layout,
@@ -475,6 +496,22 @@ struct movie_t {
 		) != 0) {
 			throw std::runtime_error("Cannot create resampler");
 		}
+#else
+		m_resampler = swr_alloc_set_opts(
+			nullptr,
+			m_output_audio_layout,
+			m_output_audio_format,
+			m_output_audio_frequency,
+			m_audio_context->channel_layout,
+			m_audio_context->sample_fmt,
+			m_audio_context->sample_rate,
+			0,
+			nullptr
+		);
+		if (!m_resampler) {
+			throw std::runtime_error("Cannot create resampler");
+		}
+#endif
 		if (swr_init(m_resampler) != 0) {
 			throw std::runtime_error("Could not initialize resampler");
 		}
@@ -504,8 +541,8 @@ struct movie_t {
 			m_resampler,
 			&buffer,
 			buffer_samples,
-#if LIBSWRESAMPLE_VERSION_INT >= AV_VERSION_INT(4, 4, 100)
-			// since 4.4.100, swr_convert expects a const pointer
+#if LIBSWRESAMPLE_VERSION_INT >= AV_VERSION_INT(3, 0, 0)
+			// since 3.x, swr_convert expects a const pointer
 			const_cast<const uint8_t **>(m_frame->data),
 #else
 			m_frame->data,
