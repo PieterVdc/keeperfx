@@ -84,7 +84,7 @@ debug_pkg_config() {
 build_project() {
   echo "Building..."
   cd "$BUILD_DIR"
-  rm -rf obj bin src/ver_defs.h deps/astronomy/libastronomy.a deps/centijson/libjson.a
+  rm -rf obj bin src/ver_defs.h deps/astronomy/libastronomy.a deps/centijson/libjson.a deps/enet6/libenet6.a deps/enet6/include/enet6
   export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
   export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig
   CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ make -f linux.mk -j4
