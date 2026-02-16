@@ -389,7 +389,7 @@ deps/centijson/include/json.h: deps/centijson/libjson.a
 	cp deps/centijson/src/value.h deps/centijson/include/
 
 deps/enet6/include/enet6/enet.h: | deps/enet6
-	git clone https://github.com/SirLynix/enet6.git deps/enet6/src
+	test -d deps/enet6/src || git clone https://github.com/SirLynix/enet6.git deps/enet6/src
 	$(MKDIR) deps/enet6/include/enet6
 	cp deps/enet6/src/include/enet6/* deps/enet6/include/enet6/
 

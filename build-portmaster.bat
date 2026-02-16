@@ -43,6 +43,19 @@ if not exist "deps\astronomy\source\c\astronomy.c" (
     del astronomy.tar.gz
     cd ..
 )
+
+if not exist "deps\enet6\src\include\enet6\enet.h" (
+    echo Downloading enet6...
+    if exist "deps\enet6\src" rmdir /s /q "deps\enet6\src"
+    cd deps\enet6
+    git clone https://github.com/SirLynix/enet6.git src
+    if errorlevel 1 (
+        echo ERROR: Failed to clone enet6!
+        cd ..\..
+        exit /b 1
+    )
+    cd ..\..
+)
 echo Dependencies ready.
 echo.
 
