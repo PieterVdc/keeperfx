@@ -692,6 +692,7 @@ void draw_lens_effect(unsigned char *dstbuf, long dstpitch, unsigned char *srcbu
         {
         case 1:
         case 2:
+        {
             // For displacement, use full srcbuf (not offset) because displacement map contains absolute positions
             // Offset the displacement map to start at the viewport position
             long full_width = eye_lens_width;
@@ -700,6 +701,7 @@ void draw_lens_effect(unsigned char *dstbuf, long dstpitch, unsigned char *srcbu
                 width, height, dstpitch, full_width);
             copied = true;
             break;
+        }
         case 3:
             // Flyeye effect uses its own optimized blitting function that handles displacement internally
             // It also expects the full srcbuf and uses the viewport_x internally for lookups, so we pass the full srcbuf

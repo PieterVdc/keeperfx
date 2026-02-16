@@ -42,3 +42,4 @@ res/keeperfx_icon.ico
 keeperfx.log
 crash_log.txt
 .local/
+libs.aarch64/*

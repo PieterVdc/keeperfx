@@ -865,6 +865,9 @@ extern "C" void stop_streamed_samples()
 }
 
 extern "C" void set_streamed_sample_volume(SoundVolume volume) {
+	if (SoundDisabled || g_streamed_sample == nullptr) {
+		return;
+	}
 	// SoundVolume ranges 0..255 but MIX_MAX_VOLUME ranges 0..128
 	Mix_VolumeChunk(g_streamed_sample, volume / 2);
 }
