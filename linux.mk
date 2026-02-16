@@ -336,7 +336,8 @@ clean:
 	rm -rf obj bin src/ver_defs.h
 	rm -f deps/astronomy/libastronomy.a deps/astronomy/astronomy.o deps/astronomy/include/astronomy.h
 	rm -f deps/centijson/libjson.a deps/centijson/json.o deps/centijson/value.o deps/centijson/json-dom.o deps/centijson/json-ptr.o deps/centijson/include/json.h deps/centijson/include/json-dom.h deps/centijson/include/json-ptr.h deps/centijson/include/value.h deps/centitoml/value.h
-	rm -rf deps/enet6
+	rm -f deps/enet6/libenet6.a
+	rm -rf deps/enet6/src deps/enet6/include/enet6
 
 .PHONY: all clean
 
@@ -388,7 +389,13 @@ deps/centijson/include/json.h: deps/centijson/libjson.a
 	cp deps/centijson/src/value.h deps/centijson/include/
 
 deps/enet6/include/enet6/enet.h: | deps/enet6
-	@echo "Using prebuilt enet6 (no download required)"
+	git clone https://github.com/SirLynix/enet6.git deps/enet6/src
+	$(MKDIR) deps/enet6/include/enet6
+	cp deps/enet6/src/include/enet6/* deps/enet6/include/enet6/
+
+deps/enet6/libenet6.a: deps/enet6/include/enet6/enet.h | deps/enet6
+	cd deps/enet6/src && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+	cp deps/enet6/src/build/libenet6.a $@
 
 src/ver_defs.h: version.mk
 	$(ECHO) "#define VER_MAJOR   $(VER_MAJOR)" > $@.swp
