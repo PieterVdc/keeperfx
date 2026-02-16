@@ -169,11 +169,18 @@ src/KeeperSpeechImp.c \
 src/kjm_input.c \
 src/lens_api.c \
 src/config_effects.c \
-src/lens_flyeye.cpp \
-src/lens_mist.cpp \
+src/kfx/lense/DisplacementEffect.cpp \
+src/kfx/lense/FlyeyeEffect.cpp \
+src/kfx/lense/LensEffect.cpp \
+src/kfx/lense/LensManager.cpp \
+src/kfx/lense/LuaLensEffect.cpp \
+src/kfx/lense/MistEffect.cpp \
+src/kfx/lense/OverlayEffect.cpp \
+src/kfx/lense/PaletteEffect.cpp \
 src/light_data.c \
 src/linux.cpp \
 src/lua_api.c \
+src/lua_api_lens.c \
 src/lua_api_player.c \
 src/lua_api_room.c \
 src/lua_api_things.c \
@@ -273,6 +280,7 @@ KFX_INCLUDES = \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
+	-Ideps/enet6/include \
 	$(shell pkg-config --cflags-only-I sdl2) \
 	$(shell pkg-config --cflags-only-I SDL2_mixer) \
 	$(shell pkg-config --cflags-only-I SDL2_net) \
@@ -286,11 +294,11 @@ KFX_LDFLAGS += \
 	-Wall -Wextra -Werror \
 	deps/astronomy/libastronomy.a \
 	deps/centijson/libjson.a \
+	deps/enet6/libenet6.a \
 	$(shell pkg-config --libs-only-l sdl2) \
 	$(shell pkg-config --libs-only-l SDL2_mixer) \
 	$(shell pkg-config --libs-only-l SDL2_net) \
 	$(shell pkg-config --libs-only-l SDL2_image) \
-	$(shell pkg-config --libs-only-l libenet) \
 	$(shell pkg-config --libs-only-l libavformat) \
 	$(shell pkg-config --libs-only-l libavcodec) \
 	$(shell pkg-config --libs-only-l libswresample) \
@@ -328,27 +336,31 @@ clean:
 	rm -rf obj bin src/ver_defs.h
 	rm -f deps/astronomy/libastronomy.a deps/astronomy/astronomy.o deps/astronomy/include/astronomy.h
 	rm -f deps/centijson/libjson.a deps/centijson/json.o deps/centijson/value.o deps/centijson/json-dom.o deps/centijson/json-ptr.o deps/centijson/include/json.h deps/centijson/include/json-dom.h deps/centijson/include/json-ptr.h deps/centijson/include/value.h deps/centitoml/value.h
+	rm -rf deps/enet6
 
 .PHONY: all clean
 
-bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) deps/astronomy/libastronomy.a deps/centijson/libjson.a
+bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) deps/astronomy/libastronomy.a deps/centijson/libjson.a deps/enet6/libenet6.a
 	@mkdir -p bin
 	$(CXX) -o $@ $(KFX_OBJECTS) $(TOML_OBJECTS) $(KFX_LDFLAGS)
 
 $(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h deps/centijson/include/json.h | obj
+	$(MKDIR) $(dir $@)
 	$(CC) $(KFX_CFLAGS) -c $< -o $@
 
 $(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h deps/centijson/include/json.h | obj
+	$(MKDIR) $(dir $@)
 	$(CXX) $(KFX_CXXFLAGS) -c $< -o $@
 
 $(TOML_OBJECTS): obj/centitoml/%.o: deps/centitoml/%.c deps/centijson/include/json.h | obj/centitoml
 	$(CC) $(TOML_CFLAGS) -c $< -o $@
 
-bin obj deps/astronomy deps/centijson obj/centitoml:
+bin obj deps/astronomy deps/centijson deps/enet6 obj/centitoml:
 	$(MKDIR) $@
 
 src/actionpt.c: deps/centijson/include/json.h
 src/api.c: deps/centijson/include/json.h
+src/bflib_enet.cpp: deps/enet6/include/enet6/enet.h
 src/moonphase.c: deps/astronomy/include/astronomy.h
 deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
@@ -374,6 +386,9 @@ deps/centijson/include/json.h: deps/centijson/libjson.a
 	cp deps/centijson/src/json-dom.h deps/centijson/include/
 	cp deps/centijson/src/json-ptr.h deps/centijson/include/
 	cp deps/centijson/src/value.h deps/centijson/include/
+
+deps/enet6/include/enet6/enet.h: | deps/enet6
+	@echo "Using prebuilt enet6 (no download required)"
 
 src/ver_defs.h: version.mk
 	$(ECHO) "#define VER_MAJOR   $(VER_MAJOR)" > $@.swp
