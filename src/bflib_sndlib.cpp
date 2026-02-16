@@ -9,7 +9,12 @@
 #include <AL/alc.h>
 #include <AL/alext.h>
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libswresample/swresample.h>
+#include <libavutil/opt.h>
+}
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -46,7 +51,6 @@ SoundVolume g_master_volume = 0;
 SoundVolume g_music_volume = 0;
 ALCdevice_ptr g_openal_device;
 ALCcontext_ptr g_openal_context;
-std::atomic<Mix_Music *> g_mix_music;
 std::set<uint32_t> g_tick_samples;
 bool g_bb_king_mode = false;
 
@@ -210,6 +214,348 @@ public:
 		bank_id = std::exchange(other.bank_id, 0);
 		return *this;
 	}
+};
+
+class openal_stream {
+public:
+	static constexpr int NUM_BUFFERS = 4;
+	static constexpr int BUFFER_SIZE = 16384;
+	
+	ALuint source_id = 0;
+	ALuint buffer_ids[NUM_BUFFERS] = {0};
+	AVFormatContext * format_ctx = nullptr;
+	AVCodecContext * codec_ctx = nullptr;
+	SwrContext * swr_ctx = nullptr;
+	int audio_stream_index = -1;
+	std::vector<uint8_t> decode_buffer;
+	bool is_looping = false;
+	bool is_playing = false;
+	SoundVolume volume = FULL_LOUDNESS;
+	
+	openal_stream() {
+		ALuint sources[1];
+		alGenSources(1, sources);
+		auto errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			throw openal_error("Cannot create streaming source", errcode);
+		}
+		source_id = sources[0];
+		
+		alGenBuffers(NUM_BUFFERS, buffer_ids);
+		errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			alDeleteSources(1, &source_id);
+			throw openal_error("Cannot create streaming buffers", errcode);
+		}
+		
+		// Allocate decode buffer large enough for resampled output
+		// stereo * 16-bit * max samples
+		decode_buffer.resize(BUFFER_SIZE * 4);
+	}
+	
+	~openal_stream() {
+		stop();
+		close();
+		alDeleteBuffers(NUM_BUFFERS, buffer_ids);
+		alDeleteSources(1, &source_id);
+	}
+	
+	bool open(const char * filename) {
+		close();
+		
+		if (avformat_open_input(&format_ctx, filename, nullptr, nullptr) < 0) {
+			ERRORLOG("Cannot open audio file: %s", filename);
+			return false;
+		}
+		
+		if (avformat_find_stream_info(format_ctx, nullptr) < 0) {
+			ERRORLOG("Cannot find stream info: %s", filename);
+			close();
+			return false;
+		}
+		
+		audio_stream_index = av_find_best_stream(format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+		if (audio_stream_index < 0) {
+			ERRORLOG("Cannot find audio stream: %s", filename);
+			close();
+			return false;
+		}
+		
+		AVStream * stream = format_ctx->streams[audio_stream_index];
+		const AVCodec * codec = avcodec_find_decoder(stream->codecpar->codec_id);
+		if (!codec) {
+			ERRORLOG("Cannot find audio codec: %s", filename);
+			close();
+			return false;
+		}
+		
+		codec_ctx = avcodec_alloc_context3(codec);
+		if (!codec_ctx) {
+			ERRORLOG("Cannot allocate codec context: %s", filename);
+			close();
+			return false;
+		}
+		
+		if (avcodec_parameters_to_context(codec_ctx, stream->codecpar) < 0) {
+			ERRORLOG("Cannot copy codec parameters: %s", filename);
+			close();
+			return false;
+		}
+		
+		if (avcodec_open2(codec_ctx, codec, nullptr) < 0) {
+			ERRORLOG("Cannot open codec: %s", filename);
+			close();
+			return false;
+		}
+		
+		// Setup resampler to convert to stereo 16-bit 44.1kHz
+		swr_ctx = swr_alloc();
+		if (!swr_ctx) {
+			ERRORLOG("Cannot allocate resampler: %s", filename);
+			close();
+			return false;
+		}
+		
+		// Get input channel layout - handle both old and potentially unset values
+		int64_t in_channel_layout = codec_ctx->channel_layout;
+		if (in_channel_layout == 0 && codec_ctx->channels > 0) {
+			in_channel_layout = av_get_default_channel_layout(codec_ctx->channels);
+		}
+		if (in_channel_layout == 0) {
+			in_channel_layout = AV_CH_LAYOUT_STEREO; // fallback
+		}
+		
+		av_opt_set_int(swr_ctx, "in_channel_layout", in_channel_layout, 0);
+		av_opt_set_int(swr_ctx, "in_sample_rate", codec_ctx->sample_rate, 0);
+		av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", codec_ctx->sample_fmt, 0);
+		
+		av_opt_set_int(swr_ctx, "out_channel_layout", AV_CH_LAYOUT_STEREO, 0);
+		av_opt_set_int(swr_ctx, "out_sample_rate", 44100, 0);
+		av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+		
+		if (swr_init(swr_ctx) < 0) {
+			ERRORLOG("Cannot initialize resampler: %s", filename);
+			close();
+			return false;
+		}
+		
+		return true;
+	}
+	
+	void close() {
+		if (swr_ctx) {
+			swr_free(&swr_ctx);
+			swr_ctx = nullptr;
+		}
+		if (codec_ctx) {
+			avcodec_free_context(&codec_ctx);
+			codec_ctx = nullptr;
+		}
+		if (format_ctx) {
+			avformat_close_input(&format_ctx);
+			format_ctx = nullptr;
+		}
+		audio_stream_index = -1;
+	}
+	
+	bool decode_frame(AVPacket * packet, AVFrame * frame, std::vector<uint8_t> & output) {
+		int ret = avcodec_send_packet(codec_ctx, packet);
+		if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+			return false;
+		}
+		
+		while (ret >= 0) {
+			ret = avcodec_receive_frame(codec_ctx, frame);
+			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+				break;
+			} else if (ret < 0) {
+				return false;
+			}
+			
+			// Calculate max output samples buffer can hold (stereo 16-bit = 4 bytes per sample)
+			int max_out_samples = decode_buffer.size() / 4;
+			uint8_t * output_buffer = decode_buffer.data();
+			int out_samples = swr_convert(swr_ctx, &output_buffer, max_out_samples,
+				(const uint8_t **)frame->data, frame->nb_samples);
+			
+			if (out_samples > 0) {
+				int data_size = out_samples * 4; // stereo * 16-bit = 4 bytes per sample
+				output.insert(output.end(), decode_buffer.data(), decode_buffer.data() + data_size);
+			} else if (out_samples < 0) {
+				ERRORLOG("Resampling error: %d", out_samples);
+				return false;
+			}
+		}
+		
+		return true;
+	}
+	
+	bool fill_buffer(ALuint buffer_id) {
+		std::vector<uint8_t> pcm_data;
+		AVPacket * packet = av_packet_alloc();
+		AVFrame * frame = av_frame_alloc();
+		
+		while (pcm_data.size() < BUFFER_SIZE && av_read_frame(format_ctx, packet) >= 0) {
+			if (packet->stream_index == audio_stream_index) {
+				decode_frame(packet, frame, pcm_data);
+			}
+			av_packet_unref(packet);
+		}
+		
+		av_packet_free(&packet);
+		av_frame_free(&frame);
+		
+		if (pcm_data.empty()) {
+			if (is_looping && format_ctx) {
+				av_seek_frame(format_ctx, audio_stream_index, 0, AVSEEK_FLAG_BACKWARD);
+				avcodec_flush_buffers(codec_ctx);
+				return fill_buffer(buffer_id);
+			}
+			return false;
+		}
+		
+		alBufferData(buffer_id, AL_FORMAT_STEREO16, pcm_data.data(), pcm_data.size(), 44100);
+		auto errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			throw openal_error("Cannot buffer streaming data", errcode);
+		}
+		
+		return true;
+	}
+	
+	void play(bool loop = false) {
+		if (!format_ctx) return;
+		
+		is_looping = loop;
+		is_playing = true;
+		
+		// Fill initial buffers
+		int buffers_filled = 0;
+		for (int i = 0; i < NUM_BUFFERS; ++i) {
+			if (fill_buffer(buffer_ids[i])) {
+				buffers_filled++;
+			} else {
+				break;
+			}
+		}
+		
+		if (buffers_filled > 0) {
+			alSourceQueueBuffers(source_id, buffers_filled, buffer_ids);
+			auto errcode = alGetError();
+			if (errcode != AL_NO_ERROR) {
+				ERRORLOG("Cannot queue buffers: %s", alErrorStr(errcode));
+				is_playing = false;
+				return;
+			}
+			alSourcef(source_id, AL_GAIN, float(volume) / FULL_LOUDNESS);
+			alSourcePlay(source_id);
+			errcode = alGetError();
+			if (errcode != AL_NO_ERROR) {
+				ERRORLOG("Cannot play source: %s", alErrorStr(errcode));
+				is_playing = false;
+			}
+		} else {
+			is_playing = false;
+		}
+	}
+	
+	void stop() {
+		if (source_id) {
+			alSourceStop(source_id);
+			ALint queued;
+			alGetSourcei(source_id, AL_BUFFERS_QUEUED, &queued);
+			while (queued--) {
+				ALuint buffer;
+				alSourceUnqueueBuffers(source_id, 1, &buffer);
+			}
+		}
+		is_playing = false;
+		if (format_ctx) {
+			av_seek_frame(format_ctx, audio_stream_index, 0, AVSEEK_FLAG_BACKWARD);
+			if (codec_ctx) {
+				avcodec_flush_buffers(codec_ctx);
+			}
+		}
+	}
+	
+	void pause() {
+		if (source_id) {
+			alSourcePause(source_id);
+		}
+		is_playing = false;
+	}
+	
+	void resume() {
+		if (source_id) {
+			alSourcePlay(source_id);
+		}
+		is_playing = true;
+	}
+	
+	void set_volume(SoundVolume vol) {
+		volume = vol;
+		if (source_id) {
+			alSourcef(source_id, AL_GAIN, float(volume) / FULL_LOUDNESS);
+		}
+	}
+	
+	void update() {
+		if (!is_playing || !format_ctx) return;
+		
+		ALint processed = 0;
+		alGetSourcei(source_id, AL_BUFFERS_PROCESSED, &processed);
+		auto errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			ERRORLOG("Error getting processed buffers: %s", alErrorStr(errcode));
+			is_playing = false;
+			return;
+		}
+		
+		while (processed--) {
+			ALuint buffer;
+			alSourceUnqueueBuffers(source_id, 1, &buffer);
+			errcode = alGetError();
+			if (errcode != AL_NO_ERROR) {
+				ERRORLOG("Error unqueuing buffer: %s", alErrorStr(errcode));
+				continue;
+			}
+			if (fill_buffer(buffer)) {
+				alSourceQueueBuffers(source_id, 1, &buffer);
+				errcode = alGetError();
+				if (errcode != AL_NO_ERROR) {
+					ERRORLOG("Error queuing buffer: %s", alErrorStr(errcode));
+				}
+			} else {
+				is_playing = false;
+			}
+		}
+		
+		// Check if source stopped playing
+		ALint state;
+		alGetSourcei(source_id, AL_SOURCE_STATE, &state);
+		errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			ERRORLOG("Error getting source state: %s", alErrorStr(errcode));
+			is_playing = false;
+			return;
+		}
+		if (state != AL_PLAYING && is_playing) {
+			ALint queued;
+			alGetSourcei(source_id, AL_BUFFERS_QUEUED, &queued);
+			if (queued > 0) {
+				alSourcePlay(source_id);
+			} else {
+				is_playing = false;
+			}
+		}
+	}
+	
+	bool playing() const {
+		return is_playing;
+	}
+	
+	openal_stream(const openal_stream &) = delete;
+	openal_stream & operator=(const openal_stream &) = delete;
 };
 
 inline uint32_t make_fourcc(const char (& code)[5]) {
@@ -414,6 +760,8 @@ std::vector<sound_sample> load_sound_bank(const char * filename) {
 
 std::vector<openal_source> g_sources;
 std::array<std::vector<sound_sample>, 2> g_banks;
+std::unique_ptr<openal_stream> g_music_stream;
+std::unique_ptr<openal_stream> g_speech_stream;
 
 void load_sound_banks() {
 	char snd_fname[2048];
@@ -454,25 +802,14 @@ void print_device_info() {
 	}
 }
 
-Mix_Chunk * g_streamed_sample = nullptr;
-std::mutex g_mix_mutex;
-
-struct queued_sample {
-	std::string fname;
-	SoundVolume volume;
-};
-
-void SDLCALL on_music_finished() {
-	// don't grab mutex or we'll deadlock, just free memory
-	Mix_FreeMusic(g_mix_music.exchange(nullptr));
-}
-
 } // local
 
 extern "C" void FreeAudio() {
 	g_sources.clear();
 	g_banks[0].clear();
 	g_banks[1].clear();
+	g_music_stream.reset();
+	g_speech_stream.reset();
 	g_openal_context = nullptr;
 	g_openal_device = nullptr;
 }
@@ -494,29 +831,30 @@ extern "C" void SetSoundMasterVolume(SoundVolume volume) {
 extern "C" void set_music_volume(SoundVolume value) {
 	g_music_volume = value;
 	SetRedbookVolume(value);
-	// convert 0..256 to 0..128
-	Mix_VolumeMusic(LbLerp(0, MIX_MAX_VOLUME, float(value) / FULL_LOUDNESS));
+	if (g_music_stream) {
+		g_music_stream->set_volume(value);
+	}
 }
 
 extern "C" TbBool play_music(const char * fname) {
-	std::lock_guard<std::mutex> guard(g_mix_mutex);
 	game.music_track = -1;
 	snprintf(game.music_fname, sizeof(game.music_fname), "%s", fname);
-	// Mix_PlayMusic will stop anything currently playing and eventually
-	// calls on_music_finished so theres no need to call Mix_FreeMusic first.
-	const auto music = Mix_LoadMUS(game.music_fname);
-	if (!music) {
-		WARNLOG("Cannot load music from %s: %s", game.music_fname, Mix_GetError());
-		return false;
-	} else if (Mix_PlayMusic(music, -1) != 0) {
-		Mix_FreeMusic(music);
-		WARNLOG("Cannot play music from %s: %s", game.music_fname, Mix_GetError());
+	try {
+		if (!g_music_stream) {
+			g_music_stream = std::make_unique<openal_stream>();
+		}
+		if (!g_music_stream->open(game.music_fname)) {
+			WARNLOG("Cannot load music from %s", game.music_fname);
+			return false;
+		}
+		g_music_stream->set_volume(g_music_volume);
+		g_music_stream->play(true);
+		JUSTLOG("Playing %s", game.music_fname);
+		return true;
+	} catch (const std::exception & e) {
+		ERRORLOG("Error playing music: %s", e.what());
 		return false;
 	}
-	// g_mix_music will be null here as Mix_PlayMusic ends up calling on_music_finished
-	g_mix_music = music;
-	JUSTLOG("Playing %s", game.music_fname);
-	return true;
 }
 
 extern "C" TbBool play_music_track(int track) {
@@ -541,7 +879,9 @@ extern "C" TbBool play_music_track(int track) {
 extern "C" void pause_music() {
 	JUSTLOG("Pausing music");
 	if (features_enabled & Ft_NoCdMusic) {
-		Mix_PauseMusic();
+		if (g_music_stream) {
+			g_music_stream->pause();
+		}
 	} else {
 		PauseRedbookTrack();
 	}
@@ -550,7 +890,9 @@ extern "C" void pause_music() {
 extern "C" void resume_music() {
 	JUSTLOG("Resuming music");
 	if (features_enabled & Ft_NoCdMusic) {
-		Mix_ResumeMusic();
+		if (g_music_stream) {
+			g_music_stream->resume();
+		}
 	} else {
 		ResumeRedbookTrack();
 	}
@@ -561,8 +903,8 @@ extern "C" void stop_music() {
 	game.music_track = 0;
 	memset(game.music_fname, 0, sizeof(game.music_fname));
 	if (features_enabled & Ft_NoCdMusic) {
-		if (Mix_FadingMusic() != MIX_FADING_OUT) {
-			Mix_FadeOutMusic(1000);
+		if (g_music_stream) {
+			g_music_stream->stop();
 		}
 	} else {
 		StopRedbookTrack();
@@ -584,6 +926,20 @@ extern "C" void MonitorStreamedSoundTrack() {
 			}
 		} catch (const std::exception & e) {
 			ERRORLOG("%s", e.what());
+		}
+	}
+	if (g_music_stream) {
+		try {
+			g_music_stream->update();
+		} catch (const std::exception & e) {
+			ERRORLOG("Music stream error: %s", e.what());
+		}
+	}
+	if (g_speech_stream) {
+		try {
+			g_speech_stream->update();
+		} catch (const std::exception & e) {
+			ERRORLOG("Speech stream error: %s", e.what());
 		}
 	}
 	g_tick_samples.clear();
@@ -793,40 +1149,18 @@ extern "C" SoundSFXID get_sample_sfxid(SoundSmplTblID smptbl_id, SoundBankID ban
 
 extern "C" int InitialiseSDLAudio()
 {
-	if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+	// Initialize SDL audio subsystem for FMV video playback, but don't open a device
+	// OpenAL handles all music/speech; FMV videos will use SDL_OpenAudioDevice
+	if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
 		ERRORLOG("Unable to initialise SDL audio subsystem: %s", SDL_GetError());
 		return 0;
 	}
-	int flags = Mix_Init(MIX_INIT_OGG|MIX_INIT_MP3);
-	if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0)
-	{
-		ERRORLOG("Could not open audio device for SDL mixer: %s", Mix_GetError());
-		Mix_Quit();
-		return 0;
-	}
-	Mix_ReserveChannels(1); // reserve for external speech samples
-	Mix_HookMusicFinished(on_music_finished); // register callback so we can do things
-	return flags;
+	return 0;
 }
 
 extern "C" void ShutDownSDLAudio()
 {
-	int frequency, channels;
-	unsigned short format;
-	int i = Mix_QuerySpec(&frequency, &format, &channels);
-	if (i == 0)
-	{
-		ERRORLOG("Could not query SDL mixer: %s", Mix_GetError());
-	}
-	while (i > 0)
-	{
-		Mix_CloseAudio();
-		i--;
-	}
-	while (Mix_Init(0))
-	{
-		Mix_Quit();
-	}
+	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 }
 
 extern "C" TbBool play_streamed_sample(const char* fname, SoundVolume volume)
@@ -834,42 +1168,35 @@ extern "C" TbBool play_streamed_sample(const char* fname, SoundVolume volume)
 	if (SoundDisabled || fname == nullptr || strlen(fname) == 0) {
 		return false;
 	}
-	const auto sample = Mix_LoadWAV(fname);
-	if (sample == nullptr) {
-		ERRORLOG("Cannot load \"%s\": %s", fname, Mix_GetError());
+	if (!g_speech_stream) {
+		try {
+			g_speech_stream = std::make_unique<openal_stream>();
+		} catch (const std::exception & e) {
+			ERRORLOG("%s", e.what());
+			return false;
+		}
+	}
+	if (!g_speech_stream->open(fname)) {
+		ERRORLOG("Cannot load \"%s\"", fname);
 		return false;
 	}
-	// SoundVolume ranges 0..255 but MIX_MAX_VOLUME ranges 0..128
-	Mix_VolumeChunk(sample, volume / 2);
-	if (Mix_PlayChannel(MIX_SPEECH_CHANNEL, sample, 0) != 0) {
-		Mix_FreeChunk(sample);
-		ERRORLOG("Cannot play \"%s\": %s", fname, Mix_GetError());
-		return false;
-	}
-	std::lock_guard<std::mutex> guard(g_mix_mutex);
-	const auto old_sample = std::exchange(g_streamed_sample, sample);
-	if (old_sample) {
-		Mix_FreeChunk(old_sample);
-	}
+	g_speech_stream->set_volume(volume);
+	g_speech_stream->play(false);
 	return true;
 }
 
 extern "C" void stop_streamed_samples()
 {
-	Mix_HaltChannel(MIX_SPEECH_CHANNEL);
-	std::lock_guard<std::mutex> guard(g_mix_mutex);
-	const auto old_sample = std::exchange(g_streamed_sample, nullptr);
-	if (old_sample) {
-		Mix_FreeChunk(g_streamed_sample);
+	if (g_speech_stream) {
+		g_speech_stream->stop();
 	}
 }
 
 extern "C" void set_streamed_sample_volume(SoundVolume volume) {
-	if (SoundDisabled || g_streamed_sample == nullptr) {
+	if (SoundDisabled || !g_speech_stream) {
 		return;
 	}
-	// SoundVolume ranges 0..255 but MIX_MAX_VOLUME ranges 0..128
-	Mix_VolumeChunk(g_streamed_sample, volume / 2);
+	g_speech_stream->set_volume(volume);
 }
 
 extern "C" void toggle_bbking_mode() {
