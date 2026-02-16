@@ -387,19 +387,14 @@ deps/centijson/include/json.h: deps/centijson/libjson.a
 	cp deps/centijson/src/json-ptr.h deps/centijson/include/
 	cp deps/centijson/src/value.h deps/centijson/include/
 
-deps/enet6-lin64.tar.gz:
-	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/20260213/enet6-lin64.tar.gz"
+deps/enet6/include/enet6/enet.h: | deps/enet6
+	git clone https://github.com/SirLynix/enet6.git deps/enet6/src
+	$(MKDIR) deps/enet6/include/enet6
+	cp deps/enet6/src/include/enet6/* deps/enet6/include/enet6/
 
-deps/enet6/include/enet6/enet.h: deps/enet6-lin64.tar.gz | deps/enet6
-	tar xzmf $< -C deps/enet6
-
-deps/libcurl-lin64.tar.gz:
-	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/20260310/libcurl-lin64.tar.gz"
-
-deps/libcurl/lib/libcurl.a: deps/libcurl-lin64.tar.gz | deps/libcurl
-	tar xzmf $< -C deps/libcurl
-
-deps/libcurl/include/curl/curl.h: deps/libcurl/lib/libcurl.a
+deps/enet6/libenet6.a: deps/enet6/include/enet6/enet.h | deps/enet6
+	cd deps/enet6/src && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+	cp deps/enet6/src/build/libenet6.a $@
 
 src/ver_defs.h: version.mk
 	$(ECHO) "#define VER_MAJOR   $(VER_MAJOR)" > $@.swp
