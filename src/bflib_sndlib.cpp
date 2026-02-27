@@ -53,6 +53,7 @@ ALCdevice_ptr g_openal_device;
 ALCcontext_ptr g_openal_context;
 std::set<uint32_t> g_tick_samples;
 bool g_bb_king_mode = false;
+bool g_audio_suspended = false;
 
 enum source_flags {
 	bb_king_mode = 1,
@@ -814,6 +815,56 @@ extern "C" void FreeAudio() {
 	g_openal_device = nullptr;
 }
 
+extern "C" void SuspendAudioForVideo() {
+	// Temporarily close OpenAL device so SDL can use ALSA for video playback
+	if (!g_openal_device && !g_openal_context) {
+		return; // Already suspended or not initialized
+	}
+	if (g_music_stream) {
+		g_music_stream->stop();
+	}
+	if (g_speech_stream) {
+		g_speech_stream->stop();
+	}
+	g_openal_context = nullptr;
+	g_openal_device = nullptr;
+	g_audio_suspended = true;
+	JUSTLOG("Suspended OpenAL for video playback");
+}
+
+extern "C" void ResumeAudioAfterVideo() {
+	// Reinitialize OpenAL after video playback
+	if (!g_audio_suspended) {
+		return; // Not suspended
+	}
+	if (SoundDisabled) {
+		g_audio_suspended = false;
+		return;
+	}
+	try {
+		ALCdevice_ptr device(alcOpenDevice(nullptr));
+		if (!device) {
+			throw openal_error("Cannot reopen audio device after video");
+		}
+		ALCcontext_ptr context(alcCreateContext(device.get(), nullptr));
+		if (!context) {
+			throw openal_error("Cannot recreate context after video");
+		}
+		if (!alcMakeContextCurrent(context.get())) {
+			throw openal_error("Cannot make context current after video");
+		}
+		g_openal_device = std::move(device);
+		g_openal_context = std::move(context);
+		// Restore listener gain
+		alListenerf(AL_GAIN, 1.0f);
+		g_audio_suspended = false;
+		JUSTLOG("Resumed OpenAL after video playback");
+	} catch (const std::exception & e) {
+		ERRORLOG("Cannot resume audio after video: %s", e.what());
+		g_audio_suspended = false;
+	}
+}
+
 extern "C" void SetSoundMasterVolume(SoundVolume volume) {
 	try {
 		// Set OpenAL listener gain to maximum so we can split up the mentor speech volume slider from the sound effects volume slider
@@ -912,7 +963,7 @@ extern "C" void stop_music() {
 }
 
 extern "C" TbBool GetSoundInstalled() {
-	return g_openal_device && g_openal_context;
+	return (g_openal_device && g_openal_context) || g_audio_suspended;
 }
 
 // This function gets called every tick
