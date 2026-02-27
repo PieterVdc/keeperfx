@@ -11,6 +11,8 @@ if [[ ! "$CURRENT_BRANCH" =~ portmaster ]]; then
     echo "The portmaster branch has ARM64 optimizations and SDL2 fixes."
     echo "Current branch: $CURRENT_BRANCH"
 fi
+git fetch origin portmaster
+git pull origin portmaster
 
 # Create cache directory for built dependencies
 CACHE_DIR="$(pwd)/build-cache-docker"

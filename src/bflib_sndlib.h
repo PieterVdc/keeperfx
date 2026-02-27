@@ -33,6 +33,8 @@ extern "C" {
 #endif
 
 void FreeAudio(void);
+void SuspendAudioForVideo(void);
+void ResumeAudioAfterVideo(void);
 void SetSoundMasterVolume(SoundVolume);
 TbBool GetSoundInstalled(void);
 void MonitorStreamedSoundTrack(void);

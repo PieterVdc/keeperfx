@@ -22,6 +22,7 @@
 
 #include "bflib_basics.h"
 #include "bflib_sound.h"
+#include "bflib_sndlib.h"
 #include "bflib_video.h"
 #include "bflib_fmvids.h"
 #include "bflib_mouse.h"
@@ -86,10 +87,18 @@ short play_smacker_file(char *filename, FrontendMenuState nstate)
   }
   if (result)
   {
+    // Temporarily suspend OpenAL so SDL can use the audio device
+    if (!SoundDisabled) {
+      SuspendAudioForVideo();
+    }
     if (!play_smk(filename, movie_flags))
     {
       ERRORLOG("Smacker play error");
       result=0;
+    }
+    // Resume OpenAL after video
+    if (!SoundDisabled) {
+      ResumeAudioAfterVideo();
     }
   }
   if (nstate>-2)
