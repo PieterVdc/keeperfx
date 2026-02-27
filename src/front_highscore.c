@@ -61,7 +61,7 @@ static void finalize_high_score_entry(TbBool restore_default_name)
     struct HighScore* hscore = &campaign.hiscore_table[high_score_entry_input_active];
     if (restore_default_name)
     {
-        snprintf(hscore->name, HISCORE_NAME_LENGTH, "%s", get_string(GUIStr_TeamLeader));
+        snprintf(hscore->name, HISCORE_NAME_LENGTH, "%s", get_string(GUIStr_Keeper));
     }
     else
     {
@@ -306,7 +306,7 @@ void add_score_to_high_score_table(void)
     {
         if (last_used_input_device == ID_Controller)
         {
-            snprintf(high_score_entry, HISCORE_NAME_LENGTH, "%s", "Keeper");
+            snprintf(high_score_entry, HISCORE_NAME_LENGTH, "%s", get_string(GUIStr_Keeper));
         }
         // Preparing input in the new entry
         // Note that we're not clearing previous name - this way it may be easily kept unchanged
