@@ -3974,8 +3974,15 @@ void game_loop(void)
       dungeon->lvstats.end_time = starttime;
       if (!TimerNoReset)
       {
-        TimerFreeze = true;
-        memset(&Timer, 0, sizeof(Timer));
+          if (is_feature_on(Ft_SkipHeartZoom))
+          {
+              timerstarttime = starttime;
+          }
+          else
+          {
+              TimerFreeze = true;
+          }
+          memset(&Timer, 0, sizeof(Timer));
       }
       LbScreenClear(0);
       LbScreenSwap();
@@ -4246,12 +4253,13 @@ short process_command_line(unsigned short argc, char *argv[])
           if (strcasecmp(pr2str, "game") == 0)
           {
               TimerGame = true;
+              narg++;
           }
           else if (strcasecmp(pr2str, "continuous") == 0)
           {
               TimerNoReset = true;
+              narg++;
           }
-          narg++;
       }
       else if ( strcasecmp(parstr,"config") == 0 )
       {
