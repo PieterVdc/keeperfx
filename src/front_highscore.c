@@ -56,19 +56,15 @@ static void finalize_high_score_entry(TbBool restore_default_name)
 {
     if ((high_score_entry_input_active < 0) || (high_score_entry_input_active >= campaign.hiscore_count))
     {
-        SYNCDBG(8,"Finalize highscore skipped; input_active=%ld hiscore_count=%ld", high_score_entry_input_active, campaign.hiscore_count);
         return;
     }
     struct HighScore* hscore = &campaign.hiscore_table[high_score_entry_input_active];
     if (restore_default_name)
     {
-        const char *keeper_name = get_string(GUIStr_Keeper);
-        SYNCDBG(8,"Finalize highscore default; idx=%ld input_device=%u keeper='%s'", high_score_entry_input_active, last_used_input_device, keeper_name);
-        snprintf(hscore->name, HISCORE_NAME_LENGTH, "%s", keeper_name);
+        snprintf(hscore->name, HISCORE_NAME_LENGTH, "%s", get_string(GUIStr_Keeper));
     }
     else
     {
-        SYNCDBG(8,"Finalize highscore custom; idx=%ld input_device=%u name='%s'", high_score_entry_input_active, last_used_input_device, high_score_entry);
         snprintf(hscore->name, HISCORE_NAME_LENGTH, "%s", high_score_entry);
     }
     highscore_scroll_offset = high_score_entry_input_active - (VISIBLE_HIGH_SCORES_COUNT-1);
@@ -177,7 +173,6 @@ void frontend_draw_high_score_table(struct GuiButton *gbtn)
 
 void frontend_quit_high_score_table(struct GuiButton *gbtn)
 {
-    SYNCDBG(8,"Quit highscore table; input_active=%ld input_device=%u", high_score_entry_input_active, last_used_input_device);
     finalize_high_score_entry(false);
     FrontendMenuState nstate = get_menu_state_when_back_from_substate(FeSt_HIGH_SCORES);
     frontend_set_state(nstate);
@@ -309,12 +304,9 @@ void add_score_to_high_score_table(void)
     int idx = add_high_score_entry(dungeon->lvstats.player_score, get_loaded_level_number(), "");
     if (idx >= 0)
     {
-        SYNCDBG(8,"Add highscore entry; idx=%d input_device=%u", idx, last_used_input_device);
         if (last_used_input_device == ID_Controller)
         {
-            const char *keeper_name = get_string(GUIStr_Keeper);
-            SYNCDBG(8,"Controller autofill highscore name='%s'", keeper_name);
-            snprintf(high_score_entry, HISCORE_NAME_LENGTH, "%s", keeper_name);
+            snprintf(high_score_entry, HISCORE_NAME_LENGTH, "%s", get_string(GUIStr_Keeper));
         }
         // Preparing input in the new entry
         // Note that we're not clearing previous name - this way it may be easily kept unchanged
@@ -322,7 +314,6 @@ void add_score_to_high_score_table(void)
         high_score_entry_index = strlen(high_score_entry);
     } else
     {
-        SYNCDBG(8,"Add highscore entry rejected; input_device=%u", last_used_input_device);
         high_score_entry_input_active = -1;
         high_score_entry_index = 0;
     }

@@ -295,14 +295,6 @@ static void process_event(const SDL_Event *ev)
     int x;
     SYNCDBG(10, "Starting");
 
-#define SET_LAST_INPUT_DEVICE(dev,label) \
-    do { \
-        if (last_used_input_device != (dev)) { \
-            SYNCDBG(8, "Input device switch: %u -> %u on %s", last_used_input_device, (unsigned int)(dev), (label)); \
-        } \
-        last_used_input_device = (dev); \
-    } while (0)
-
     switch (ev->type)
     {
     case SDL_KEYDOWN:
@@ -314,7 +306,7 @@ static void process_event(const SDL_Event *ev)
             
             keyboardControl(KActn_KEYDOWN,x,keyboard_mods_mapping(&ev->key), ev->key.keysym.sym);
         }
-        SET_LAST_INPUT_DEVICE(ID_Keyboard_Mouse, "SDL_KEYDOWN");
+        last_used_input_device = ID_Keyboard_Mouse;
         break;
 
     case SDL_KEYUP:
@@ -325,7 +317,7 @@ static void process_event(const SDL_Event *ev)
                 num_keys_down--;
             keyboardControl(KActn_KEYUP,x,keyboard_mods_mapping(&ev->key), ev->key.keysym.sym);
         }
-        SET_LAST_INPUT_DEVICE(ID_Keyboard_Mouse, "SDL_KEYUP");
+        last_used_input_device = ID_Keyboard_Mouse;
         break;
 
     case SDL_MOUSEMOTION:
@@ -356,7 +348,7 @@ static void process_event(const SDL_Event *ev)
 
     case SDL_MOUSEBUTTONDOWN:
     case SDL_MOUSEBUTTONUP:
-        SET_LAST_INPUT_DEVICE(ID_Keyboard_Mouse, "SDL_MOUSEBUTTON");
+        last_used_input_device = ID_Keyboard_Mouse;
 
         if(ev->button.button == SDL_BUTTON_LEFT || ev->button.button == SDL_BUTTON_RIGHT || ev->button.button == SDL_BUTTON_MIDDLE)
         {
@@ -385,7 +377,7 @@ static void process_event(const SDL_Event *ev)
         break;
 
     case SDL_MOUSEWHEEL:
-        SET_LAST_INPUT_DEVICE(ID_Keyboard_Mouse, "SDL_MOUSEWHEEL");
+        last_used_input_device = ID_Keyboard_Mouse;
         mouseDelta.x = 0;
         mouseDelta.y = 0;
         mouseControl(ev->wheel.y > 0 ? MActn_WHEELMOVEUP : MActn_WHEELMOVEDOWN, &mouseDelta);
@@ -466,7 +458,7 @@ static void process_event(const SDL_Event *ev)
     case SDL_JOYHATMOTION:
     case SDL_JOYBUTTONDOWN:
     case SDL_JOYBUTTONUP:
-        SET_LAST_INPUT_DEVICE(ID_Controller, "SDL_CONTROLLER/JOY");
+        last_used_input_device = ID_Controller;
         JEvent(ev);
         break;
 
@@ -474,8 +466,6 @@ static void process_event(const SDL_Event *ev)
         lbUserQuit = 1;
         break;
     }
-
-#undef SET_LAST_INPUT_DEVICE
 }
 
 /******************************************************************************/
