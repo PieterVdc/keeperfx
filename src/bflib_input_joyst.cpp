@@ -28,7 +28,9 @@
 #include "bflib_video.h"
 #include "bflib_planar.h"
 #include "frontmenu_ingame_tabs.h"
+#include "front_landview.h"
 #include "config_keeperfx.h"
+#include "config.h"
 #include "config_settings.h"
 #include "front_input.h"
 #include "game_legacy.h"
@@ -201,6 +203,56 @@ static TbBool find_nearest_button_in_direction(long mouse_x, long mouse_y, float
     return btn_found;
 }
 
+static TbBool find_nearest_landview_flag_in_direction(long mouse_x, long mouse_y, float dx, float dy, long *snap_to_x, long *snap_to_y)
+{
+    const float MIN_DOT = 0.3f;
+    float best_score = -1.0f;
+    *snap_to_x = 0;
+    *snap_to_y = 0;
+
+    float mag = sqrtf(dx * dx + dy * dy);
+    if (mag < 0.01f) return false;
+    dx /= mag;
+    dy /= mag;
+
+    long screen_max_x = map_info.screen_shift_x + lbDisplay.PhysicalScreenWidth * 16 / units_per_pixel_landview;
+    long screen_max_y = map_info.screen_shift_y + lbDisplay.PhysicalScreenHeight * 16 / units_per_pixel_landview;
+
+    TbBool flag_found = false;
+    struct LevelInformation* lvinfo = get_first_level_info();
+    while (lvinfo != NULL && lvinfo->lvnum != 0)
+    {
+        if ((frontend_menu_state == FeSt_LAND_VIEW && lvinfo->level_type & LvKind_IsMulti)
+         || (frontend_menu_state == FeSt_NETLAND_VIEW && (lvinfo->level_type & (LvKind_IsSingle|LvKind_IsExtra|LvKind_IsBonus))))
+        {
+            lvinfo = get_next_level_info(lvinfo);
+            continue;
+        }
+            
+        if (lvinfo->state == LvSt_Visible)
+        {
+            if ((lvinfo->ensign_zoom_x >= map_info.screen_shift_x) && (lvinfo->ensign_zoom_x < screen_max_x)
+             && (lvinfo->ensign_zoom_y >= map_info.screen_shift_y) && (lvinfo->ensign_zoom_y < screen_max_y))
+            {
+                long btn_center_x = scale_value_landview(lvinfo->ensign_x - (long)map_info.screen_shift_x);
+                long btn_center_y = scale_value_landview(lvinfo->ensign_y - (long)map_info.screen_shift_y);
+                float score = get_button_score(mouse_x, mouse_y, btn_center_x, btn_center_y, dx, dy, MIN_DOT);
+                if (score > best_score)
+                {
+                    *snap_to_x = btn_center_x;
+                    *snap_to_y = btn_center_y;
+                    best_score = score;
+                    flag_found = true;
+                }
+            }
+        }
+        lvinfo = get_next_level_info(lvinfo);
+    }
+
+    return flag_found;
+
+}
+
 static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y)
 {
     if (snap_to_x == NULL || snap_to_y == NULL) return;
@@ -221,7 +273,13 @@ static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y)
 static void snap_to_direction(long mouse_x, long mouse_y, float dx, float dy)
 {
     long snap_to_x, snap_to_y;
-    TbBool found = find_nearest_button_in_direction(mouse_x, mouse_y, dx, dy, &snap_to_x, &snap_to_y);
+    TbBool found;
+    if ((frontend_menu_state == FeSt_LAND_VIEW) || (frontend_menu_state == FeSt_NETLAND_VIEW)) {
+        found = find_nearest_landview_flag_in_direction(mouse_x, mouse_y, dx, dy, &snap_to_x, &snap_to_y);
+    }
+    else {
+        found = find_nearest_button_in_direction(mouse_x, mouse_y, dx, dy, &snap_to_x, &snap_to_y);
+    }
 
     if (found)
         snap_cursor_to_button(&snap_to_x, &snap_to_y);
