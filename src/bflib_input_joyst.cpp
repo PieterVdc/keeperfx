@@ -28,6 +28,7 @@
 #include "bflib_video.h"
 #include "bflib_planar.h"
 #include "frontmenu_ingame_tabs.h"
+#include "frontmenu_select.h"
 #include "config_keeperfx.h"
 #include "config_settings.h"
 #include "front_input.h"
@@ -79,6 +80,68 @@ static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y);
 extern void gui_get_creature_in_battle(struct GuiButton *gbtn);
 extern void gui_setup_friend_over(struct GuiButton *gbtn);
 /******************************************************************************/
+
+static TbBool try_scroll_select_list_edge(long mouse_x, long mouse_y, float dx, float dy)
+{
+    if (fabsf(dy) < fabsf(dx)) {
+        return false;
+    }
+
+    const TbBool is_down = (dy > 0.0f);
+    const TbBool is_up = (dy < 0.0f);
+
+    for (int i = 0; i < ACTIVE_BUTTONS_COUNT; i++) {
+        struct GuiButton* gbtn = &active_buttons[i];
+
+        if (!(gbtn->flags & LbBtnF_Active)) continue;
+        if (!(gbtn->flags & LbBtnF_Visible)) continue;
+        if (!(gbtn->flags & LbBtnF_Enabled)) continue;
+        if (gbtn->click_event == NULL) continue;
+
+        if (mouse_x < gbtn->scr_pos_x || mouse_x >= (gbtn->scr_pos_x + gbtn->width) ||
+            mouse_y < gbtn->scr_pos_y || mouse_y >= (gbtn->scr_pos_y + gbtn->height)) {
+            continue;
+        }
+
+        if (is_down && gbtn->content.lval != 51) {
+            return false;
+        }
+        if (is_up && gbtn->content.lval != 45) {
+            return false;
+        }
+
+        if (gbtn->click_event == frontend_level_select) {
+            if (is_down) {
+                frontend_level_select_down(NULL);
+            } else {
+                frontend_level_select_up(NULL);
+            }
+            return true;
+        }
+
+        if (gbtn->click_event == frontend_campaign_select) {
+            if (is_down) {
+                frontend_campaign_select_down(NULL);
+            } else {
+                frontend_campaign_select_up(NULL);
+            }
+            return true;
+        }
+
+        if (gbtn->click_event == frontend_mappack_select) {
+            if (is_down) {
+                frontend_mappack_select_down(NULL);
+            } else {
+                frontend_mappack_select_up(NULL);
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    return false;
+}
 
 static float get_button_score(long mouse_x, long mouse_y, long btn_center_x, long btn_center_y, float dx, float dy, float MIN_DOT)
 {
@@ -220,6 +283,10 @@ static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y)
 
 static void snap_to_direction(long mouse_x, long mouse_y, float dx, float dy)
 {
+    if (try_scroll_select_list_edge(mouse_x, mouse_y, dx, dy)) {
+        return;
+    }
+
     long snap_to_x, snap_to_y;
     TbBool found = find_nearest_button_in_direction(mouse_x, mouse_y, dx, dy, &snap_to_x, &snap_to_y);
 
