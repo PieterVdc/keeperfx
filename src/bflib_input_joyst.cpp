@@ -80,7 +80,6 @@ static float input_delta_time = 0.0f;
 static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y);
 extern void gui_get_creature_in_battle(struct GuiButton *gbtn);
 extern void gui_setup_friend_over(struct GuiButton *gbtn);
-extern const struct TbSprite *get_ensign_sprite_for_level(struct LevelInformation *lvinfo, int anim_frame);
 /******************************************************************************/
 
 static float get_button_score(long mouse_x, long mouse_y, long btn_center_x, long btn_center_y, float dx, float dy, float MIN_DOT)
