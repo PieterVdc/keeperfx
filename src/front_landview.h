@@ -23,6 +23,7 @@
 #include "bflib_basics.h"
 #include "globals.h"
 #include "bflib_sprite.h"
+#include "config_campaigns.h"
 #include "net_game.h"
 
 #ifdef __cplusplus
