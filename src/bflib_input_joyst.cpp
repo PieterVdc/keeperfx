@@ -28,6 +28,7 @@
 #include "bflib_video.h"
 #include "bflib_planar.h"
 #include "frontmenu_ingame_tabs.h"
+#include "frontmenu_select.h"
 #include "config_keeperfx.h"
 #include "config_settings.h"
 #include "front_input.h"
@@ -79,6 +80,50 @@ static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y);
 extern void gui_get_creature_in_battle(struct GuiButton *gbtn);
 extern void gui_setup_friend_over(struct GuiButton *gbtn);
 /******************************************************************************/
+
+static TbBool try_scroll_down_on_bottom_select_item(long mouse_x, long mouse_y, float dx, float dy)
+{
+    if (dy <= 0.0f || fabsf(dy) < fabsf(dx)) {
+        return false;
+    }
+
+    for (int i = 0; i < ACTIVE_BUTTONS_COUNT; i++) {
+        struct GuiButton* gbtn = &active_buttons[i];
+
+        if (!(gbtn->flags & LbBtnF_Active)) continue;
+        if (!(gbtn->flags & LbBtnF_Visible)) continue;
+        if (!(gbtn->flags & LbBtnF_Enabled)) continue;
+        if (gbtn->click_event == NULL) continue;
+
+        if (mouse_x < gbtn->scr_pos_x || mouse_x >= (gbtn->scr_pos_x + gbtn->width) ||
+            mouse_y < gbtn->scr_pos_y || mouse_y >= (gbtn->scr_pos_y + gbtn->height)) {
+            continue;
+        }
+
+        if (gbtn->content.lval != 51) {
+            return false;
+        }
+
+        if (gbtn->click_event == frontend_level_select) {
+            frontend_level_select_down(NULL);
+            return true;
+        }
+
+        if (gbtn->click_event == frontend_campaign_select) {
+            frontend_campaign_select_down(NULL);
+            return true;
+        }
+
+        if (gbtn->click_event == frontend_mappack_select) {
+            frontend_mappack_select_down(NULL);
+            return true;
+        }
+
+        return false;
+    }
+
+    return false;
+}
 
 static float get_button_score(long mouse_x, long mouse_y, long btn_center_x, long btn_center_y, float dx, float dy, float MIN_DOT)
 {
@@ -220,6 +265,10 @@ static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y)
 
 static void snap_to_direction(long mouse_x, long mouse_y, float dx, float dy)
 {
+    if (try_scroll_down_on_bottom_select_item(mouse_x, mouse_y, dx, dy)) {
+        return;
+    }
+
     long snap_to_x, snap_to_y;
     TbBool found = find_nearest_button_in_direction(mouse_x, mouse_y, dx, dy, &snap_to_x, &snap_to_y);
 
