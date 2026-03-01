@@ -80,6 +80,7 @@ static float input_delta_time = 0.0f;
 static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y);
 extern void gui_get_creature_in_battle(struct GuiButton *gbtn);
 extern void gui_setup_friend_over(struct GuiButton *gbtn);
+extern const struct TbSprite *get_ensign_sprite_for_level(struct LevelInformation *lvinfo, int anim_frame);
 /******************************************************************************/
 
 static float get_button_score(long mouse_x, long mouse_y, long btn_center_x, long btn_center_y, float dx, float dy, float MIN_DOT)
@@ -236,6 +237,11 @@ static TbBool find_nearest_landview_flag_in_direction(long mouse_x, long mouse_y
             {
                 long btn_center_x = scale_value_landview(lvinfo->ensign_x - (long)map_info.screen_shift_x);
                 long btn_center_y = scale_value_landview(lvinfo->ensign_y - (long)map_info.screen_shift_y);
+                const struct TbSprite *spr = get_ensign_sprite_for_level(lvinfo, 0);
+                if (spr != NULL)
+                {
+                    btn_center_y = scale_value_landview(lvinfo->ensign_y - (long)map_info.screen_shift_y - (long)((spr->SHeight * 2) / 3));
+                }
                 float score = get_button_score(mouse_x, mouse_y, btn_center_x, btn_center_y, dx, dy, MIN_DOT);
                 if (score > best_score)
                 {
