@@ -81,11 +81,14 @@ extern void gui_get_creature_in_battle(struct GuiButton *gbtn);
 extern void gui_setup_friend_over(struct GuiButton *gbtn);
 /******************************************************************************/
 
-static TbBool try_scroll_down_on_bottom_select_item(long mouse_x, long mouse_y, float dx, float dy)
+static TbBool try_scroll_select_list_edge(long mouse_x, long mouse_y, float dx, float dy)
 {
-    if (dy <= 0.0f || fabsf(dy) < fabsf(dx)) {
+    if (fabsf(dy) < fabsf(dx)) {
         return false;
     }
+
+    const TbBool is_down = (dy > 0.0f);
+    const TbBool is_up = (dy < 0.0f);
 
     for (int i = 0; i < ACTIVE_BUTTONS_COUNT; i++) {
         struct GuiButton* gbtn = &active_buttons[i];
@@ -100,22 +103,37 @@ static TbBool try_scroll_down_on_bottom_select_item(long mouse_x, long mouse_y, 
             continue;
         }
 
-        if (gbtn->content.lval != 51) {
+        if (is_down && gbtn->content.lval != 51) {
+            return false;
+        }
+        if (is_up && gbtn->content.lval != 45) {
             return false;
         }
 
         if (gbtn->click_event == frontend_level_select) {
-            frontend_level_select_down(NULL);
+            if (is_down) {
+                frontend_level_select_down(NULL);
+            } else {
+                frontend_level_select_up(NULL);
+            }
             return true;
         }
 
         if (gbtn->click_event == frontend_campaign_select) {
-            frontend_campaign_select_down(NULL);
+            if (is_down) {
+                frontend_campaign_select_down(NULL);
+            } else {
+                frontend_campaign_select_up(NULL);
+            }
             return true;
         }
 
         if (gbtn->click_event == frontend_mappack_select) {
-            frontend_mappack_select_down(NULL);
+            if (is_down) {
+                frontend_mappack_select_down(NULL);
+            } else {
+                frontend_mappack_select_up(NULL);
+            }
             return true;
         }
 
@@ -265,7 +283,7 @@ static void snap_cursor_to_button(long *snap_to_x, long *snap_to_y)
 
 static void snap_to_direction(long mouse_x, long mouse_y, float dx, float dy)
 {
-    if (try_scroll_down_on_bottom_select_item(mouse_x, mouse_y, dx, dy)) {
+    if (try_scroll_select_list_edge(mouse_x, mouse_y, dx, dy)) {
         return;
     }
 
