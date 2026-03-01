@@ -43,7 +43,7 @@ extern "C" {
 #endif
 /******************************************************************************/
 
-//does nothing but isn't NULL, so the controller snapping logic doesn't ignore the button
+// Non-NULL no-op callback so that the controller snapping logic does not ignore the button
 static void no_op(struct GuiButton* gbtn) {}
 
 #define resurrect_creature_items_visible  6

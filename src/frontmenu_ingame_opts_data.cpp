@@ -46,7 +46,7 @@ void maintain_compsetting_button(struct GuiButton* gbtn);
 /******************************************************************************/
 struct MsgBoxInfo MsgBox;
 
-//does nothing but isn't NULL, so the controller snapping logic doesn't ignore the button
+// Non-NULL no-op callback so that the controller snapping logic does not ignore the button
 static void no_op(struct GuiButton* gbtn) {}
 
 struct GuiButtonInit options_menu_buttons[] = {
