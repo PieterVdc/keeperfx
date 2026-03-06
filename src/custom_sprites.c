@@ -25,6 +25,7 @@
 #include "gui_draw.h"
 #include "frontend.h"
 #include "bflib_dernc.h"
+#include "bflib_datetm.h"
 #include "sprites.h"
 #include "config_spritecolors.h"
 #include <spng.h>
@@ -36,10 +37,6 @@
 // Performance tests
 // #define OUTER
 // #define INNER
-#if defined(OUTER) || defined(INNER)
-#include <SDL2/SDL.h>
-#endif
-
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -1194,7 +1191,7 @@ collect_sprites(const char *path, unzFile zip, const char *blender_scene, struct
                     store_ksp_fc = context->ksp_first->FramesCount;
 #ifdef INNER
                 fprintf(stderr, "F:%s/%s\n", path, name);
-                fprintf(stderr, "A:%d\n", SDL_GetTicks());
+                fprintf(stderr, "A:%u\n", (unsigned)LbTimerClock());
 #endif
                 if (!read_png_data(zip, path, context, name, fp, node, itm))
                 {
@@ -1210,7 +1207,7 @@ collect_sprites(const char *path, unzFile zip, const char *blender_scene, struct
                     return 1;
                 }
 #ifdef INNER
-                fprintf(stderr, "B:%d\n", SDL_GetTicks());
+                fprintf(stderr, "B:%u\n", (unsigned)LbTimerClock());
 #endif
                 if (UNZ_OK != unzCloseCurrentFile(zip))
                 {

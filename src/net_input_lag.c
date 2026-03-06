@@ -8,7 +8,6 @@
 #include "game_legacy.h"
 #include "bflib_network.h"
 #include "bflib_network_internal.h"
-#include "bflib_enet.h"
 #include "bflib_datetm.h"
 #include "frontend.h"
 #include "front_landview.h"
@@ -108,7 +107,7 @@ void LbNetwork_UpdateInputLagIfHost(void) {
     for (id = 0; id < netstate.max_players; id += 1) {
         if (id == netstate.my_id) { continue; }
         if (!(netstate.users[id].progress == USER_LOGGEDIN)) { continue; }
-        unsigned long ping = GetPing(id);
+        unsigned long ping = 0;
         if (ping <= 0) {
             MULTIPLAYER_LOG("Player %d (%s) has no RTT data yet", id, netstate.users[id].name);
             continue;

@@ -20,6 +20,96 @@
 #include "pre_inc.h"
 #include "bflib_network.h"
 
+#if defined(PLATFORM_WII)
+
+#include "post_inc.h"
+
+static TbError tcpSP_init(NetDropCallback drop_callback)
+{
+    (void)drop_callback;
+    return Lb_OK;
+}
+
+static void tcpSP_exit(void)
+{
+}
+
+static TbError tcpSP_host(const char * session, void * options)
+{
+    (void)session;
+    (void)options;
+    return Lb_FAIL;
+}
+
+static TbError tcpSP_join(const char * session, void * options)
+{
+    (void)session;
+    (void)options;
+    return Lb_FAIL;
+}
+
+static void tcpSP_update(NetNewUserCallback new_user)
+{
+    (void)new_user;
+}
+
+static void tcpSP_sendmsg_single(NetUserId destination, const char * buffer, size_t size)
+{
+    (void)destination;
+    (void)buffer;
+    (void)size;
+}
+
+static void tcpSP_sendmsg_single_unsequenced(NetUserId destination, const char * buffer, size_t size)
+{
+    (void)destination;
+    (void)buffer;
+    (void)size;
+}
+
+static void tcpSP_sendmsg_all(const char * buffer, size_t size)
+{
+    (void)buffer;
+    (void)size;
+}
+
+static size_t tcpSP_msgready(NetUserId source, unsigned timeout)
+{
+    (void)source;
+    (void)timeout;
+    return 0;
+}
+
+static size_t tcpSP_readmsg(NetUserId source, char * buffer, size_t max_size)
+{
+    (void)source;
+    (void)buffer;
+    (void)max_size;
+    return 0;
+}
+
+static void tcpSP_drop_user(NetUserId id)
+{
+    (void)id;
+}
+
+const struct NetSP tcpSP =
+{
+    tcpSP_init,
+    tcpSP_exit,
+    tcpSP_host,
+    tcpSP_join,
+    tcpSP_update,
+    tcpSP_sendmsg_single,
+    tcpSP_sendmsg_single_unsequenced,
+    tcpSP_sendmsg_all,
+    tcpSP_msgready,
+    tcpSP_readmsg,
+    tcpSP_drop_user,
+};
+
+#else
+
 #include <assert.h>
 #include <SDL2/SDL_net.h>
 #include "post_inc.h"
@@ -561,3 +651,5 @@ static void tcpSP_drop_user(NetUserId id)
         spstate.drop_callback(id, NETDROP_MANUAL);
     }
 }
+
+#endif

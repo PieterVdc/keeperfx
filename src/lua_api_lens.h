@@ -19,7 +19,12 @@
 #ifndef LUA_API_LENS_H
 #define LUA_API_LENS_H
 
+#if !defined(PLATFORM_WII)
 #include <lua.h>
+#else
+struct lua_State;
+typedef struct lua_State lua_State;
+#endif
 #include "bflib_basics.h"
 
 #ifdef __cplusplus

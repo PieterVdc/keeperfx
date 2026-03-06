@@ -5,11 +5,13 @@
 #include "bflib_datetm.h"
 #include "bflib_sound.h"
 #include "bflib_fileio.h"
+#if !defined(PLATFORM_WII)
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <AL/alext.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
+#endif
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -23,6 +25,157 @@
 #include <atomic>
 #include <set>
 #include "post_inc.h"
+
+#if defined(PLATFORM_WII)
+
+namespace {
+SoundVolume g_master_volume = 0;
+SoundVolume g_music_volume = 0;
+bool g_bb_king_mode = false;
+}
+
+extern "C" void FreeAudio() {}
+
+extern "C" void SetSoundMasterVolume(SoundVolume volume) {
+	g_master_volume = volume;
+}
+
+extern "C" void set_music_volume(SoundVolume value) {
+	g_music_volume = value;
+	SetRedbookVolume(value);
+}
+
+extern "C" TbBool play_music(const char * fname) {
+	if (fname == NULL || fname[0] == '\0') {
+		return false;
+	}
+	game.music_track = -1;
+	snprintf(game.music_fname, sizeof(game.music_fname), "%s", fname);
+	return false;
+}
+
+extern "C" TbBool play_music_track(int track) {
+	game.music_track = track;
+	memset(game.music_fname, 0, sizeof(game.music_fname));
+	return false;
+}
+
+extern "C" void pause_music() {}
+
+extern "C" void resume_music() {}
+
+extern "C" void stop_music() {
+	game.music_track = 0;
+	memset(game.music_fname, 0, sizeof(game.music_fname));
+}
+
+extern "C" TbBool GetSoundInstalled() {
+	return false;
+}
+
+extern "C" void MonitorStreamedSoundTrack() {}
+
+extern "C" void * GetSoundDriver() {
+	static int dummy = 0;
+	return &dummy;
+}
+
+extern "C" void StopAllSamples() {}
+
+extern "C" TbBool InitAudio(const SoundSettings * settings) {
+	(void)settings;
+	return false;
+}
+
+extern "C" TbBool IsSamplePlaying(SoundMilesID mss_id) {
+	(void)mss_id;
+	return false;
+}
+
+extern "C" SoundVolume GetCurrentSoundMasterVolume() {
+	return g_master_volume;
+}
+
+extern "C" void SetSampleVolume(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundVolume volume) {
+	(void)emit_id;
+	(void)smptbl_id;
+	(void)volume;
+}
+
+extern "C" void SetSamplePan(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundPan pan) {
+	(void)emit_id;
+	(void)smptbl_id;
+	(void)pan;
+}
+
+extern "C" void SetSamplePitch(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundPitch pitch) {
+	(void)emit_id;
+	(void)smptbl_id;
+	(void)pitch;
+}
+
+extern "C" SoundMilesID play_sample(
+	SoundEmitterID emit_id,
+	SoundSmplTblID smptbl_id,
+	SoundVolume volume,
+	SoundPan pan,
+	SoundPitch pitch,
+	char repeats,
+	unsigned char ctype,
+	SoundBankID bank_id
+) {
+	(void)emit_id;
+	(void)smptbl_id;
+	(void)volume;
+	(void)pan;
+	(void)pitch;
+	(void)repeats;
+	(void)ctype;
+	(void)bank_id;
+	return 0;
+}
+
+extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundBankID bank_id) {
+	(void)emit_id;
+	(void)smptbl_id;
+	(void)bank_id;
+}
+
+extern "C" SoundSFXID get_sample_sfxid(SoundSmplTblID smptbl_id, SoundBankID bank_id) {
+	(void)smptbl_id;
+	(void)bank_id;
+	return 0;
+}
+
+extern "C" int InitialiseSDLAudio()
+{
+	return 0;
+}
+
+extern "C" void ShutDownSDLAudio()
+{
+}
+
+extern "C" TbBool play_streamed_sample(const char* fname, SoundVolume volume)
+{
+	(void)fname;
+	(void)volume;
+	return false;
+}
+
+extern "C" void stop_streamed_samples()
+{
+}
+
+extern "C" void set_streamed_sample_volume(SoundVolume volume) {
+	(void)volume;
+}
+
+extern "C" void toggle_bbking_mode() {
+	g_bb_king_mode = !g_bb_king_mode;
+}
+
+#else
 
 namespace {
 
@@ -872,3 +1025,5 @@ extern "C" void set_streamed_sample_volume(SoundVolume volume) {
 extern "C" void toggle_bbking_mode() {
 	g_bb_king_mode = !g_bb_king_mode;
 }
+
+#endif

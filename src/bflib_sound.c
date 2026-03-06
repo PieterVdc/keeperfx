@@ -797,10 +797,12 @@ long speech_sample_playing(void)
          return false;
      }
      SYNCDBG(17,"Starting");
+#if !defined(PLATFORM_WII)
      if (Mix_Playing(MIX_SPEECH_CHANNEL))
      {
          return true;
      }
+#endif
      long sp_emiter = SpeechEmitter;
      if (sp_emiter != 0)
      {

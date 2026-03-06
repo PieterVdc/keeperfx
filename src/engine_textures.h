@@ -28,7 +28,11 @@ extern "C" {
 #endif
 /******************************************************************************/
 // Num of known texture files
+#if defined(PLATFORM_WII)
+#define TEXTURE_VARIATIONS_COUNT      4
+#else
 #define TEXTURE_VARIATIONS_COUNT      32
+#endif
 
 // Static textures in tmapa
 #define TEXTURE_BLOCKS_STAT_COUNT_A   544

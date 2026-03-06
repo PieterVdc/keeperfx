@@ -26,7 +26,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#ifdef _WIN32
+#if defined(PLATFORM_WII)
+#define ntohl(x) (x)
+#define ntohs(x) (x)
+#elif defined(_WIN32)
 #include <winsock.h>
 #else
 #include <arpa/inet.h>

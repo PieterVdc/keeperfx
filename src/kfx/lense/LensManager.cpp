@@ -571,17 +571,29 @@ TbBool LensManager_SetLensByName(void* mgr, const char* name)
 
 void* LuaLensEffect_Create(const char* name, void* lua_state)
 {
+#if defined(PLATFORM_WII)
+    (void)name;
+    (void)lua_state;
+    return nullptr;
+#else
     if (name == nullptr || lua_state == nullptr) return nullptr;
     return new LuaLensEffect(name, static_cast<lua_State*>(lua_state));
+#endif
 }
 
 void LuaLensEffect_SetDrawCallback(void* effect, int callback_ref)
 {
+#if defined(PLATFORM_WII)
+    (void)effect;
+    (void)callback_ref;
+    return;
+#else
     if (effect == nullptr) {
         ERRORLOG("C WRAPPER: effect is NULL!");
         return;
     }
     static_cast<LuaLensEffect*>(effect)->SetDrawCallback(callback_ref);
+#endif
 }
 
 } // extern "C"

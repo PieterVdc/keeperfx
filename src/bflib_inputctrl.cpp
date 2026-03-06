@@ -35,7 +35,9 @@
 #include "front_input.h"
 #include "game_legacy.h"
 #include "keeperfx.hpp"
+#if !defined(PLATFORM_WII)
 #include <SDL2/SDL.h>
+#endif
 #include "post_inc.h"
 
 using namespace std;
@@ -58,10 +60,77 @@ std::map<int, TbKeyCode> keymap_sdl_to_bf;
 
 static uint16_t num_keys_down = 0;
 
+#if defined(PLATFORM_WII)
+typedef union SDL_Event SDL_Event;
+#endif
+
 void init_controller_input();
 void JEvent(const SDL_Event *ev);
 void poll_controller();
 /******************************************************************************/
+
+#if defined(PLATFORM_WII)
+
+float movement_accum_x = 0.0f;
+float movement_accum_y = 0.0f;
+
+void init_inputcontrol(void)
+{
+}
+
+TbBool LbIsFrozenOrPaused(void)
+{
+    return ((game.operation_flags & GOF_Paused) != 0);
+}
+
+TbBool LbWindowsControl(void)
+{
+    return (lbUserQuit < 1);
+}
+
+TbBool LbIsActive(void)
+{
+    return true;
+}
+
+TbBool LbIsMouseActive(void)
+{
+    return true;
+}
+
+void LbSetMouseGrab(TbBool grab_mouse)
+{
+    lbMouseGrabbed = grab_mouse;
+}
+
+void LbGrabMouseInit(void)
+{
+}
+
+void LbGrabMouseCheck(long grab_event)
+{
+    (void)grab_event;
+}
+
+void init_controller_input(void)
+{
+}
+
+void JEvent(const SDL_Event *ev)
+{
+    (void)ev;
+}
+
+void poll_controller(void)
+{
+}
+
+void controller_rumble(long ms)
+{
+    (void)ms;
+}
+
+#else
 
 /**
  * Converts an SDL mouse button event type and the corresponding mouse button to a Win32 API message.
@@ -645,6 +714,8 @@ void LbGrabMouseCheck(long grab_event)
     }
     LbSetMouseGrab(grab_cursor);
 }
+
+#endif
 
 /******************************************************************************/
 #ifdef __cplusplus

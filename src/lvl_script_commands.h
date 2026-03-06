@@ -22,7 +22,9 @@ extern "C" {
 
 
 #include "lvl_script_lib.h"
+#if !defined(PLATFORM_WII)
 #include <SDL2/SDL_mixer.h>
+#endif
 
 extern const struct CommandDesc command_desc[];
 extern const struct CommandDesc dk1_command_desc[];

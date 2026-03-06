@@ -23,6 +23,7 @@ src/ariadne_tringls.c \
 src/ariadne_wallhug.c \
 src/bflib_base_tcp.cpp \
 src/bflib_basics.c \
+src/bflib_dialog.c \
 src/bflib_coroutine.c \
 src/bflib_client_tcp.cpp \
 src/bflib_cpu.c \

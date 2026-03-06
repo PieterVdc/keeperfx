@@ -2,6 +2,8 @@
 #include "bflib_sndlib.h"
 #include "game_legacy.h"
 
+#if defined(_WIN32)
+
 // SDL completely removed CD-ROM support, go native
 
 #if defined(__MINGW32__)
@@ -155,3 +157,5 @@ extern "C" void StopRedbookTrack() {
 		mci_stop(g_redbook_device);
 	}
 }
+
+#endif

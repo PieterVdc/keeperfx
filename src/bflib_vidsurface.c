@@ -23,13 +23,73 @@
 #include "bflib_basics.h"
 #include "globals.h"
 #include "bflib_planar.h"
+#if !defined(PLATFORM_WII)
 #include <SDL2/SDL.h>
+#endif
 #include "post_inc.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 /******************************************************************************/
+
+/** Internal screen surface structure. */
+#if defined(PLATFORM_WII)
+struct SDL_Surface * lbScreenSurface;
+/** Internal drawing surface structure.
+ *  Sometimes may be same as screen surface. */
+struct SDL_Surface * lbDrawSurface;
+
+/******************************************************************************/
+void LbScreenSurfaceInit(struct SSurface *surf)
+{
+  surf->surf_data = NULL;
+  surf->pitch = 0;
+  surf->locks_count = 0;
+}
+
+TbResult LbScreenSurfaceCreate(struct SSurface *surf,unsigned long w,unsigned long h)
+{
+    (void)w;
+    (void)h;
+    surf->surf_data = NULL;
+    surf->locks_count = 0;
+    surf->pitch = 0;
+    return Lb_FAIL;
+}
+
+TbResult LbScreenSurfaceRelease(struct SSurface *surf)
+{
+    surf->surf_data = NULL;
+    surf->locks_count = 0;
+    surf->pitch = 0;
+    return Lb_SUCCESS;
+}
+
+TbResult LbScreenSurfaceBlit(struct SSurface *surf, unsigned long x, unsigned long y,
+    struct TbRect *rect, unsigned long blflags)
+{
+    (void)surf;
+    (void)x;
+    (void)y;
+    (void)rect;
+    (void)blflags;
+    return Lb_FAIL;
+}
+
+void *LbScreenSurfaceLock(struct SSurface *surf)
+{
+    (void)surf;
+    return NULL;
+}
+
+TbResult LbScreenSurfaceUnlock(struct SSurface *surf)
+{
+    (void)surf;
+    return Lb_SUCCESS;
+}
+
+#else
 
 /** Internal screen surface structure. */
 SDL_Surface * lbScreenSurface;
@@ -182,6 +242,8 @@ TbResult LbScreenSurfaceUnlock(struct SSurface *surf)
     surf->locks_count--;
     return Lb_SUCCESS;
 }
+
+#endif
 /******************************************************************************/
 #ifdef __cplusplus
 }

@@ -25,7 +25,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <SDL2/SDL.h>
 
 #include "bflib_datetm.h"
 #include "bflib_fileio.h"
@@ -136,46 +135,6 @@ int str_appendf(char * buffer, int size, const char * format, ...)
     vsnprintf(&buffer[buffer_length], available, format, args);
     va_end(args);
     return strlen(buffer);
-}
-
-short warning_dialog(const char *codefile,const int ecode,const char *message)
-{
-  LbWarnLog("In source %s:\n %5d - %s\n",codefile,ecode,message);
-
-  const SDL_MessageBoxButtonData buttons[] = {
-        { .flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, .buttonid = 1, .text = "Ignore" },
-    { .flags = SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, .buttonid = 0, .text = "Abort" },
-    };
-
-    const SDL_MessageBoxData messageboxdata = {
-        .flags = SDL_MESSAGEBOX_WARNING,
-        .window = NULL,
-        .title = PROGRAM_FULL_NAME,
-        .message = message,
-        .numbuttons = SDL_arraysize(buttons),
-        .buttons = buttons,
-        .colorScheme = NULL //colorScheme not supported on windows
-    };
-
-  int button = 0;
-  SDL_ShowMessageBox(&messageboxdata, &button);
-  return button;
-}
-
-short error_dialog(const char *codefile,const int ecode,const char *message)
-{
-  LbErrorLog("In source %s:\n %5d - %s\n",codefile,ecode,message);
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, PROGRAM_FULL_NAME, message, NULL);
-  return 0;
-}
-
-short error_dialog_fatal(const char *codefile,const int ecode,const char *message)
-{
-  LbErrorLog("In source %s:\n %5d - %s\n",codefile,ecode,message);
-  char msg_text[2048];
-  snprintf(msg_text, sizeof(msg_text), "%s This error in '%s' makes the program unable to continue. See '%s' for details.", message, codefile, log_file_name);
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, PROGRAM_FULL_NAME, msg_text, NULL);
-  return 0;
 }
 
 /******************************************************************************/
@@ -542,12 +501,13 @@ void make_uppercase(char * string) {
 int natoi(const char * str, int len) {
   int value = -1;
   for (int i = 0; i < len; ++i) {
-    if (!isdigit(str[i])) {
+    unsigned char ch = (unsigned char)str[i];
+    if (!isdigit(ch)) {
       return value;
     } else if (value < 0) {
       value = 0;
     }
-    value = (value * 10) + (str[i] - '0');
+    value = (value * 10) + (ch - '0');
   }
   return value;
 }

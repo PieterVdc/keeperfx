@@ -23,6 +23,8 @@
 extern "C" {
 #endif
 
+struct NamedCommand;
+
 #define LUA_FUNCS_MAX       256
 #define LUA_FUNCNAME_LENGTH 256
 

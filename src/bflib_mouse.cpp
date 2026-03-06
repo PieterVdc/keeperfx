@@ -23,7 +23,9 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#if !defined(PLATFORM_WII)
 #include <SDL2/SDL.h>
+#endif
 
 #include "bflib_basics.h"
 #include "globals.h"
@@ -112,6 +114,11 @@ TbResult LbMouseSetPosition(long x, long y)
 {
   if (!lbMouseInstalled)
     return Lb_FAIL;
+#if defined(PLATFORM_WII)
+  if (!pointerHandler.SetMousePosition(x, y))
+    return Lb_FAIL;
+  return Lb_SUCCESS;
+#else
   SDL_Window *window;
   if (!lbMouseGrabbed)
   {
@@ -137,10 +144,12 @@ TbResult LbMouseSetPosition(long x, long y)
   }
   SDL_WarpMouseInWindow(window, x, y);
   return Lb_SUCCESS;
+#endif
 }
 
 void LbMoveHostCursorToGameCursor(void)
 {
+#if !defined(PLATFORM_WII)
     int game_cursor_x = lbDisplay.MMouseX;
     int game_cursor_y = lbDisplay.MMouseY;
     int host_cursor_x, host_cursor_y;
@@ -149,10 +158,14 @@ void LbMoveHostCursorToGameCursor(void)
     {
         LbMouseSetPosition(game_cursor_x, game_cursor_y);
     }
+  #endif
 }
 
 TbResult LbMoveGameCursorToHostCursor(void)
 {
+#if defined(PLATFORM_WII)
+  return Lb_SUCCESS;
+#else
     int game_cursor_x = lbDisplay.MMouseX;
     int game_cursor_y = lbDisplay.MMouseY;
     int host_cursor_x, host_cursor_y;
@@ -165,10 +178,14 @@ TbResult LbMoveGameCursorToHostCursor(void)
         }
     }
     return Lb_SUCCESS;
+    #endif
 }
 
 TbBool IsMouseInsideWindow(void)
 {
+#if defined(PLATFORM_WII)
+  return true;
+#else
     SDL_Window *window = SDL_GetMouseFocus();
     TbBool isMouseInsideWindow = ((window != NULL) ? true : false); // if window == NULL then the mouse must be outside the kfx window
     if (!LbIsMouseActive() && !lbMouseGrabbed)
@@ -176,6 +193,7 @@ TbBool IsMouseInsideWindow(void)
         isMouseInsideWindow = false; // LbIsMouseActive() == false when mouse cursor outside window
     }
     return isMouseInsideWindow;
+    #endif
 }
 
 TbResult LbMouseChangeSprite(const struct TbSprite *pointerSprite)

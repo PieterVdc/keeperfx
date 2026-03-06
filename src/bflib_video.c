@@ -28,8 +28,10 @@
 
 #include "keeperfx.hpp"
 
+#if !defined(PLATFORM_WII)
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
+#endif
 #include <math.h>
 #include "post_inc.h"
 
@@ -61,7 +63,9 @@ TbBool lbDoubleBufferingRequested;
 /** Colour palette buffer, to be used inside lbDisplay. */
 unsigned char lbPalette[PALETTE_SIZE];
 /** Driver-specific colour palette buffer. */
+#if !defined(PLATFORM_WII)
 SDL_Color lbPaletteColors[PALETTE_COLORS];
+#endif
 
 char lbDrawAreaTitle[128] = "Bullfrog Shell";
 volatile TbBool lbInteruptMouse;
@@ -96,6 +100,476 @@ void *LbExeReferenceNumber(void)
 {
   return NULL;
 }
+
+#if defined(PLATFORM_WII)
+
+static void LbRegisterStandardVideoModes(void)
+{
+    lbScreenModeInfoNum = 0;
+    LbRegisterVideoMode("INVALID",       0,    0,  0, Lb_VF_DEFAULT);
+    LbRegisterVideoMode("320x200x8",   320,  200,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("320x200x16",  320,  200, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("320x200x24",  320,  200, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("320x240x8",   320,  240,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("320x240x16",  320,  240, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("320x240x24",  320,  240, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("512x384x8",   512,  384,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("512x384x16",  512,  384, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("512x384x24",  512,  384, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("640x400x8",   640,  400,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("640x400x16",  640,  400, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("640x400x24",  640,  400, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("640x480x8",   640,  480,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("640x480x16",  640,  480, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("640x480x24",  640,  480, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("800x600x8",   800,  600,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("800x600x16",  800,  600, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("800x600x24",  800,  600, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("1024x768x8", 1024,  768,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("1024x768x16",1024,  768, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("1024x768x24",1024,  768, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("1280x1024x8", 1280,1024,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("1280x1024x16",1280,1024, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("1280x1024x24",1280,1024, 24, Lb_VF_RGBCOLOR);
+    LbRegisterVideoMode("1600x1200x8", 1600,1200,  8, Lb_VF_PALETTE);
+    LbRegisterVideoMode("1600x1200x16",1600,1200, 16, Lb_VF_TRUCOLOR);
+    LbRegisterVideoMode("1600x1200x24",1600,1200, 24, Lb_VF_RGBCOLOR);
+}
+
+static void LbRegisterModernVideoModes(void)
+{
+    LbRegisterVideoMode("DESKTOP",      0, 0, 32, Lb_VF_RGBCOLOR|Lb_VF_BORDERLESS|Lb_VF_DESKTOP);
+    LbRegisterVideoMode("DESKTOP_FULL", 0, 0, 32, Lb_VF_RGBCOLOR|Lb_VF_DESKTOP);
+    LbRegisterVideoMode("ALL",          0, 0, 32, Lb_VF_RGBCOLOR|Lb_VF_FILLALL);
+}
+
+TbResult LbScreenLock(void)
+{
+    if (!lbScreenInitialised)
+        return Lb_FAIL;
+    lbDisplay.WScreen = NULL;
+    lbDisplay.GraphicsWindowPtr = NULL;
+    return Lb_SUCCESS;
+}
+
+TbResult LbScreenUnlock(void)
+{
+    if (!lbScreenInitialised)
+        return Lb_FAIL;
+    lbDisplay.WScreen = NULL;
+    lbDisplay.GraphicsWindowPtr = NULL;
+    return Lb_SUCCESS;
+}
+
+TbResult LbScreenSwap(void)
+{
+    return lbScreenInitialised ? Lb_SUCCESS : Lb_FAIL;
+}
+
+TbResult LbScreenClear(TbPixel colour)
+{
+    (void)colour;
+    return lbScreenInitialised ? Lb_SUCCESS : Lb_FAIL;
+}
+
+TbScreenMode LbScreenActiveMode(void)
+{
+    return lbDisplay.ScreenMode;
+}
+
+unsigned short LbGraphicsScreenBPP(void)
+{
+    return lbEngineBPP;
+}
+
+TbScreenCoord LbGraphicsScreenWidth(void)
+{
+    return lbDisplay.GraphicsScreenWidth;
+}
+
+TbScreenCoord LbGraphicsScreenHeight(void)
+{
+    return lbDisplay.GraphicsScreenHeight;
+}
+
+TbScreenCoord LbScreenWidth(void)
+{
+    return lbDisplay.PhysicalScreenWidth;
+}
+
+TbScreenCoord LbScreenHeight(void)
+{
+    return lbDisplay.PhysicalScreenHeight;
+}
+
+TbResult LbPaletteFadeStep(unsigned char *from_palette,unsigned char *to_palette,long fade_steps)
+{
+    unsigned char palette[PALETTE_SIZE];
+    for (int i = 0; i < 3 * PALETTE_COLORS; i += 3)
+    {
+        int target_color_component = to_palette[i + 0];
+        int source_color_component = from_palette[i + 0];
+        palette[i+0] = fade_count * (target_color_component - source_color_component) / fade_steps + source_color_component;
+        target_color_component =   to_palette[i+1];
+        source_color_component = from_palette[i+1];
+        palette[i+1] = fade_count * (target_color_component - source_color_component) / fade_steps + source_color_component;
+        target_color_component =   to_palette[i+2];
+        source_color_component = from_palette[i+2];
+        palette[i+2] = fade_count * (target_color_component - source_color_component) / fade_steps + source_color_component;
+    }
+    return LbPaletteSet(palette);
+}
+
+TbResult LbPaletteStopOpenFade(void)
+{
+    fade_started = 0;
+    return Lb_SUCCESS;
+}
+
+long LbPaletteFade(unsigned char *pal, long fade_steps, enum TbPaletteFadeFlag flg)
+{
+    long errors_num = 0;
+    if (flg == Lb_PALETTE_FADE_CLOSED)
+    {
+        LbPaletteGet(from_pal);
+        if (pal == NULL)
+        {
+          pal = to_pal;
+          LbPaletteDataFillBlack(to_pal);
+        }
+        fade_count = 0;
+        do
+        {
+            if (LbPaletteFadeStep(from_pal,pal,fade_steps) == Lb_FAIL)
+                errors_num++;
+            fade_count++;
+        }
+        while (fade_count <= fade_steps);
+        fade_started = false;
+        return fade_count;
+    }
+    if (fade_started)
+    {
+        fade_count++;
+        if (fade_count >= fade_steps)
+          fade_started = false;
+        if (pal == NULL)
+          pal = to_pal;
+    } else
+    {
+        fade_count = 0;
+        fade_started = true;
+        LbPaletteGet(from_pal);
+        if (pal == NULL)
+        {
+            LbPaletteDataFillBlack(to_pal);
+            pal = to_pal;
+        }
+    }
+    if (LbPaletteFadeStep(from_pal,pal,fade_steps) == Lb_FAIL)
+        errors_num++;
+    return fade_count;
+}
+
+TbResult LbScreenWaitVbi(void)
+{
+  return Lb_SUCCESS;
+}
+
+unsigned short LbGetCurrentDisplayIndex()
+{
+    return display_id;
+}
+
+TbResult LbScreenInitialize(void)
+{
+    lbScreenInitialised = false;
+    lbScreenSurface = NULL;
+    lbDrawSurface = NULL;
+    lbHasSecondSurface = false;
+    lbDoubleBufferingRequested = false;
+    lbAppActive = true;
+    LbMouseChangeMoveRatio(256, 256);
+    if (lbScreenModeInfoNum == 0) {
+        LbRegisterStandardVideoModes();
+        LbRegisterModernVideoModes();
+    }
+    lbScreenInitialised = true;
+    return Lb_SUCCESS;
+}
+
+TbResult LbScreenSetup(TbScreenMode mode, TbScreenCoord width, TbScreenCoord height,
+    unsigned char *palette, short buffers_count, TbBool wscreen_vid)
+{
+    (void)width;
+    (void)height;
+    (void)buffers_count;
+    (void)wscreen_vid;
+    TbScreenModeInfo* mdinfo = LbScreenGetModeInfo(mode);
+    lbDisplay.DrawFlags = 0;
+    lbDisplay.DrawColour = 0;
+    lbDisplayEx.ShadowColour = 0;
+    lbDisplay.PhysicalScreenWidth = mdinfo->Width;
+    lbDisplay.PhysicalScreenHeight = mdinfo->Height;
+    lbDisplay.ScreenMode = mode;
+    lbDisplay.PhysicalScreen = NULL;
+    lbDisplay.GraphicsScreenWidth = mdinfo->Width;
+    lbDisplay.GraphicsScreenHeight = mdinfo->Height;
+    lbDisplay.WScreen = NULL;
+    lbDisplay.GraphicsWindowPtr = NULL;
+    lbScreenInitialised = true;
+    if (palette != NULL)
+    {
+        LbPaletteSet(palette);
+    }
+    LbScreenSetGraphicsWindow(0, 0, mdinfo->Width, mdinfo->Height);
+    LbTextSetWindow(0, 0, mdinfo->Width, mdinfo->Height);
+    return Lb_SUCCESS;
+}
+
+TbResult LbPaletteDataFillBlack(unsigned char *palette)
+{
+    memset(palette, 0, PALETTE_SIZE);
+    return Lb_SUCCESS;
+}
+
+TbResult LbPaletteDataFillWhite(unsigned char *palette)
+{
+    memset(palette, 0x3F, PALETTE_SIZE);
+    return Lb_SUCCESS;
+}
+
+TbResult LbPaletteSet(unsigned char *palette)
+{
+    if (palette == NULL)
+      return Lb_FAIL;
+    memcpy(lbPalette, palette, PALETTE_SIZE);
+    lbDisplay.Palette = lbPalette;
+    return Lb_SUCCESS;
+}
+
+TbResult LbPaletteGet(unsigned char *palette)
+{
+    if (palette == NULL || lbDisplay.Palette == NULL)
+      return Lb_FAIL;
+    memcpy(palette,lbDisplay.Palette,PALETTE_SIZE);
+    return Lb_SUCCESS;
+}
+
+TbResult LbSetTitle(const char *title)
+{
+    snprintf(lbDrawAreaTitle, sizeof(lbDrawAreaTitle), "%s", title);
+    return Lb_SUCCESS;
+}
+
+TbResult LbSetIcon(unsigned short nicon)
+{
+    lbIconIndex = nicon;
+    return Lb_SUCCESS;
+}
+
+TbScreenModeInfo *LbScreenGetModeInfo(TbScreenMode mode)
+{
+    if (mode < lbScreenModeInfoNum)
+        return &lbScreenModeInfo[mode];
+    return &lbScreenModeInfo[0];
+}
+
+TbBool LbScreenIsLocked(void)
+{
+    return (lbDisplay.WScreen != NULL);
+}
+
+TbResult LbScreenReset(TbBool exiting_application)
+{
+    (void)exiting_application;
+    if (!lbScreenInitialised)
+      return Lb_FAIL;
+    lbHasSecondSurface = false;
+    lbDrawSurface = NULL;
+    lbScreenSurface = NULL;
+    lbScreenInitialised = false;
+    return Lb_SUCCESS;
+}
+
+TbResult LbScreenStoreGraphicsWindow(TbGraphicsWindow *grwnd)
+{
+  grwnd->x = lbDisplay.GraphicsWindowX;
+  grwnd->y = lbDisplay.GraphicsWindowY;
+  grwnd->width = lbDisplay.GraphicsWindowWidth;
+  grwnd->height = lbDisplay.GraphicsWindowHeight;
+  grwnd->ptr = NULL;
+  return Lb_SUCCESS;
+}
+
+TbResult LbScreenLoadGraphicsWindow(TbGraphicsWindow *grwnd)
+{
+  lbDisplay.GraphicsWindowX = grwnd->x;
+  lbDisplay.GraphicsWindowY = grwnd->y;
+  lbDisplay.GraphicsWindowWidth = grwnd->width;
+  lbDisplay.GraphicsWindowHeight = grwnd->height;
+  if (lbDisplay.WScreen != NULL)
+  {
+      lbDisplay.GraphicsWindowPtr = lbDisplay.WScreen
+        + lbDisplay.GraphicsScreenWidth*lbDisplay.GraphicsWindowY + lbDisplay.GraphicsWindowX;
+  } else
+  {
+      lbDisplay.GraphicsWindowPtr = NULL;
+  }
+  return Lb_SUCCESS;
+}
+
+TbResult LbScreenSetGraphicsWindow(long x, long y, long width, long height)
+{
+    long i;
+    long right_edge = x + width;
+    long bottom_edge = y + height;
+    if (right_edge < x)
+    {
+        i = (x ^ right_edge);
+        x = x ^ i;
+        right_edge = x ^ i ^ i;
+  }
+  if (bottom_edge < y)
+  {
+    i = (y^bottom_edge);
+    y = y^i;
+    bottom_edge = y^i^i;
+  }
+  if (x < 0)
+    x = 0;
+  if (right_edge < 0)
+    right_edge = 0;
+  if (y < 0)
+    y = 0;
+  if (bottom_edge < 0)
+    bottom_edge = 0;
+  if (x > lbDisplay.GraphicsScreenWidth)
+    x = lbDisplay.GraphicsScreenWidth;
+  if (right_edge > lbDisplay.GraphicsScreenWidth)
+    right_edge = lbDisplay.GraphicsScreenWidth;
+  if (y > lbDisplay.GraphicsScreenHeight)
+    y = lbDisplay.GraphicsScreenHeight;
+  if (bottom_edge > lbDisplay.GraphicsScreenHeight)
+    bottom_edge = lbDisplay.GraphicsScreenHeight;
+  lbDisplay.GraphicsWindowX = x;
+  lbDisplay.GraphicsWindowY = y;
+  lbDisplay.GraphicsWindowWidth = right_edge - x;
+  lbDisplay.GraphicsWindowHeight = bottom_edge - y;
+  if (lbDisplay.WScreen != NULL)
+  {
+    lbDisplay.GraphicsWindowPtr = lbDisplay.WScreen + lbDisplay.GraphicsScreenWidth*y + x;
+  } else
+  {
+    lbDisplay.GraphicsWindowPtr = NULL;
+  }
+  return Lb_SUCCESS;
+}
+
+TbBool LbScreenIsModeAvailable(TbScreenMode mode, unsigned short display)
+{
+  (void)display;
+  if (mode == Lb_SCREEN_MODE_INVALID)
+  {
+    return false;
+  }
+  TbScreenModeInfo* mdinfo = LbScreenGetModeInfo(mode);
+  mdinfo->Available = true;
+  return true;
+}
+
+TbResult LbScreenSetDoubleBuffering(TbBool state)
+{
+    lbDoubleBufferingRequested = state;
+    return Lb_SUCCESS;
+}
+
+TbScreenMode LbRecogniseVideoModeString(const char *desc)
+{
+    for (int mode = 0; mode < lbScreenModeInfoNum; mode++)
+    {
+      if (strcasecmp(lbScreenModeInfo[mode].Desc,desc) == 0)
+        return (TbScreenMode)mode;
+    }
+    return Lb_SCREEN_MODE_INVALID;
+}
+
+TbScreenMode LbRegisterVideoMode(const char *desc, TbScreenCoord width, TbScreenCoord height,
+    unsigned short bpp, unsigned long flags)
+{
+    TbScreenModeInfo *mdinfo;
+    TbScreenMode mode = LbRecogniseVideoModeString(desc);
+    if (mode != Lb_SCREEN_MODE_INVALID)
+    {
+        mdinfo = &lbScreenModeInfo[mode];
+        if ((mdinfo->Width == width) && (mdinfo->Height == height) && (mdinfo->BitsPerPixel == bpp))
+        {
+            return mode;
+        }
+        return Lb_SCREEN_MODE_INVALID;
+    }
+    if ((size_t) lbScreenModeInfoNum >= sizeof(lbScreenModeInfo)/sizeof(lbScreenModeInfo[0]))
+    {
+        return Lb_SCREEN_MODE_INVALID;
+    }
+    mode = lbScreenModeInfoNum;
+    lbScreenModeInfoNum++;
+    mdinfo = &lbScreenModeInfo[mode];
+    memset(mdinfo, 0, sizeof(TbScreenModeInfo));
+    mdinfo->Width = width;
+    mdinfo->Height = height;
+    mdinfo->BitsPerPixel = bpp;
+    mdinfo->Available = true;
+    mdinfo->VideoFlags = flags;
+    mdinfo->sdlFlags = 0;
+    snprintf(mdinfo->Desc, sizeof(mdinfo->Desc), "%s", desc);
+    return mode;
+}
+
+TbScreenMode LbRegisterVideoModeString(const char *desc)
+{
+    int width;
+    int height;
+    int bpp;
+    unsigned long flags;
+    int ret = 0;
+    if (strncasecmp(desc, "ALL", 3) == 0)
+    {
+        return LbRecogniseVideoModeString("ALL");
+    }
+    if (strncasecmp(desc, "DESKTOP_FULL", 12) == 0)
+    {
+        return LbRecogniseVideoModeString("DESKTOP_FULL");
+    }
+    if (strncasecmp(desc, "DESKTOP", 7) == 0)
+    {
+        return LbRecogniseVideoModeString("DESKTOP");
+    }
+    width = 0; height = 0; bpp = 0; flags = Lb_VF_DEFAULT;
+    ret = sscanf(desc," %d x %d x %d", &width, &height, &bpp);
+    if (ret != 3)
+    {
+        width = 0; height = 0; bpp = 0; flags = Lb_VF_DEFAULT;
+        ret = sscanf(desc," %d x %d w %d", &width, &height, &bpp);
+        flags |= Lb_VF_WINDOWED;
+    }
+    if (ret != 3)
+    {
+        return Lb_SCREEN_MODE_INVALID;
+    }
+    if (bpp < 9) {
+        flags |= Lb_VF_PALETTE;
+    } else
+    if ((bpp == 24) || (bpp = 32)) {
+        flags |= Lb_VF_RGBCOLOR;
+    } else
+    {
+        flags |= Lb_VF_TRUCOLOR;
+    }
+    return LbRegisterVideoMode(desc, width, height, bpp, flags);
+}
+
+#else
 
 /** Locks the graphics screen.
  *  This function gives access to the WScreen pointer, which contains buffer
@@ -1049,6 +1523,8 @@ TbScreenMode LbRegisterVideoModeString(const char *desc)
     }
     return LbRegisterVideoMode(desc, width, height, bpp, flags);
 }
+
+#endif
 
 TbPixel LbPaletteFindColour(const unsigned char *pal, unsigned char r, unsigned char g, unsigned char b)
 {

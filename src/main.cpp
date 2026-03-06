@@ -3326,6 +3326,7 @@ void redetect_screen_refresh_rate_for_draw()
         if (game_num_fps_draw_secondary > 0)
             game_num_fps_draw_current = game_num_fps_draw_secondary;
 
+#if !defined(PLATFORM_WII)
         if (lbWindow != NULL) {
             int display_index = SDL_GetWindowDisplayIndex(lbWindow);
             if (display_index >= 0) {
@@ -3335,6 +3336,7 @@ void redetect_screen_refresh_rate_for_draw()
                 }
             }
         }
+#endif
 
     } else if (game_num_fps_draw_main > 0) {
         game_num_fps_draw_current = game_num_fps_draw_main;

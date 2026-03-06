@@ -19,6 +19,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include <chrono>
+#include <thread>
 #include <time.h>
 #include "globals.h"
 #include "bflib_datetm.h"
@@ -45,6 +46,11 @@ int slowdown_current = 0;
 int slowdown_average = 0;
 int slowdown_max = 0;
 /******************************************************************************/
+static inline void LbDelayMilliseconds(unsigned int delay_ms)
+{
+  std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+}
+
 #define TimePoint std::chrono::high_resolution_clock::time_point
 #define TimeNow std::chrono::high_resolution_clock::now()
 #define TimeTickNs std::chrono::duration_cast<std::chrono::nanoseconds>(TimeNow - initialized_time_point).count()
@@ -350,7 +356,7 @@ void LbSleepExtInit()
   int cur_cnt_test = 0;
   for (int i=0; i<max_test_cnt; i++)
   {
-    SDL_Delay(1);
+    LbDelayMilliseconds(1);
     tick_ns_end = TimeTickNs;
     cur_cnt_test++;
     if (tick_ns_end - tick_ns_begin > tick_ns_max_test)
@@ -376,7 +382,7 @@ TbBool LbSleepUntilExt(long double tick_ns_end)
     long double tick_ns_delay = tick_ns_end - tick_ns_cur;
     if (tick_ns_delay > sleep_precision_ns) {
       int ms_delay = (int)(tick_ns_delay/1000000);
-      SDL_Delay(ms_delay);
+      LbDelayMilliseconds(ms_delay);
     }
   }
   return true;

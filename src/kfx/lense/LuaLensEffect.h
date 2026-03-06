@@ -24,7 +24,12 @@
 #include <map>
 
 extern "C" {
+#if !defined(PLATFORM_WII)
     #include <lua.h>
+#else
+    struct lua_State;
+    typedef struct lua_State lua_State;
+#endif
 }
 
 /******************************************************************************/

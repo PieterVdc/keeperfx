@@ -98,6 +98,7 @@ obj/bflib_basics.o \
 obj/bflib_coroutine.o \
 obj/bflib_cpu.o \
 obj/bflib_crash.o \
+obj/bflib_dialog.o \
 obj/bflib_datetm.o \
 obj/bflib_dernc.o \
 obj/bflib_fileio.o \
