@@ -31,6 +31,9 @@
 #if !defined(PLATFORM_WII)
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
+#else
+#include <gccore.h>
+#include <string.h>
 #endif
 #include <math.h>
 #include "post_inc.h"
@@ -103,6 +106,82 @@ void *LbExeReferenceNumber(void)
 
 #if defined(PLATFORM_WII)
 
+static GXRModeObj* wii_video_mode = NULL;
+static void* wii_framebuffers[2] = { NULL, NULL };
+static int wii_framebuffer_index = 0;
+static unsigned char* wii_screen_buffer = NULL;
+
+static unsigned char clamp_u8_int(int value)
+{
+    if (value < 0) return 0;
+    if (value > 255) return 255;
+    return (unsigned char)value;
+}
+
+static void wii_present_8bit_buffer(void)
+{
+    if (!lbScreenInitialised || wii_video_mode == NULL || wii_framebuffers[0] == NULL || wii_screen_buffer == NULL) {
+        return;
+    }
+
+    const int src_w = lbDisplay.PhysicalScreenWidth;
+    const int src_h = lbDisplay.PhysicalScreenHeight;
+    if (src_w < 2 || src_h < 1) {
+        return;
+    }
+
+    const int dst_w = wii_video_mode->fbWidth;
+    const int dst_h = wii_video_mode->xfbHeight;
+
+    int draw_w = src_w;
+    int draw_h = src_h;
+    if (draw_w > dst_w) draw_w = dst_w;
+    if (draw_h > dst_h) draw_h = dst_h;
+    if (draw_w & 1) draw_w -= 1;
+    if (draw_w < 2) return;
+
+    const int x_off = (dst_w - draw_w) / 2;
+    const int y_off = (dst_h - draw_h) / 2;
+
+    unsigned char* dst = (unsigned char*)wii_framebuffers[wii_framebuffer_index];
+    memset(dst, 0x10, (size_t)dst_w * (size_t)dst_h * VI_DISPLAY_PIX_SZ);
+
+    for (int y = 0; y < draw_h; y++)
+    {
+        const unsigned char* src_row = wii_screen_buffer + ((size_t)y * (size_t)lbDisplay.GraphicsScreenWidth);
+        unsigned char* dst_row = dst + (size_t)(y + y_off) * (size_t)dst_w * VI_DISPLAY_PIX_SZ;
+        for (int x = 0; x < draw_w; x += 2)
+        {
+            const unsigned char i0 = src_row[x + 0];
+            const unsigned char i1 = src_row[x + 1];
+
+            const int r0 = lbPalette[(size_t)i0 * 3 + 0] << 2;
+            const int g0 = lbPalette[(size_t)i0 * 3 + 1] << 2;
+            const int b0 = lbPalette[(size_t)i0 * 3 + 2] << 2;
+            const int r1 = lbPalette[(size_t)i1 * 3 + 0] << 2;
+            const int g1 = lbPalette[(size_t)i1 * 3 + 1] << 2;
+            const int b1 = lbPalette[(size_t)i1 * 3 + 2] << 2;
+
+            const int y0 = ((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16;
+            const int y1 = ((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16;
+            const int cb = (((-38 * r0 - 74 * g0 + 112 * b0) + (-38 * r1 - 74 * g1 + 112 * b1) + 256) >> 9) + 128;
+            const int cr = (((112 * r0 - 94 * g0 - 18 * b0) + (112 * r1 - 94 * g1 - 18 * b1) + 256) >> 9) + 128;
+
+            unsigned char* p = dst_row + (size_t)(x + x_off) * VI_DISPLAY_PIX_SZ;
+            p[0] = clamp_u8_int(y0);
+            p[1] = clamp_u8_int(cb);
+            p[2] = clamp_u8_int(y1);
+            p[3] = clamp_u8_int(cr);
+        }
+    }
+
+    DCFlushRange(wii_framebuffers[wii_framebuffer_index], (size_t)dst_w * (size_t)dst_h * VI_DISPLAY_PIX_SZ);
+    VIDEO_SetNextFramebuffer(wii_framebuffers[wii_framebuffer_index]);
+    VIDEO_Flush();
+    VIDEO_WaitVSync();
+    wii_framebuffer_index ^= 1;
+}
+
 static void LbRegisterStandardVideoModes(void)
 {
     lbScreenModeInfoNum = 0;
@@ -147,8 +226,14 @@ TbResult LbScreenLock(void)
 {
     if (!lbScreenInitialised)
         return Lb_FAIL;
-    lbDisplay.WScreen = NULL;
-    lbDisplay.GraphicsWindowPtr = NULL;
+    lbDisplay.WScreen = wii_screen_buffer;
+    if (lbDisplay.WScreen != NULL) {
+        lbDisplay.GraphicsWindowPtr = lbDisplay.WScreen
+            + lbDisplay.GraphicsScreenWidth * lbDisplay.GraphicsWindowY
+            + lbDisplay.GraphicsWindowX;
+    } else {
+        lbDisplay.GraphicsWindowPtr = NULL;
+    }
     return Lb_SUCCESS;
 }
 
@@ -163,13 +248,18 @@ TbResult LbScreenUnlock(void)
 
 TbResult LbScreenSwap(void)
 {
-    return lbScreenInitialised ? Lb_SUCCESS : Lb_FAIL;
+    if (!lbScreenInitialised)
+        return Lb_FAIL;
+    wii_present_8bit_buffer();
+    return Lb_SUCCESS;
 }
 
 TbResult LbScreenClear(TbPixel colour)
 {
-    (void)colour;
-    return lbScreenInitialised ? Lb_SUCCESS : Lb_FAIL;
+    if (!lbScreenInitialised || wii_screen_buffer == NULL)
+        return Lb_FAIL;
+    memset(wii_screen_buffer, colour, (size_t)lbDisplay.GraphicsScreenWidth * (size_t)lbDisplay.GraphicsScreenHeight);
+    return Lb_SUCCESS;
 }
 
 TbScreenMode LbScreenActiveMode(void)
@@ -294,6 +384,27 @@ TbResult LbScreenInitialize(void)
         LbRegisterStandardVideoModes();
         LbRegisterModernVideoModes();
     }
+    VIDEO_Init();
+    wii_video_mode = VIDEO_GetPreferredMode(NULL);
+    wii_framebuffers[0] = MEM_K0_TO_K1(SYS_AllocateFramebuffer(wii_video_mode));
+    wii_framebuffers[1] = MEM_K0_TO_K1(SYS_AllocateFramebuffer(wii_video_mode));
+    if (wii_framebuffers[0] == NULL || wii_framebuffers[1] == NULL)
+    {
+        return Lb_FAIL;
+    }
+    memset(wii_framebuffers[0], 0x10, (size_t)wii_video_mode->fbWidth * (size_t)wii_video_mode->xfbHeight * VI_DISPLAY_PIX_SZ);
+    memset(wii_framebuffers[1], 0x10, (size_t)wii_video_mode->fbWidth * (size_t)wii_video_mode->xfbHeight * VI_DISPLAY_PIX_SZ);
+    DCFlushRange(wii_framebuffers[0], (size_t)wii_video_mode->fbWidth * (size_t)wii_video_mode->xfbHeight * VI_DISPLAY_PIX_SZ);
+    DCFlushRange(wii_framebuffers[1], (size_t)wii_video_mode->fbWidth * (size_t)wii_video_mode->xfbHeight * VI_DISPLAY_PIX_SZ);
+    VIDEO_Configure(wii_video_mode);
+    VIDEO_SetNextFramebuffer(wii_framebuffers[0]);
+    VIDEO_SetBlack(FALSE);
+    VIDEO_Flush();
+    VIDEO_WaitVSync();
+    if (wii_video_mode->viTVMode & VI_NON_INTERLACE) {
+        VIDEO_WaitVSync();
+    }
+    wii_framebuffer_index = 1;
     lbScreenInitialised = true;
     return Lb_SUCCESS;
 }
@@ -317,6 +428,20 @@ TbResult LbScreenSetup(TbScreenMode mode, TbScreenCoord width, TbScreenCoord hei
     lbDisplay.GraphicsScreenHeight = mdinfo->Height;
     lbDisplay.WScreen = NULL;
     lbDisplay.GraphicsWindowPtr = NULL;
+
+    size_t screen_bytes = (size_t)lbDisplay.GraphicsScreenWidth * (size_t)lbDisplay.GraphicsScreenHeight;
+    if (wii_screen_buffer != NULL)
+    {
+        free(wii_screen_buffer);
+        wii_screen_buffer = NULL;
+    }
+    wii_screen_buffer = (unsigned char*)malloc(screen_bytes);
+    if (wii_screen_buffer == NULL)
+    {
+        return Lb_FAIL;
+    }
+    memset(wii_screen_buffer, 0, screen_bytes);
+
     lbScreenInitialised = true;
     if (palette != NULL)
     {
@@ -388,6 +513,11 @@ TbResult LbScreenReset(TbBool exiting_application)
     lbHasSecondSurface = false;
     lbDrawSurface = NULL;
     lbScreenSurface = NULL;
+    if (wii_screen_buffer != NULL)
+    {
+        free(wii_screen_buffer);
+        wii_screen_buffer = NULL;
+    }
     lbScreenInitialised = false;
     return Lb_SUCCESS;
 }

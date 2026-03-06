@@ -994,6 +994,17 @@ short load_configuration(void)
   {
     sname = keeper_config_file;
     fname = prepare_file_path(FGrp_Main, sname);
+
+    if (LbFileLengthRnc(fname) < 2)
+    {
+      const char* fallback_sname = "config/keeperfx.cfg";
+      const char* fallback_fname = prepare_file_path(FGrp_Main, fallback_sname);
+      if (LbFileLengthRnc(fallback_fname) >= 2)
+      {
+        sname = fallback_sname;
+        fname = fallback_fname;
+      }
+    }
   }
 
   const char *config_textname = "Base config";
@@ -1033,7 +1044,19 @@ short load_configuration(void)
   }
 
   // Returning if the setting are valid
-  return (install_info.lang_id > 0) && (install_info.inst_path[0] != '\0');
+  if ((install_info.lang_id > 0) && (install_info.inst_path[0] != '\0'))
+    return true;
+
+#ifdef PLATFORM_WII
+  if (install_info.lang_id <= 0)
+    install_info.lang_id = 1;
+  if (install_info.inst_path[0] == '\0')
+    strcpy(install_info.inst_path, ".");
+  WARNMSG("Using Wii fallback config defaults: LANGUAGE=ENG INSTALL_PATH=. ");
+  return true;
+#endif
+
+  return false;
 }
 
 /** CmdLine overrides allow settings from the command line to override the default settings, or those set in the config file.

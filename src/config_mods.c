@@ -179,8 +179,20 @@ TbBool load_mods_order_config_file()
 
     const char *sname = MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME;
     const char *fname = prepare_file_path(FGrp_Main, sname);
+    const char *fallback_sname = "config/" MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME;
 
     long len = LbFileLengthRnc(fname);
+    if (len < 2)
+    {
+        const char *fallback_fname = prepare_file_path(FGrp_Main, fallback_sname);
+        long fallback_len = LbFileLengthRnc(fallback_fname);
+        if (fallback_len >= 2)
+        {
+            sname = fallback_sname;
+            fname = fallback_fname;
+            len = fallback_len;
+        }
+    }
     if (len < 2)
     {
         WARNMSG("Mods order file \"%s\" doesn't exist or is too small.", sname);

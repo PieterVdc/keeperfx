@@ -25,6 +25,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <ctype.h>
+#if defined(PLATFORM_WII)
+#include <gccore.h>
+#endif
 
 #include "bflib_datetm.h"
 #include "bflib_fileio.h"
@@ -140,6 +143,7 @@ int str_appendf(char * buffer, int size, const char * format, ...)
 /******************************************************************************/
 short error_log_initialised=false;
 struct TbLog error_log;
+static TbBool log_file_unavailable = false;
 /******************************************************************************/
 int LbLog(struct TbLog *log, const char *fmt_str, va_list arg);
 /******************************************************************************/
@@ -268,14 +272,19 @@ int LbErrorLogSetup(const char *directory, const char *filename, TbBool flag)
   }
   char log_filename[DISKPATH_SIZE];
   int result;
-  if ( LbFileMakeFullPath(true, directory, filename, log_filename, DISKPATH_SIZE) != 1 ) {
-    return -1;
+  if (LbFileMakeFullPath(true, directory, filename, log_filename, DISKPATH_SIZE) != 1)
+  {
+    if (LbFileMakeFullPath(false, directory, filename, log_filename, DISKPATH_SIZE) != 1)
+    {
+      snprintf(log_filename, sizeof(log_filename), "%s", filename);
+    }
   }
   ulong flags = (flag == 0) + 1;
   flags |= LbLog_TimeInHeader | LbLog_DateInHeader | 0x04;
   if ( LbLogSetup(&error_log, log_filename, flags) == 1 )
   {
     error_log_initialised = 1;
+    log_file_unavailable = false;
     result = 1;
   } else
   {
@@ -353,15 +362,19 @@ int LbLog(struct TbLog *log, const char *fmt_str, va_list arg)
     else
       accmode = "w";
     // Only load log if it's not already open
-    if (file == NULL)
+    if (!log_file_unavailable && file == NULL)
     {
       file = fopen(log->filename, accmode);
-      // Couldn't open. Abort
       if (file == NULL)
-        return -1;
+      {
+        log_file_unavailable = true;
+      }
     }
-    log->Created = true;
-    if (header != NONE)
+    if (file != NULL)
+    {
+      log->Created = true;
+    }
+    if ((file != NULL) && (header != NONE))
     {
       if ( need_initial_newline )
         fprintf(file, "\n");
@@ -401,7 +414,7 @@ int LbLog(struct TbLog *log, const char *fmt_str, va_list arg)
       }
       fprintf(file, "\n\n");
     }
-    if ((log->flags & LbLog_DateInLines) != 0)
+    if ((file != NULL) && ((log->flags & LbLog_DateInLines) != 0))
     {
         struct TbDate curr_date;
         if (LbDate(&curr_date) == Lb_SUCCESS)
@@ -409,7 +422,7 @@ int LbLog(struct TbLog *log, const char *fmt_str, va_list arg)
             fprintf(file,"%02u-%02u-%u ",curr_date.Day,curr_date.Month,curr_date.Year);
         }
     }
-    if ((log->flags & LbLog_TimeInLines) != 0)
+    if ((file != NULL) && ((log->flags & LbLog_TimeInLines) != 0))
     {
         struct TbTime curr_time;
         if (LbTime(&curr_time) == Lb_SUCCESS)
@@ -418,19 +431,49 @@ int LbLog(struct TbLog *log, const char *fmt_str, va_list arg)
                 curr_time.Hour,curr_time.Minute,curr_time.Second);
         }
     }
-  if (log->prefix[0] != '\0') {
+  if ((file != NULL) && (log->prefix[0] != '\0')) {
       fputs(log->prefix, file);
   }
 
-  // Write formatted message to the array
-  write_log_to_array_for_live_viewing(fmt_str, arg, log->prefix);
+  va_list array_args;
+  va_copy(array_args, arg);
+  write_log_to_array_for_live_viewing(fmt_str, array_args, log->prefix);
+  va_end(array_args);
 
-  vfprintf(file, fmt_str, arg);
-  log->position = ftell(file);
+  if (file != NULL)
+  {
+    va_list file_args;
+    va_copy(file_args, arg);
+    vfprintf(file, fmt_str, file_args);
+    va_end(file_args);
+    log->position = ftell(file);
+    fflush(file);
+  }
+  else
+  {
+    if (log->prefix[0] != '\0') {
+      fputs(log->prefix, stderr);
+    }
+    va_list stderr_args;
+    va_copy(stderr_args, arg);
+    vfprintf(stderr, fmt_str, stderr_args);
+    va_end(stderr_args);
+    fflush(stderr);
+
+#if defined(PLATFORM_WII)
+    {
+      char dolphin_line[MAX_TEXT_LENGTH + LOG_PREFIX_LEN];
+      va_list osr_args;
+      va_copy(osr_args, arg);
+      vsnprintf(dolphin_line, sizeof(dolphin_line), fmt_str, osr_args);
+      va_end(osr_args);
+      SYS_Report("%s%s", log->prefix, dolphin_line);
+    }
+#endif
+  }
   // fclose is slow and automatically happens on normal program exit.
   // Opening/closing every time we log something hits performance hard.
   // fclose(file);
-  fflush(file);
   return 1;
 }
 

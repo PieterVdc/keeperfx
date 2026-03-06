@@ -138,6 +138,10 @@
 
 #include "post_inc.h"
 
+#if defined(PLATFORM_WII)
+extern "C" void SYS_Report(const char* fmt, ...);
+#endif
+
 #ifdef _MSC_VER
 #define strcasecmp _stricmp
 #endif
@@ -4339,11 +4343,26 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
     short retval;
     retval=0;
 
+#if defined(PLATFORM_WII)
+    SYS_Report("LbBullfrogMain: entered argc=%u\n", (unsigned)argc);
+#endif
+
     // Determine correct log file based on command line flags
     const char* selected_log_file_name = determine_log_filename(argc, argv);
+    #if defined(PLATFORM_WII)
+    LbErrorLogSetup(NULL, selected_log_file_name, 5);
+    #else
     LbErrorLogSetup("/", selected_log_file_name, 5);
+    #endif
+
+#if defined(PLATFORM_WII)
+    SYS_Report("LbBullfrogMain: after LbErrorLogSetup (%s)\n", selected_log_file_name ? selected_log_file_name : "(null)");
+#endif
 
     retval = process_command_line(argc,argv);
+#if defined(PLATFORM_WII)
+    SYS_Report("LbBullfrogMain: process_command_line=%d\n", (int)retval);
+#endif
     if (retval < 1)
     {
         LbErrorLogClose();
@@ -4353,6 +4372,9 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
     retval = true;
     retval &= (LbTimerInit() != Lb_FAIL);
     retval &= (LbScreenInitialize() != Lb_FAIL);
+#if defined(PLATFORM_WII)
+    SYS_Report("LbBullfrogMain: timer+screen init=%d\n", (int)retval);
+#endif
     LbSetTitle(PROGRAM_NAME);
     LbSetIcon(1);
     LbScreenSetDoubleBuffering(true);
@@ -4371,6 +4393,9 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
     }
 
     retval = setup_game();
+#if defined(PLATFORM_WII)
+    SYS_Report("LbBullfrogMain: setup_game=%d\n", (int)retval);
+#endif
     if (retval == 1)
     {
         steam_api_init();

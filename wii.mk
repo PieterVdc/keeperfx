@@ -36,6 +36,7 @@ ELF2DOL ?= $(DEVKITPRO)/tools/bin/elf2dol$(HOST_EXEEXT)
 
 KFX_SOURCES := \
 	$(wildcard src/*.c) \
+	$(wildcard src/*.S) \
 	$(wildcard src/*.cpp) \
 	$(wildcard src/kfx/lense/*.cpp)
 
@@ -67,16 +68,19 @@ KFX_SOURCES := $(filter-out \
 	$(KFX_SOURCES))
 
 KFX_C_SOURCES = $(filter %.c,$(KFX_SOURCES))
+KFX_ASM_SOURCES = $(filter %.S,$(KFX_SOURCES))
 KFX_CXX_SOURCES = $(filter %.cpp,$(KFX_SOURCES))
 KFX_C_OBJECTS = $(patsubst src/%.c,obj/%.o,$(KFX_C_SOURCES))
+KFX_ASM_OBJECTS = $(patsubst src/%.S,obj/%.o,$(KFX_ASM_SOURCES))
 KFX_CXX_OBJECTS = $(patsubst src/%.cpp,obj/%.o,$(KFX_CXX_SOURCES))
-KFX_OBJECTS = $(KFX_C_OBJECTS) $(KFX_CXX_OBJECTS)
+KFX_OBJECTS = $(KFX_C_OBJECTS) $(KFX_ASM_OBJECTS) $(KFX_CXX_OBJECTS)
 
 TOML_SOURCES = \
 	deps/centitoml/toml_api.c
 TOML_OBJECTS = $(patsubst deps/centitoml/%.c,obj/centitoml/%.o,$(TOML_SOURCES))
 
 KFX_INCLUDES = \
+	-I$(DEVKITPRO)/libogc/include \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
@@ -93,6 +97,11 @@ TOML_CFLAGS += $(MACHDEP) -O2 -fsigned-char -Ideps/centijson/include -Wall -Wext
 KFX_LDFLAGS += \
 	$(MACHDEP) \
 	-Wl,-Map,bin/keeperfx_wii.map \
+	-Wl,--wrap=KThreadInit \
+	-Wl,--wrap=KIrqInit \
+	-Wl,--wrap=SYS_Init \
+	-Wl,--wrap=SYS_PreMain \
+	-Wl,--wrap=_sbrk_r \
 	-L$(DEVKITPRO)/libogc/lib/wii \
 	-L$(DEVKITPRO)/portlibs/wii/lib \
 	-logc \
@@ -119,6 +128,10 @@ bin/keeperfx_wii.dol: bin/keeperfx_wii.elf | bin
 	$(ELF2DOL) $< $@
 
 $(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h | obj
+	$(MKDIR) $(dir $@)
+	$(CC) $(KFX_CFLAGS) -c $< -o $@
+
+$(KFX_ASM_OBJECTS): obj/%.o: src/%.S src/ver_defs.h | obj
 	$(MKDIR) $(dir $@)
 	$(CC) $(KFX_CFLAGS) -c $< -o $@
 
