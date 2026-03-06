@@ -709,13 +709,16 @@ TbBool creature_can_be_set_unconscious(const struct Thing *creatng, const struct
     {
         return false;
     }
-    if (!player_has_room_of_role(killertng->owner, RoRoF_Prison))
+    if (THING_RANDOM(creatng, 100) >= game.conf.rules[creatng->owner].creature.stun_without_prison_chance)
     {
-        return false;
-    }
-    if (!player_creature_tends_to(killertng->owner, CrTend_Imprison))
-    {
-        return false;
+        if (!player_has_room_of_role(killertng->owner, RoRoF_Prison))
+        {
+            return false;
+        }
+        if (!player_creature_tends_to(killertng->owner, CrTend_Imprison))
+        {
+            return false;
+        }
     }
     if (flag_is_set(get_creature_model_flags(creatng), CMF_IsEvil) && (THING_RANDOM(creatng, 100) >= game.conf.rules[creatng->owner].creature.stun_enemy_chance_evil))
     {
@@ -3963,7 +3966,8 @@ char new_slab_tunneller_check_for_breaches(struct Thing *creatng)
         if ((col->bitfields & CLF_CEILING_MASK) != 0)
             continue;
 
-        if (!creature_can_navigate_to(creatng, &game.things.lookup[dgn->dnheart_idx]->mappos, NavRtF_Default))
+        struct Thing* hearttng = thing_get(dgn->dnheart_idx);
+        if (!creature_can_navigate_to(creatng, &hearttng->mappos, NavRtF_Default))
             continue;
 
         set_flag(cctrl->party.player_broken_into_flags, to_flag(i));

@@ -39,6 +39,9 @@ extern "C" void network_yield_draw_gameplay();
 extern "C" void network_yield_draw_frontend();
 extern "C" short frontend_draw();
 extern "C" long double last_draw_completed_time;
+extern "C" void LbNetwork_TimesyncBarrier(void);
+extern "C" TbBool keeper_screen_redraw(void);
+extern "C" TbResult LbScreenSwap(void);
 long double get_time_tick_ns();
 #endif
 
@@ -179,6 +182,9 @@ TbError LbNetwork_Exchange(enum NetMessageType msg_type, void *send_buf, void *s
             if (elapsed >= timeout_max) {
                 break;
             }
+            if (netstate.users[id].progress == USER_UNUSED) {
+                break;
+            }
 
             long long time_since_draw_nanoseconds = get_time_tick_ns() - last_draw_completed_time;
             int remaining_time_until_draw = (int)((draw_interval_nanoseconds - time_since_draw_nanoseconds) / 1000000.0);
@@ -215,25 +221,6 @@ TbError LbNetwork_Exchange(enum NetMessageType msg_type, void *send_buf, void *s
     return Lb_OK;
 }
 
-void LbNetwork_SendPauseImmediate(TbBool pause_state, unsigned long delay_milliseconds) {
-    MULTIPLAYER_LOG("LbNetwork_SendPauseImmediate: sending pause_state=%d, delay_milliseconds=%lu", pause_state, delay_milliseconds);
-
-    char* message_pointer = InitMessageBuffer(NETMSG_PAUSE);
-    *message_pointer = pause_state;
-    message_pointer += 1;
-    *(unsigned long*)message_pointer = delay_milliseconds;
-    message_pointer += sizeof(unsigned long);
-
-    int message_size = message_pointer - netstate.msg_buffer;
-
-    for (NetUserId id = 0; id < netstate.max_players; id += 1) {
-        if (id == netstate.my_id || !IsUserActive(id)) {
-            continue;
-        }
-        netstate.sp->sendmsg_single(id, netstate.msg_buffer, message_size);
-    }
-}
-
 void LbNetwork_SendChatMessageImmediate(int player_id, const char *message) {
     char* ptr = InitMessageBuffer(NETMSG_CHATMESSAGE);
     *ptr = player_id;
@@ -242,6 +229,16 @@ void LbNetwork_SendChatMessageImmediate(int player_id, const char *message) {
     for (NetUserId id = 0; id < netstate.max_players; id += 1) {
         if (id != netstate.my_id && IsUserActive(id)) {
             netstate.sp->sendmsg_single(id, netstate.msg_buffer, 3 + strlen(message));
+        }
+    }
+}
+
+void LbNetwork_BroadcastUnpauseTimesync(void) {
+    MULTIPLAYER_LOG("LbNetwork_BroadcastUnpauseTimesync");
+    InitMessageBuffer(NETMSG_UNPAUSE);
+    for (NetUserId id = 0; id < netstate.max_players; id += 1) {
+        if (id != netstate.my_id && IsUserActive(id)) {
+            netstate.sp->sendmsg_single(id, netstate.msg_buffer, 1);
         }
     }
 }

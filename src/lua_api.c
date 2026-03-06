@@ -27,6 +27,7 @@
 
 #include "lua_base.h"
 #include "lua_params.h"
+#include "lua_api_lens.h"
 
 
 #include "post_inc.h"
@@ -1051,8 +1052,8 @@ static int lua_Set_hand_rule(lua_State *L)
     long crtr_id = luaL_checkNamedCommand(L,2,creature_desc);
     long rule_slot = luaL_checkinteger(L, 3);
     long rule_action = luaL_checkNamedCommand(L,4,rule_action_desc);
-    long rule = luaL_checkNamedCommand(L,4,rule_action_desc);
-    long param = luaL_checkinteger(L, 5);
+    long rule = luaL_checkNamedCommand(L,5,hand_rule_desc);
+    long param = luaL_checkinteger(L, 6);
 
     script_set_hand_rule(player_idx, crtr_id, rule_action, rule_slot, rule, param);
     return 0;
@@ -1179,8 +1180,8 @@ static int lua_Set_creature_tendencies(lua_State *L)
         if (is_my_player(player))
         {
             struct Dungeon* dungeon = get_players_dungeon(player);
-            game.creatures_tend_imprison = ((dungeon->creature_tendencies & 0x01) != 0);
-            game.creatures_tend_flee = ((dungeon->creature_tendencies & 0x02) != 0);
+            game.creatures_tend_imprison = ((dungeon->creature_tendencies & CrTend_Imprison) != 0);
+            game.creatures_tend_flee = ((dungeon->creature_tendencies & CrTend_Flee) != 0);
         }
     }
     return 0;
@@ -1189,14 +1190,14 @@ static int lua_Set_creature_tendencies(lua_State *L)
 static int lua_Creature_entrance_level(lua_State *L)
 {
     struct PlayerRange player_range = luaL_checkPlayerRange(L, 1);
-    unsigned char level = luaL_checkinteger(L, 4);
+    unsigned char level = luaL_checkCrtLevel(L, 2);
 
     for (PlayerNumber i = player_range.start_idx; i < player_range.end_idx; i++)
     {
         struct Dungeon* dungeon = get_dungeon(i);
         if (dungeon_invalid(dungeon))
             continue;
-        dungeon->creature_entrance_level = level - 1;
+        dungeon->creature_entrance_level = level;
     }
     return 0;
 }
@@ -2248,6 +2249,7 @@ void Player_register(lua_State *L);
 void Thing_register(lua_State *L);
 void Slab_register(lua_State *L);
 void room_register(lua_State *L);
+void Lens_register(lua_State *L);
 
 void reg_host_functions(lua_State *L)
 {
@@ -2256,4 +2258,5 @@ void reg_host_functions(lua_State *L)
     Thing_register(L);
     Slab_register(L);
     room_register(L);
+    Lens_register(L);
 }

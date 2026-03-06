@@ -44,6 +44,7 @@
 #include "front_simple.h"
 #include "frontend.h"
 #include "front_input.h"
+#include "frontmenu_net.h"
 #include "gui_parchment.h"
 #include "gui_frontmenu.h"
 #include "gui_msgs.h"
@@ -1165,7 +1166,6 @@ short setup_game(void)
       SetSoundMasterVolume(settings.sound_volume);
       setup_mesh_randomizers();
       setup_stuff();
-      init_lookups();
   }
   return result;
 }
@@ -1533,7 +1533,6 @@ void reinit_level_after_load(void)
     player = get_my_player();
     player->lens_palette = 0;
     player->main_palette = engine_palette;
-    init_lookups();
     init_navigation();
     reinit_packets_after_load();
     game.easter_eggs_enabled = start_params.easter_egg;
@@ -2016,25 +2015,6 @@ short complete_level(struct PlayerInfo *player)
     }
     quit_game = 1;
     return true;
-}
-
-void clear_lookups(void)
-{
-    long i;
-    SYNCDBG(8,"Starting");
-    for (i=0; i < THINGS_COUNT; i++)
-    {
-      game.things.lookup[i] = NULL;
-    }
-    game.things.end = NULL;
-
-    memset(&game.persons, 0, sizeof(struct Persons));
-
-    for (i=0; i < COLUMNS_COUNT; i++)
-    {
-      game.columns.lookup[i] = NULL;
-    }
-    game.columns.end = NULL;
 }
 
 void interp_fix_mouse_light_off_map(struct PlayerInfo *player)
@@ -3495,6 +3475,10 @@ extern "C" void network_yield_draw_frontend()
     if (frontend_menu_state == FeSt_TORTURE) {
         fronttorture_update();
     }
+    if (frontend_menu_state == FeSt_NET_START) {
+        LbWindowsControl();
+        frontnet_start_input();
+    }
     frontend_draw();
     LbScreenSwap();
 }
@@ -3559,6 +3543,10 @@ void keeper_gameplay_loop(void)
         frametime_end_measurement(Frametime_FullFrame);
     } // end while
     SYNCDBG(0,"Gameplay loop finished after %lu turns",(unsigned long)game.play_gameturn);
+
+    // Reset the game kind because we are not in a game anymore at this point
+    game.game_kind = GKind_Unset;
+
     api_event("GAME_ENDED");
 }
 
@@ -3762,6 +3750,9 @@ static TbBool wait_at_frontend(void)
     frontend_set_state(get_startup_menu_state());
     try_restore_frontend_error_box();
 
+    LbWindowsControl();
+    clear_mouse_pressed_lrbutton();
+
     short finish_menu = 0;
     clear_flag(game.mode_flags, MFlg_DemoMode);
     // TODO move to separate function
@@ -3946,11 +3937,19 @@ void game_loop(void)
       dungeon->lvstats.end_time = starttime;
       if (!TimerNoReset)
       {
-        TimerFreeze = true;
-        memset(&Timer, 0, sizeof(Timer));
+          if (is_feature_on(Ft_SkipHeartZoom))
+          {
+              timerstarttime = starttime;
+          }
+          else
+          {
+              TimerFreeze = true;
+          }
+          memset(&Timer, 0, sizeof(Timer));
       }
       LbScreenClear(0);
       LbScreenSwap();
+      game.frame_skip = 0;
       keeper_gameplay_loop();
       set_pointer_graphic_none();
       LbScreenClear(0);
@@ -4216,12 +4215,13 @@ short process_command_line(unsigned short argc, char *argv[])
           if (strcasecmp(pr2str, "game") == 0)
           {
               TimerGame = true;
+              narg++;
           }
           else if (strcasecmp(pr2str, "continuous") == 0)
           {
               TimerNoReset = true;
+              narg++;
           }
-          narg++;
       }
       else if ( strcasecmp(parstr,"config") == 0 )
       {
