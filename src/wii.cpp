@@ -133,8 +133,8 @@ extern "C" int wii_kfx_entry(int argc, char *argv[])
     SYS_Report("WII_WRAP: wii_kfx_entry begin\n");
     (void)argc;
     (void)argv;
-    static char app_name[] = "keeperfx";
-    char* safe_argv[] = { app_name, NULL };
+    static char app_path_bin[] = "bin/keeperfx_wii.dol";
+    char* safe_argv[] = { app_path_bin, NULL };
     int safe_argc = 1;
 
     wii_bootstrap_banner();

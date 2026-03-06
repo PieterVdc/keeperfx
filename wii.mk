@@ -61,6 +61,7 @@ KFX_SOURCES := $(filter-out \
 	src/lua_params.c \
 	src/lua_triggers.c \
 	src/lua_utils.c \
+	src/custom_sprites.c \
 	src/kfx/lense/LuaLensEffect.cpp \
 	src/scrcapt.c \
 	src/net_checksums.c \
@@ -80,6 +81,7 @@ TOML_SOURCES = \
 TOML_OBJECTS = $(patsubst deps/centitoml/%.c,obj/centitoml/%.o,$(TOML_SOURCES))
 
 KFX_INCLUDES = \
+	-Isrc \
 	-I$(DEVKITPRO)/libogc/include \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
@@ -92,7 +94,7 @@ KFX_COMMON_FLAGS = $(MACHDEP) -DGEKKO -DHW_RVL -DPLATFORM_WII -D__WII__ -DDEBUG 
 KFX_CFLAGS += $(KFX_COMMON_FLAGS)
 KFX_CXXFLAGS += $(KFX_COMMON_FLAGS)
 
-TOML_CFLAGS += $(MACHDEP) -O2 -fsigned-char -Ideps/centijson/include -Wall -Wextra -Wno-unused-parameter
+TOML_CFLAGS += $(MACHDEP) -O2 -fsigned-char -Isrc -Ideps/centijson/include -Ideps/centitoml -Wall -Wextra -Wno-unused-parameter
 
 KFX_LDFLAGS += \
 	$(MACHDEP) \
@@ -117,7 +119,8 @@ endif
 all: bin/keeperfx_wii.dol
 
 clean:
-	rm -rf obj bin src/ver_defs.h
+	rm -rf obj src/ver_defs.h
+	rm -f bin/keeperfx_wii.elf bin/keeperfx_wii.dol bin/keeperfx_wii.map
 
 .PHONY: all clean
 

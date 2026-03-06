@@ -23,6 +23,8 @@
 #include "bflib_sndlib.h"
 #include "net_portforward.h"
 #include "platform.h"
+#include "engine_render.h"
+#include "creature_graphics.h"
 #include "steam_api.hpp"
 #include "astronomy.h"
 #include "json.h"
@@ -110,6 +112,88 @@ void port_forward_remove_mapping(void)
 static VALUE wii_stub_value;
 static const char wii_stub_empty_string[] = "";
 struct TbFileFind { int dummy; };
+
+struct TbSpriteSheet * gui_panel_sprites = NULL;
+short iso_td_add[KEEPERSPRITE_ADD_NUM] = {0};
+short td_iso_add[KEEPERSPRITE_ADD_NUM] = {0};
+TbSpriteData keepersprite_add[KEEPERSPRITE_ADD_NUM] = {0};
+struct KeeperSprite creature_table_add[KEEPERSPRITE_ADD_NUM] = {0};
+
+int total_sprite_zip_count = 0;
+short bad_icon_id = -1;
+
+void init_custom_sprites(LevelNumber level_no)
+{
+	(void)level_no;
+}
+
+short get_anim_id(const char *name, struct ObjectConfigStats* objst)
+{
+	(void)name;
+	(void)objst;
+	return -1;
+}
+
+short get_anim_id_(const char* name)
+{
+	(void)name;
+	return -1;
+}
+
+short get_icon_id(const char *name)
+{
+	(void)name;
+	return -1;
+}
+
+const struct TbSprite *get_button_sprite_for_player(short sprite_idx, PlayerNumber plyr_idx)
+{
+	(void)sprite_idx;
+	(void)plyr_idx;
+	return NULL;
+}
+
+const struct TbSprite *get_button_sprite(short sprite_idx)
+{
+	(void)sprite_idx;
+	return NULL;
+}
+
+const struct TbSprite *get_frontend_sprite(short sprite_idx)
+{
+	(void)sprite_idx;
+	return NULL;
+}
+
+const struct TbSprite *get_new_icon_sprite(short sprite_idx)
+{
+	(void)sprite_idx;
+	return NULL;
+}
+
+const struct TbSprite *get_panel_sprite(short sprite_idx)
+{
+	(void)sprite_idx;
+	return NULL;
+}
+
+int is_custom_icon(short icon_idx)
+{
+	(void)icon_idx;
+	return 0;
+}
+
+const struct LensOverlayData* get_lens_overlay_data(const char *name)
+{
+	(void)name;
+	return NULL;
+}
+
+const struct LensMistData* get_lens_mist_data(const char *name)
+{
+	(void)name;
+	return NULL;
+}
 
 VALUE* value_array_get(const VALUE* v, size_t index)
 {
@@ -347,6 +431,33 @@ int json_number_to_double(const char* num, size_t num_size, double* p_result)
 	(void)num_size;
 	if (p_result) {
 		*p_result = 0.0;
+	}
+	return 0;
+}
+
+int json_dom_parse(char* in, size_t in_size, void* memctx, int flags, VALUE* out, JSON_INPUT_POS* pos)
+{
+	(void)in;
+	(void)in_size;
+	(void)memctx;
+	(void)flags;
+	if (out != NULL) {
+		value_init_null(out);
+	}
+	if (pos != NULL) {
+		pos->line_number = 0;
+		pos->column_number = 0;
+	}
+	return -1;
+}
+
+int json_dom_dump(const VALUE* root, JSON_DUMP_CALLBACK writer, void* userdata, int indent, int flags)
+{
+	(void)root;
+	(void)indent;
+	(void)flags;
+	if (writer != NULL) {
+		return writer("{}", 2, userdata);
 	}
 	return 0;
 }

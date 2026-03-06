@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include "toml.h"
 
 static void *(*ppmalloc)(size_t) = malloc;
