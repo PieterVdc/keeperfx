@@ -21,10 +21,8 @@ src/ariadne_points.c \
 src/ariadne_regions.c \
 src/ariadne_tringls.c \
 src/ariadne_wallhug.c \
-src/bflib_base_tcp.cpp \
 src/bflib_basics.c \
 src/bflib_coroutine.c \
-src/bflib_client_tcp.cpp \
 src/bflib_cpu.c \
 src/bflib_crash.c \
 src/bflib_datetm.cpp \
@@ -51,12 +49,10 @@ src/bflib_planar.c \
 src/bflib_render.c \
 src/bflib_render_gpoly.c \
 src/bflib_render_trig.c \
-src/bflib_server_tcp.cpp \
 src/bflib_sndlib.cpp \
 src/bflib_sound.c \
 src/bflib_sprfnt.c \
 src/bflib_string.c \
-src/bflib_tcpsp.c \
 src/bflib_video.c \
 src/bflib_vidraw.c \
 src/bflib_vidraw_spr_norm.c \
@@ -211,6 +207,9 @@ src/map_utils.c \
 src/moonphase.c \
 src/net_checksums.c \
 src/net_game.c \
+src/net_holepunch.c \
+src/net_matchmaking.c \
+src/net_lan.c \
 src/net_input_lag.c \
 src/net_received_packets.c \
 src/net_redundant_packets.c \
@@ -285,7 +284,8 @@ KFX_INCLUDES = \
 	$(shell pkg-config --cflags-only-I sdl2) \
 	$(shell pkg-config --cflags-only-I SDL2_mixer) \
 	$(shell pkg-config --cflags-only-I SDL2_net) \
-	$(shell pkg-config --cflags-only-I luajit)
+	$(shell pkg-config --cflags-only-I luajit) \
+	$(shell pkg-config --cflags-only-I libcurl)
 
 KFX_CFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=armv8-a $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-absolute-value -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -Wno-type-limits -Wno-narrowing -fsigned-char
 KFX_CXXFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=armv8-a $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -Wno-type-limits -Wno-narrowing -fsigned-char
@@ -313,6 +313,8 @@ KFX_LDFLAGS += \
 	-lminiupnpc \
 	-lnatpmp \
 	-lpthread \
+	$(shell pkg-config --libs-only-L libcurl) \
+	$(shell pkg-config --libs-only-l libcurl) \
 	-ldl
 
 TOML_SOURCES = \
@@ -344,8 +346,7 @@ clean:
 
 .PHONY: all clean
 
-bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) deps/astronomy/libastronomy.a deps/centijson/libjson.a deps/enet6/libenet6.a
-	@mkdir -p bin
+bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) deps/astronomy/libastronomy.a deps/centijson/libjson.a deps/enet6/libenet6.a | bin
 	$(CXX) -o $@ $(KFX_OBJECTS) $(TOML_OBJECTS) $(KFX_LDFLAGS)
 
 $(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h deps/centijson/include/json.h | obj
@@ -366,6 +367,7 @@ src/actionpt.c: deps/centijson/include/json.h
 src/api.c: deps/centijson/include/json.h
 src/bflib_enet.cpp: deps/enet6/include/enet6/enet.h
 src/moonphase.c: deps/astronomy/include/astronomy.h
+src/net_holepunch.c: deps/enet6/include/enet6/enet.h
 deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
 
