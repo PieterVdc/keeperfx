@@ -888,7 +888,9 @@ extern "C" void set_music_volume(SoundVolume value) {
 }
 
 extern "C" TbBool play_music(const char * fname) {
-	game.music_track = -1;
+    if (strcmp(game.music_fname, fname) == 0)
+        return false;
+    game.music_track = -1;
 	snprintf(game.music_fname, sizeof(game.music_fname), "%s", fname);
 	try {
 		if (!g_music_stream) {
