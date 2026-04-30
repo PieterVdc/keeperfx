@@ -255,8 +255,7 @@ static int thing_set_field(lua_State *L) {
         move_thing_in_map(thing, &pos);
     } else if (strcmp(key, "anim_sprite") == 0)
     {
-        thing->anim_sprite = luaL_checkAnimationId(L, 3);
-        thing->max_frames = keepersprite_frames(thing->anim_sprite);
+        set_thing_animation(thing, luaL_checkAnimationId(L, 3), -1);
     } else if (strcmp(key, "anim_speed") == 0)
     {
         thing->anim_speed = luaL_checkinteger(L, 3);
@@ -451,6 +450,8 @@ static int thing_get_field(lua_State *L) {
         lua_pushinteger(L, get_thing_max_health(thing));
     } else if (strcmp(key, "picked_up") == 0) {
         lua_pushboolean(L, thing_is_picked_up(thing));
+    } else if (strcmp(key, "thing_class") == 0) {
+        lua_pushstring(L, thing_class_code_name(thing->class_id));
     } else if (try_get_from_methods(L, 1, key)) {
         return 1;
     }

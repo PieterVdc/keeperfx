@@ -60,8 +60,8 @@ TbBool IsUserActive(NetUserId id) {
 }
 
 void UpdateLocalPlayerInfo(NetUserId id) {
-    localPlayerInfoPtr[id].active = (netstate.users[id].progress != USER_UNUSED);
-    if (!localPlayerInfoPtr[id].active) {
+    localPlayerInfoPtr[id].network_user_active = (netstate.users[id].progress != USER_UNUSED);
+    if (!localPlayerInfoPtr[id].network_user_active) {
         memset(localPlayerInfoPtr[id].name, 0, sizeof(localPlayerInfoPtr[id].name));
         return;
     }
@@ -167,6 +167,7 @@ TbError LbNetwork_Create(char *, char *plyr_name, uint32_t *plyr_num, void *optn
     netstate.my_id = SERVER_ID;
     snprintf(netstate.users[netstate.my_id].name, sizeof(netstate.users[netstate.my_id].name), "%s", plyr_name);
     netstate.users[netstate.my_id].progress = USER_LOGGEDIN;
+    netstate.users[netstate.my_id].version = net_current_version;
     *plyr_num = netstate.my_id;
     UpdateLocalPlayerInfo(netstate.my_id);
     LbNetwork_EnableNewPlayers(true);
@@ -240,6 +241,9 @@ void OnDroppedUser(NetUserId id, enum NetDropReason reason) {
     assert(id < (int)netstate.max_players);
     if (netstate.my_id == id) {
         NETMSG("Warning: Trying to drop local user. There's a bug in code somewhere, probably server trying to send message to itself.");
+        return;
+    }
+    if (netstate.users[id].progress == USER_UNUSED) {
         return;
     }
     if (reason == NETDROP_ERROR) {

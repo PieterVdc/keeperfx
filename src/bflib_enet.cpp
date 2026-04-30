@@ -35,8 +35,8 @@
 
 #define NUM_CHANNELS 2
 #define MAX_PEERS 2
-#define PEER_TIMEOUT_MIN_MS 2000
-#define PEER_TIMEOUT_MAX_MS 5000
+#define PEER_TIMEOUT_MIN_MS 4000
+#define PEER_TIMEOUT_MAX_MS 10000
 #define HOLEPUNCH_CONNECT_DELAY_MS 1000
 #define HOLEPUNCH_PRE_CONNECT_DELAY_MS 500
 #define HAPPY_EYEBALLS_DELAY_MS 250
@@ -511,6 +511,7 @@ namespace
                 break;
             }
             case ENET_EVENT_TYPE_RECEIVE:
+                enet_event.packet->userData = nullptr;
                 if (oldest_packet == nullptr)
                 {
                     newest_packet = enet_event.packet;
@@ -521,7 +522,6 @@ namespace
                 {
                     newest_packet->userData = enet_event.packet;
                     newest_packet = enet_event.packet;
-                    newest_packet->userData = nullptr;
                     incoming_queue_size += 1;
                     if (incoming_queue_size > 50)
                     {
@@ -624,6 +624,7 @@ namespace
         fprintf(stderr, "Unexpected connected user\n");
         return false;
     }
+
     /**
      * Completely reads a message. Blocks until entire message has been read.
      * Will not block if msgready has returned > 0.
@@ -641,6 +642,9 @@ namespace
         }
         ENetPacket *packet = oldest_packet;
         oldest_packet = static_cast<ENetPacket *>(oldest_packet->userData);
+        if (oldest_packet == nullptr) {
+            newest_packet = nullptr;
+        }
         incoming_queue_size--;
 
         size_t copy_size = min(packet->dataLength, max_size);

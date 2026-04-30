@@ -56,6 +56,12 @@ char* InitMessageBuffer(enum NetMessageType msg_type) {
     return ptr + 1;
 }
 
+static TbBool can_exchange_with_peer(NetUserId peer_id) {
+    return (peer_id != netstate.my_id) &&
+        (netstate.users[peer_id].progress != USER_UNUSED) &&
+        (my_player_number == get_host_player_id() || peer_id == SERVER_ID);
+}
+
 void SendMessage(NetUserId dest, const char* end_ptr) {
     netstate.sp->sendmsg_single(dest, netstate.msg_buffer, end_ptr - netstate.msg_buffer);
 }
@@ -101,6 +107,9 @@ TbError ProcessMessage(NetUserId source, void* server_buf, size_t frame_size) {
     if (type == NETMSG_LOGIN) {
         if (from_server) {
             netstate.my_id = (NetUserId)*ptr;
+            ptr += 1;
+            netstate.users[netstate.my_id].version = net_current_version;
+            netstate.users[SERVER_ID].version = *(const struct GameVersionPacket *)ptr;
             return Lb_OK;
         }
         if (netstate.users[source].progress != USER_CONNECTED) {
@@ -132,12 +141,16 @@ TbError ProcessMessage(NetUserId source, void* server_buf, size_t frame_size) {
             netstate.sp->drop_user(source);
             return Lb_OK;
         }
+        ptr += name_len + 1;
+        netstate.users[source].version = *(const struct GameVersionPacket *)ptr;
         NETMSG("User %s successfully logged in", netstate.users[source].name);
         netstate.users[source].progress = USER_LOGGEDIN;
         play_non_3d_sample(76);
         char * msg_ptr = InitMessageBuffer(NETMSG_LOGIN);
         *msg_ptr = source;
         msg_ptr += 1;
+        memcpy(msg_ptr, &netstate.users[SERVER_ID].version, sizeof(netstate.users[SERVER_ID].version));
+        msg_ptr += sizeof(netstate.users[SERVER_ID].version);
         SendMessage(source, msg_ptr);
         NetUserId uid;
         for (uid = 0; uid < netstate.max_players; uid += 1) {
@@ -173,7 +186,7 @@ TbError ProcessMessage(NetUserId source, void* server_buf, size_t frame_size) {
         UpdateLocalPlayerInfo(id);
         return Lb_OK;
     }
-    if (type == NETMSG_FRONTEND || type == NETMSG_SMALLDATA || type == NETMSG_GAMEPLAY) {
+    if (type == NETMSG_FRONTEND || type == NETMSG_STARTUP_SYNC || type == NETMSG_GAMEPLAY) {
         NetUserId peer_id = (NetUserId)*ptr;
         if (peer_id < 0 || peer_id >= netstate.max_players) {
             ERRORLOG("Critical error: Out of range peer ID %i received, could be used for buffer overflow attack", peer_id);
@@ -226,7 +239,7 @@ TbError ProcessMessage(NetUserId source, void* server_buf, size_t frame_size) {
 
 TbError LbNetwork_ExchangeLogin(char *plyr_name) {
     NETMSG("Logging in as %s", plyr_name);
-    if (1 + strlen(netstate.password) + 1 + strlen(plyr_name) + 1 >= sizeof(netstate.msg_buffer)) {
+    if (1 + strlen(netstate.password) + 1 + strlen(plyr_name) + 1 + sizeof(net_current_version) >= sizeof(netstate.msg_buffer)) {
         ERRORLOG("Login credentials too long");
         return Lb_FAIL;
     }
@@ -235,6 +248,8 @@ TbError LbNetwork_ExchangeLogin(char *plyr_name) {
     ptr += strlen(netstate.password) + 1;
     strcpy(ptr, plyr_name);
     ptr += strlen(plyr_name) + 1;
+    memcpy(ptr, &net_current_version, sizeof(net_current_version));
+    ptr += sizeof(net_current_version);
     SendMessage(SERVER_ID, ptr);
     TbClockMSec start = LbTimerClock();
     while (true) {
@@ -274,30 +289,33 @@ void LbNetwork_WaitForMissingPackets(void* server_buf, size_t client_frame_size)
     if (game.skip_initial_input_turns > 0) {
         return;
     }
-    GameTurn historical_turn = game.play_gameturn - game.input_lag_turns;
+    GameTurn historical_turn = get_gameturn() - game.input_lag_turns;
     const struct Packet* received_packets = get_received_packets_for_turn(historical_turn);
     if (received_packets == NULL) {
         MULTIPLAYER_LOG("LbNetwork_WaitForMissingPackets: Missing packets for turn=%lu, waiting...", (unsigned long)historical_turn);
         TbClockMSec start = LbTimerClock();
         while (true) {
             int elapsed = LbTimerClock() - start;
+            TbBool has_remote_peer = false;
             if (elapsed >= TIMEOUT_GAMEPLAY_MISSING_PACKET) {
                 MULTIPLAYER_LOG("LbNetwork_WaitForMissingPackets: Timeout waiting for turn=%lu packets", (unsigned long)historical_turn);
                 break;
             }
 
-            NetUserId id;
-            for (id = 0; id < netstate.max_players; id += 1) {
-                if (id == netstate.my_id) { continue; }
-                if (netstate.users[id].progress == USER_UNUSED) { continue; }
-                if (my_player_number != get_host_player_id() && id != SERVER_ID) { continue; }
+            netstate.sp->update(OnNewUser);
+            const int wait_time = min(TIMEOUT_GAMEPLAY_MISSING_PACKET - elapsed, 100);
+            for (NetUserId peer_id = 0; peer_id < netstate.max_players; peer_id += 1) {
+                if (!can_exchange_with_peer(peer_id)) { continue; }
 
-                int wait_time = TIMEOUT_GAMEPLAY_MISSING_PACKET - elapsed;
-                if (netstate.sp->msgready(id, wait_time)) {
-                    while (netstate.sp->msgready(id, 0)) {
-                        ProcessMessage(id, server_buf, client_frame_size);
+                has_remote_peer = true;
+                if (netstate.sp->msgready(peer_id, wait_time)) {
+                    while (netstate.sp->msgready(peer_id, 0)) {
+                        ProcessMessage(peer_id, server_buf, client_frame_size);
                     }
                 }
+            }
+            if (!has_remote_peer) {
+                break;
             }
 
             received_packets = get_received_packets_for_turn(historical_turn);
@@ -329,11 +347,8 @@ TbError LbNetwork_Exchange(enum NetMessageType msg_type, void *send_buf, void *s
         timeout_max = (1000 / game_num_fps);
     }
 
-    NetUserId id;
-    for (id = 0; id < netstate.max_players; id += 1) {
-        if (id == netstate.my_id) { continue; }
-        if (netstate.users[id].progress == USER_UNUSED) { continue; }
-        if (my_player_number != get_host_player_id() && id != SERVER_ID) { continue; }
+    for (NetUserId peer_id = 0; peer_id < netstate.max_players; peer_id += 1) {
+        if (!can_exchange_with_peer(peer_id)) { continue; }
 
         TbClockMSec start = LbTimerClock();
         while (true) {
@@ -341,7 +356,7 @@ TbError LbNetwork_Exchange(enum NetMessageType msg_type, void *send_buf, void *s
             if (elapsed >= timeout_max) {
                 break;
             }
-            if (netstate.users[id].progress == USER_UNUSED) {
+            if (netstate.users[peer_id].progress == USER_UNUSED) {
                 break;
             }
 
@@ -350,14 +365,14 @@ TbError LbNetwork_Exchange(enum NetMessageType msg_type, void *send_buf, void *s
             if (remaining_time_until_draw < 0) {remaining_time_until_draw = 0;}
             int wait = min(timeout_max - elapsed, remaining_time_until_draw);
 
-            if (netstate.sp->msgready(id, wait)) {
-                ProcessMessage(id, server_buf, client_frame_size);
+            if (netstate.sp->msgready(peer_id, wait)) {
+                ProcessMessage(peer_id, server_buf, client_frame_size);
                 if (msg_type != NETMSG_GAMEPLAY) {
                     break;
                 }
                 TbBool received_gameplay_msg = (netstate.msg_buffer[0] == NETMSG_GAMEPLAY);
-                while (netstate.sp->msgready(id, 0)) {
-                    ProcessMessage(id, server_buf, client_frame_size);
+                while (netstate.sp->msgready(peer_id, 0)) {
+                    ProcessMessage(peer_id, server_buf, client_frame_size);
                     if (netstate.msg_buffer[0] == NETMSG_GAMEPLAY) {
                         received_gameplay_msg = true;
                     }
