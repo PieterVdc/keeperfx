@@ -46,6 +46,96 @@ const struct ConfigFileData keeper_effects_file_data = {
     .post_load_func = NULL,
 };
 
+const struct NamedField effects_effectellements_named_fields[] = {
+    {"NAME",                       0, field(game.conf.effects_conf.effectelement_cfgstats[0].code_name),                    0,    INT32_MIN, UINT32_MAX, effect_desc,     value_name,      assign_null},
+    {"DrawClass",                  0, field(game.conf.effects_conf.effectelement_cfgstats[0].draw_class),                   0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"MoveType",                   0, field(game.conf.effects_conf.effectelement_cfgstats[0].move_type),                    0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Unanimated",                 0, field(game.conf.effects_conf.effectelement_cfgstats[0].unanimated),                   0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Lifespan",                   0, field(game.conf.effects_conf.effectelement_cfgstats[0].lifespan),                     0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Lifespan",                   1, field(game.conf.effects_conf.effectelement_cfgstats[0].lifespan_random),              0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AnimationId",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].sprite_idx),                   0,    INT32_MIN, UINT32_MAX, NULL,            value_animid,    assign_animid},
+    {"SpriteSize",                 0, field(game.conf.effects_conf.effectelement_cfgstats[0].sprite_size_min),              0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SpriteSize",                 1, field(game.conf.effects_conf.effectelement_cfgstats[0].sprite_size_max),              0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"RenderFlags",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].animate_once),                 0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AnimateOnce",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].animate_once),                 0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SpriteSpeed",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].sprite_speed_min),             0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SpriteSpeed",                1, field(game.conf.effects_conf.effectelement_cfgstats[0].sprite_speed_max),             0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AnimateOnFloor",             0, field(game.conf.effects_conf.effectelement_cfgstats[0].animate_on_flo),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Unshaded",                   0, field(game.conf.effects_conf.effectelement_cfgstats[0].unshaded),                     0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Transparent",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].transparent),                  0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"MovementFlags",              0, field(game.conf.effects_conf.effectelement_cfgstats[0].through_walls),                0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"ThroughWalls",               0, field(game.conf.effects_conf.effectelement_cfgstats[0].through_walls),                0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SizeChange",                 0, field(game.conf.effects_conf.effectelement_cfgstats[0].size_change),                  0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"FallAcceleration",           0, field(game.conf.effects_conf.effectelement_cfgstats[0].fall_accelerat),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"InertiaFloor",               0, field(game.conf.effects_conf.effectelement_cfgstats[0].inertia_floor),                0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"InertiaAir",                 0, field(game.conf.effects_conf.effectelement_cfgstats[0].inertia_air),                  0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SubeffectModel",             0, field(game.conf.effects_conf.effectelement_cfgstats[0].subeffect_mode),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SubeffectDelay",             0, field(game.conf.effects_conf.effectelement_cfgstats[0].subeffect_dela),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Movable",                    0, field(game.conf.effects_conf.effectelement_cfgstats[0].movable),                      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Impacts",                    0, field(game.conf.effects_conf.effectelement_cfgstats[0].impacts),                      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SolidGroundEffmodel",        0, field(game.conf.effects_conf.effectelement_cfgstats[0].solidgnd_effmodel),            0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SolidGroundSoundId",         0, field(game.conf.effects_conf.effectelement_cfgstats[0].solidgnd_snd_smpid),           0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SolidGroundLoudness",        0, field(game.conf.effects_conf.effectelement_cfgstats[0].solidgnd_loudness),            0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SolidGroundDestroyOnImpact", 0, field(game.conf.effects_conf.effectelement_cfgstats[0].solidgnd_destroy_on_impact),   0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"WaterEffmodel",              0, field(game.conf.effects_conf.effectelement_cfgstats[0].water_effmodel),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"WaterSoundId",               0, field(game.conf.effects_conf.effectelement_cfgstats[0].water_snd_smpid),              0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"WaterLoudness",              0, field(game.conf.effects_conf.effectelement_cfgstats[0].water_loudness),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"WaterDestroyOnImpact",       0, field(game.conf.effects_conf.effectelement_cfgstats[0].water_destroy_on_impact),      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LavaEffmodel",               0, field(game.conf.effects_conf.effectelement_cfgstats[0].lava_effmodel),                0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LavaSoundId",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].lava_snd_smpid),               0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LavaLoudness",               0, field(game.conf.effects_conf.effectelement_cfgstats[0].lava_loudness),                0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LavaDestroyOnImpact",        0, field(game.conf.effects_conf.effectelement_cfgstats[0].lava_destroy_on_impact),       0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"TransformModel",             0, field(game.conf.effects_conf.effectelement_cfgstats[0].transform_model),              0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LightRadius",                0, field(game.conf.effects_conf.effectelement_cfgstats[0].light_radius),                 0,    INT32_MIN, UINT32_MAX, NULL,            value_stltocoord,assign_default},
+    {"LightIntensity",             0, field(game.conf.effects_conf.effectelement_cfgstats[0].light_intensity),              0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LightFlags",                 0, field(game.conf.effects_conf.effectelement_cfgstats[0].light_flags),                  0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AffectedByWind",             0, field(game.conf.effects_conf.effectelement_cfgstats[0].affected_by_wind),             0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {NULL},
+};
+
+const struct NamedFieldSet effects_effectemements_named_fields_set = {
+    &game.conf.effects_conf.effectelements_cfgstats_count,
+    "effectElement",
+    effects_effectellements_named_fields,
+    effectelem_desc,
+    EFFECTSELLEMENTS_TYPES_MAX,
+    sizeof(game.conf.effects_conf.effectelements_cfgstats[0]),
+    game.conf.effects_conf.effectelement_cfgstats,
+};
+
+
+const struct NamedField effects_effect_named_fields[] = {
+    {"NAME",                   0, field(game.conf.effects_conf.effect_cfgstats[0].code_name),            0,    INT32_MIN, UINT32_MAX, effect_desc,     value_name,      assign_null},
+    {"GenerationAccelXYRange", 0, field(game.conf.effects_conf.effect_cfgstats[0].accel_xy_min),         0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"GenerationAccelXYRange", 1, field(game.conf.effects_conf.effect_cfgstats[0].accel_xy_max),         0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"GenerationAccelZRange",  0, field(game.conf.effects_conf.effect_cfgstats[0].accel_z_min),          0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"GenerationAccelZRange",  1, field(game.conf.effects_conf.effect_cfgstats[0].accel_z_max),          0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"GenerationKindRange",    0, field(game.conf.effects_conf.effect_cfgstats[0].kind_min),             0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"GenerationKindRange",    1, field(game.conf.effects_conf.effect_cfgstats[0].kind_max),             0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"Health",                 0, field(game.conf.effects_conf.effect_cfgstats[0].start_health),         0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"GenerationType",         0, field(game.conf.effects_conf.effect_cfgstats[0].generation_type),      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AreaAffectType",         0, field(game.conf.effects_conf.effect_cfgstats[0].area_affect_type),     0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AffectedByWind",         0, field(game.conf.effects_conf.effect_cfgstats[0].affected_by_wind),     0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LightRadius",            0, field(game.conf.effects_conf.effect_cfgstats[0].ilght.radius),         0,    INT32_MIN, UINT32_MAX, NULL,            value_stltocoord,assign_default},
+    {"LightIntensity",         0, field(game.conf.effects_conf.effect_cfgstats[0].ilght.intensity),      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"LightFlags",             0, field(game.conf.effects_conf.effect_cfgstats[0].ilght.flags),          0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"ElementsCount",          0, field(game.conf.effects_conf.effect_cfgstats[0].elements_count),       0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"AlwaysGenerate",         0, field(game.conf.effects_conf.effect_cfgstats[0].always_generate),      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"HitType",                0, field(game.conf.effects_conf.effect_cfgstats[0].effect_hit_type),      0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
+    {"SpellEffect",            0, field(game.conf.effects_conf.effect_cfgstats[0].spell_effect),         0,    INT32_MIN, UINT32_MAX, spell_desc,      value_default,   assign_default},
+    {NULL},
+};
+
+const struct NamedFieldSet effects_effect_named_fields_set = {
+    &game.conf.effects_conf.effectgen_cfgstats_count,
+    "effect",
+    effects_effect_named_fields,
+    effect_desc,
+    EFFECTS_TYPES_MAX,
+    sizeof(game.conf.effects_conf.effect_cfgstats[0]),
+    game.conf.effects_conf.effect_cfgstats,
+};
+
 
 const struct NamedField effects_effectgenerator_named_fields[] = {
     {"NAME",                   0, field(game.conf.effects_conf.effectgen_cfgstats[0].code_name),            0,    INT32_MIN, UINT32_MAX, effectgen_desc,  value_name,      assign_null},
@@ -65,7 +155,6 @@ const struct NamedField effects_effectgenerator_named_fields[] = {
     {"SOUND",                  1, field(game.conf.effects_conf.effectgen_cfgstats[0].sound_sample_rng),     0,    INT32_MIN, UINT32_MAX, NULL,            value_default,   assign_default},
     {NULL},
 };
-
 
 const struct NamedFieldSet effects_effectgenerator_named_fields_set = {
     &game.conf.effects_conf.effectgen_cfgstats_count,
