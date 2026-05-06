@@ -872,6 +872,7 @@ void go_to_next_trap_of_type(ThingModel tngmodel, PlayerNumber plyr_idx)
         if (k > THINGS_COUNT)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Trap);
           break;
         }
     }
@@ -927,6 +928,7 @@ void go_to_next_door_of_type(ThingModel tngmodel, PlayerNumber plyr_idx)
         if (k > THINGS_COUNT)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Door);
           break;
         }
     }

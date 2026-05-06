@@ -1007,6 +1007,7 @@ static TbResult magic_use_power_armageddon(PowerKind power_kind, PlayerNumber pl
         if (k > THINGS_COUNT)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
           break;
         }
     }

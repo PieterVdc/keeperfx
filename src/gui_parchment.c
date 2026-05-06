@@ -45,6 +45,7 @@
 #include "config_terrain.h"
 #include "config_spritecolors.h"
 #include "thing_data.h"
+#include "thing_list.h"
 #include "thing_objects.h"
 #include "thing_traps.h"
 #include "creature_graphics.h"
@@ -498,6 +499,7 @@ int draw_overhead_creatures(const struct TbRect *map_area, long block_size, Play
         if (k > THINGS_COUNT)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
           break;
         }
     }
@@ -549,6 +551,7 @@ int draw_overhead_traps(const struct TbRect *map_area, long block_size, PlayerNu
         if (k > slist->count)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
           break;
         }
     }
@@ -602,6 +605,7 @@ int draw_overhead_spells(const struct TbRect *map_area, long block_size, PlayerN
         if (k > slist->count)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
           break;
         }
     }

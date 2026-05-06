@@ -13,6 +13,7 @@
 #include "creature_states_pray.h"
 #include "gui_msgs.h"
 #include "gui_soundmsgs.h"
+#include "thing_list.h"
 #include "thing_navigate.h"
 #include "map_data.h"
 #include "game_legacy.h"
@@ -1937,6 +1938,7 @@ static int lua_get_things_of_class(lua_State *L)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, class_id);
             break;
         }
     }
@@ -1977,6 +1979,7 @@ static int lua_get_things_on_subtile(lua_State *L)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things on tile");
+            break_mapwho_infinite_chain(mapblk);
             break;
         }
     }
@@ -2023,6 +2026,7 @@ static int lua_get_things_on_slab(lua_State *L)
                 if (k > THINGS_COUNT)
                 {
                     ERRORLOG("Infinite loop detected when sweeping things on tile");
+                    break_mapwho_infinite_chain(mapblk);
                     break;
                 }
             }

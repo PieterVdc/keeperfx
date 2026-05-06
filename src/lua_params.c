@@ -643,7 +643,7 @@ void lua_pushPartyTable(lua_State *L, struct Thing* thing) {
         k++;
         if (k > THINGS_COUNT)
         {
-            ERRORLOG("Infinite loop detected when sweeping things list");
+            ERRORLOG("Infinite loop detected when sweeping creatures in party");
             break;
         }
     }

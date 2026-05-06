@@ -2262,6 +2262,7 @@ int set_players_creatures_to_get_paid(PlayerNumber plyr_idx)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
             break;
         }
     }
@@ -2378,6 +2379,7 @@ void update_near_creatures_for_footsteps(int32_t *near_creatures, const struct C
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
             break;
         }
     }
@@ -2415,6 +2417,7 @@ long stop_playing_flight_sample_in_all_flying_creatures(void)
         if (k > THINGS_COUNT)
         {
           ERRORLOG("Infinite loop detected when sweeping things list");
+          recalculate_corrupt_list(slist, TCls_Creature);
           break;
         }
     }

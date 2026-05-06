@@ -426,6 +426,7 @@ void kill_all_players_chickens(PlayerNumber plyr_idx)
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
             break;
         }
     }

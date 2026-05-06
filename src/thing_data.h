@@ -302,8 +302,8 @@ struct Thing {
     unsigned short light_id;
     CctrlIndex ccontrol_idx;
     unsigned char snd_emitter_id;
-    short next_of_class;
-    short prev_of_class;
+    ThingIndex next_of_class;
+    ThingIndex prev_of_class;
     uint32_t flags; //ThingAddFlags
     int32_t last_turn_drawn;
     float time_spent_displaying_hurt_colour; // Used for delta time interpolated render position

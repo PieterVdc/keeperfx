@@ -1823,6 +1823,7 @@ void script_set_creature_instance(ThingModel crmodel, short slot, int instance, 
             if (k > slist->count)
             {
                 ERRORLOG("Infinite loop detected when sweeping things list");
+                recalculate_corrupt_list(slist, TCls_Creature);
                 break;
             }
         }

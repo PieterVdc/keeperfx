@@ -647,7 +647,7 @@ long move_imp_to_dig_here(struct Computer2 *comp, struct Coord3d *pos, long max_
             k++;
             if (k > THINGS_COUNT)
             {
-                ERRORLOG("Infinite loop detected when sweeping things list");
+                ERRORLOG("Infinite loop detected when sweeping digger list");
                 break;
             }
         }
@@ -688,7 +688,7 @@ long move_imp_to_mine_here(struct Computer2 *comp, struct Coord3d *pos, long max
             k++;
             if (k > THINGS_COUNT)
             {
-                ERRORLOG("Infinite loop detected when sweeping things list");
+                ERRORLOG("Infinite loop detected when sweeping digger list");
                 break;
             }
         }

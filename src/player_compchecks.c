@@ -804,7 +804,7 @@ struct Thing *computer_check_creatures_in_room_for_accelerate(struct Computer2 *
         k++;
         if (k > THINGS_COUNT)
         {
-            ERRORLOG("Infinite loop detected when sweeping things list");
+            ERRORLOG("Infinite loop detected when sweeping creatures in room list");
             break;
         }
     }
@@ -884,7 +884,7 @@ struct Thing *computer_check_creatures_in_room_for_vision(struct Computer2 *comp
         k++;
         if (k > THINGS_COUNT)
         {
-            ERRORLOG("Infinite loop detected when sweeping things list");
+            ERRORLOG("Infinite loop detected when sweeping creatures in room list");
             break;
         }
     }

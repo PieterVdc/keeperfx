@@ -28,6 +28,7 @@
 #include "player_data.h"
 #include "dungeon_data.h"
 #include "player_utils.h"
+#include "thing_list.h"
 #include "thing_shots.h"
 #include "thing_objects.h"
 #include "thing_physics.h"
@@ -357,6 +358,7 @@ void god_lightning_choose_next_creature(struct Thing *shotng)
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
             break;
         }
     }

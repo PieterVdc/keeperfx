@@ -43,6 +43,7 @@
 #include "kjm_input.h"
 #include "frontmenu_ingame_tabs.h"
 #include "thing_doors.h"
+#include "thing_list.h"
 #include "vidmode.h"
 #include "vidfade.h"
 #include "player_instances.h"
@@ -307,6 +308,7 @@ int draw_overlay_call_to_arms(struct PlayerInfo *player, long units_per_px, long
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
             break;
         }
     }
@@ -386,6 +388,7 @@ int draw_overlay_traps(struct PlayerInfo *player, long units_per_px, long scaled
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
             break;
         }
     }
@@ -470,6 +473,7 @@ int draw_overlay_spells_and_boxes(struct PlayerInfo *player, long units_per_px, 
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
             break;
         }
     }
@@ -656,6 +660,7 @@ int draw_overlay_creatures(struct PlayerInfo *player, long units_per_px, long zo
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
             break;
         }
     }

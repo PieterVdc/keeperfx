@@ -3231,6 +3231,7 @@ void reset_creatures_rooms(struct Room *room)
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
             break;
         }
     }

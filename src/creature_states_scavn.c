@@ -320,6 +320,7 @@ struct Thing *select_scavenger_target(const struct Thing *calltng)
         if (k > slist->count)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Creature);
             break;
         }
     }

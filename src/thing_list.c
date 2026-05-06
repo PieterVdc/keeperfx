@@ -25,6 +25,7 @@
 #include "bflib_sound.h"
 #include "packets.h"
 #include "light_data.h"
+#include "thing_data.h"
 #include "thing_objects.h"
 #include "thing_effects.h"
 #include "thing_traps.h"
@@ -1007,10 +1008,38 @@ void update_things_in_list(struct StructureList *list)
       if (k > THINGS_COUNT)
       {
         ERRORLOG("Infinite loop detected when sweeping things list");
+        recalculate_corrupt_list(list, thing->class_id);
         break;
       }
     }
     SYNCDBG(19,"Finished, %d items",(int)k);
+}
+
+void recalculate_corrupt_list(struct StructureList *list, ThingClass class_id)
+{
+    SYNCDBG(18,"Starting");
+    ThingIndex prev_of_class = 0;
+    list->count = 0;
+    for (int i = 0; i < THINGS_COUNT; i++)
+    {
+        struct Thing* thing = thing_get(i);
+        if (!thing_is_invalid(thing) && thing->class_id == class_id)
+        {
+            if (prev_of_class == 0)
+            {
+                list->index = thing->index;
+            }
+            else
+            {
+                struct Thing* prev_thing = thing_get(prev_of_class);
+                prev_thing->next_of_class = thing->index;
+                thing->prev_of_class = prev_of_class;
+            }
+            thing->next_of_class = 0;
+            prev_of_class = thing->index;
+            list->count++;
+        }
+    }
 }
 
 /**
@@ -1038,6 +1067,7 @@ unsigned long update_cave_in_things(void)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_CaveIn);
             break;
         }
     }
@@ -1069,6 +1099,7 @@ unsigned long update_things_sounds_in_list(struct StructureList *list)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_AmbientSnd);
             break;
         }
     }
@@ -1141,7 +1172,8 @@ void update_things(void)
 struct Thing *find_players_dungeon_heart(PlayerNumber plyridx)
 {
     int k = 0;
-    int i = game.thing_lists[TngList_Objects].index;
+    const struct StructureList *slist = get_list_for_thing_class(TCls_Object);
+    int i = slist->index;
     while (i != 0)
     {
         struct Thing* thing = thing_get(i);
@@ -1161,6 +1193,7 @@ struct Thing *find_players_dungeon_heart(PlayerNumber plyridx)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
             break;
         }
     }
@@ -1172,7 +1205,8 @@ struct Thing* find_players_backup_dungeon_heart(PlayerNumber plyridx)
 {
     struct Dungeon* dungeon = get_dungeon(plyridx);
     int k = 0;
-    int i = game.thing_lists[TngList_Objects].index;
+    const struct StructureList *slist = get_list_for_thing_class(TCls_Object);
+    int i = slist->index;
     while (i != 0)
     {
         struct Thing* thing = thing_get(i);

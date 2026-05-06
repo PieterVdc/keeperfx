@@ -789,6 +789,7 @@ static void update_all_trap_draws_of_model(int32_t trap_model)
         k++;
         if (k > (int) slist->index) {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Trap);
             break;
         }
     }

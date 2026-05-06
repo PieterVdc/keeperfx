@@ -1321,6 +1321,7 @@ void set_player_colour(PlayerNumber plyr_idx, unsigned char colour_idx)
                 if (k > slist->count)
                 {
                     ERRORLOG("Infinite loop detected when sweeping things list");
+                    recalculate_corrupt_list(slist, TCls_Object);
                     break;
                 }
             }

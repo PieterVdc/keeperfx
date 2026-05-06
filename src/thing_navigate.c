@@ -286,7 +286,8 @@ struct Thing *find_best_hero_gate_to_navigate_to(struct Thing *herotng)
     }
 
     //Go through all objects to find gates and record distance
-    int i = game.thing_lists[TngList_Objects].index;
+    const struct StructureList *slist = get_list_for_thing_class(TCls_Object);
+    int i = slist->index;
     int32_t k = 0;
     short found_gates = 0;
     while (i != 0)
@@ -316,6 +317,7 @@ struct Thing *find_best_hero_gate_to_navigate_to(struct Thing *herotng)
         if (k > THINGS_COUNT)
         {
             ERRORLOG("Infinite loop detected when sweeping things list");
+            recalculate_corrupt_list(slist, TCls_Object);
             break;
         }
     }
