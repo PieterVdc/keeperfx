@@ -88,18 +88,18 @@ short play_smacker_file(char *filename, FrontendMenuState nstate)
   if (result)
   {
     // Temporarily suspend OpenAL so SDL can use the audio device
-    if (!SoundDisabled) {
-      SuspendAudioForVideo();
-    }
+    //if (!SoundDisabled) {
+    //  SuspendAudioForVideo();
+    //}
     if (!play_smk(filename, movie_flags))
     {
       ERRORLOG("Smacker play error");
       result=0;
     }
     // Resume OpenAL after video
-    if (!SoundDisabled) {
-      ResumeAudioAfterVideo();
-    }
+    //if (!SoundDisabled) {
+    //  ResumeAudioAfterVideo();
+    //}
   }
   if (nstate>-2)
   {
