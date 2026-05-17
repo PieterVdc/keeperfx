@@ -1,8 +1,8 @@
 include version.mk
 
 BUILD_NUMBER ?= $(VER_BUILD)
-VER_SUFFIX ?= Prototype
-VER_STRING = $(VER_MAJOR).$(VER_MINOR).$(VER_RELEASE).$(BUILD_NUMBER) $(VER_SUFFIX)
+VER_SUFFIX ?= Portmaster
+VER_STRING = $(VER_MAJOR).$(VER_MINOR).$(VER_RELEASE).5048 $(VER_SUFFIX)
 
 MKDIR ?= mkdir -p
 STRIP ?= strip
@@ -211,7 +211,7 @@ src/moonphase.c \
 src/net_checksums.c \
 src/net_game.c \
 src/net_holepunch.c \
-src/net_matchmaking.c \
+src/net_matchmaking_stub.c \
 src/net_lan.c \
 src/net_input_lag.c \
 src/net_resync.cpp \
@@ -282,11 +282,11 @@ KFX_INCLUDES = \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
 	-Ideps/enet6/include \
-	-Ideps/libcurl/include \
 	$(shell pkg-config --cflags-only-I sdl2) \
 	$(shell pkg-config --cflags-only-I SDL2_mixer) \
 	$(shell pkg-config --cflags-only-I SDL2_net) \
-	$(shell pkg-config --cflags-only-I luajit)
+	$(shell pkg-config --cflags-only-I luajit) \
+	$(shell pkg-config --cflags-only-I libcurl)
 
 KFX_CFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=armv8-a $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-absolute-value -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -Wno-type-limits -Wno-narrowing -fsigned-char
 KFX_CXXFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=armv8-a $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -Wno-type-limits -Wno-narrowing -fsigned-char
@@ -314,7 +314,7 @@ KFX_LDFLAGS += \
 	-lminiupnpc \
 	-lnatpmp \
 	-lpthread \
-	-Ldeps/libcurl/lib -lcurl -lssl -lcrypto -lzstd \
+	$(shell pkg-config --libs libcurl) \
 	-ldl
 
 TOML_SOURCES = \
@@ -345,16 +345,19 @@ clean:
 bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) | bin
 	$(CXX) -o $@ $(KFX_OBJECTS) $(TOML_OBJECTS) $(KFX_LDFLAGS)
 
-$(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h | obj
+$(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h deps/centijson/include/json.h | obj
+	@$(MKDIR) $(@D)
 	$(CC) $(KFX_CFLAGS) -c $< -o $@
 
-$(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h | obj
+$(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h deps/centijson/include/json.h | obj
+	@$(MKDIR) $(@D)
 	$(CXX) $(KFX_CXXFLAGS) -c $< -o $@
 
 $(TOML_OBJECTS): obj/centitoml/%.o: deps/centitoml/%.c deps/centijson/include/json.h | obj/centitoml
+	@$(MKDIR) $(@D)
 	$(CC) $(TOML_CFLAGS) -c $< -o $@
 
-bin obj deps/astronomy deps/centijson deps/enet6 deps/libcurl obj/centitoml:
+bin obj deps/astronomy deps/centijson deps/enet6 obj/centitoml obj/kfx/lense:
 	$(MKDIR) $@
 
 src/actionpt.c: deps/centijson/include/json.h
@@ -362,31 +365,33 @@ src/api.c: deps/centijson/include/json.h
 src/bflib_enet.cpp: deps/enet6/include/enet6/enet.h
 src/moonphase.c: deps/astronomy/include/astronomy.h
 src/net_holepunch.c: deps/enet6/include/enet6/enet.h
-src/net_matchmaking.c: deps/libcurl/include/curl/curl.h
+# src/net_matchmaking.c uses system libcurl (installed via apt)
 deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
 
 deps/astronomy/libastronomy.a: | deps/astronomy
-	$(CC) -c -O3 -fPIC deps/astronomy/source/c/astronomy.c -o deps/astronomy/astronomy.o
+	test -d deps/astronomy/source || git clone --depth 1 https://github.com/cosinekitty/astronomy.git deps/astronomy/source
+	$(CC) -c -O3 -fPIC deps/astronomy/source/source/c/astronomy.c -o deps/astronomy/astronomy.o
 	$(AR) rcs $@ deps/astronomy/astronomy.o
 
 deps/astronomy/include/astronomy.h: deps/astronomy/libastronomy.a
 	$(MKDIR) deps/astronomy/include
-	cp deps/astronomy/source/c/astronomy.h deps/astronomy/include/
+	cp deps/astronomy/source/source/c/astronomy.h deps/astronomy/include/
 
 deps/centijson/libjson.a: | deps/centijson
-	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json.c -o deps/centijson/json.o
-	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/value.c -o deps/centijson/value.o
-	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json-dom.c -o deps/centijson/json-dom.o
-	$(CC) -c -O3 -fPIC -Ideps/centijson/src deps/centijson/src/json-ptr.c -o deps/centijson/json-ptr.o
+	test -d deps/centijson/src || git clone --depth 1 https://github.com/mity/centijson.git deps/centijson/src
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src/src deps/centijson/src/src/json.c -o deps/centijson/json.o
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src/src deps/centijson/src/src/value.c -o deps/centijson/value.o
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src/src deps/centijson/src/src/json-dom.c -o deps/centijson/json-dom.o
+	$(CC) -c -O3 -fPIC -Ideps/centijson/src/src deps/centijson/src/src/json-ptr.c -o deps/centijson/json-ptr.o
 	$(AR) rcs $@ deps/centijson/json.o deps/centijson/value.o deps/centijson/json-dom.o deps/centijson/json-ptr.o
 
 deps/centijson/include/json.h: deps/centijson/libjson.a
 	$(MKDIR) deps/centijson/include
-	cp deps/centijson/src/json.h deps/centijson/include/
-	cp deps/centijson/src/json-dom.h deps/centijson/include/
-	cp deps/centijson/src/json-ptr.h deps/centijson/include/
-	cp deps/centijson/src/value.h deps/centijson/include/
+	cp deps/centijson/src/src/json.h deps/centijson/include/
+	cp deps/centijson/src/src/json-dom.h deps/centijson/include/
+	cp deps/centijson/src/src/json-ptr.h deps/centijson/include/
+	cp deps/centijson/src/src/value.h deps/centijson/include/
 
 deps/enet6/include/enet6/enet.h: | deps/enet6
 	test -d deps/enet6/src || git clone https://github.com/SirLynix/enet6.git deps/enet6/src

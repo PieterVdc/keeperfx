@@ -11,8 +11,6 @@ if [[ ! "$CURRENT_BRANCH" =~ portmaster ]]; then
     echo "The portmaster branch has ARM64 optimizations and SDL2 fixes."
     echo "Current branch: $CURRENT_BRANCH"
 fi
-git fetch origin portmaster
-git pull origin portmaster
 
 # Create cache directory for built dependencies
 CACHE_DIR="$(pwd)/build-cache-docker"
@@ -39,8 +37,9 @@ sudo docker run --rm \
     
     # Install available packages from apt
     echo "Installing system packages..."
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq \
+    apt-get install -y -qq --no-install-recommends \
         libavcodec-dev \
         libavformat-dev \
         libavutil-dev \
@@ -51,10 +50,19 @@ sudo docker run --rm \
         libminizip-dev \
         libminiupnpc-dev \
         libnatpmp-dev \
+        libcurl4-openssl-dev \
         cmake \
         ninja-build \
         python3-pip \
+        ca-certificates \
+        wget \
+        git \
+        make \
+        g++ \
+        pkg-config \
         || true
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
     
     cd /tmp
     
@@ -213,7 +221,7 @@ EOF
     git config --global --add safe.directory /workspace
     make -f linux.mk clean
     export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
-    make -f linux.mk -j$(nproc)
+    make -f linux.mk -j2
     
     # Copy ALL required shared libraries including transitive dependencies
     echo "Collecting all shared library dependencies..."
@@ -264,9 +272,9 @@ EOF
             
             # Copy the library and its symlinks
             libdir=$(dirname "$lib")
-            echo "  Copying: $libname"
-            cp -L "$lib" /workspace/libs.aarch64/ 2>/dev/null || true
-            cp -L "$libdir/$libname"* /workspace/libs.aarch64/ 2>/dev/null || true
+            echo "  not Copying: $libname"
+            #cp -L "$lib" /workspace/libs.aarch64/ 2>/dev/null || true
+            #cp -L "$libdir/$libname"* /workspace/libs.aarch64/ 2>/dev/null || true
         fi
     done
     

@@ -221,8 +221,9 @@ TbError LbNetwork_ExchangeLogin(char *plyr_name)
     return Lb_OK;
 }
 
-TbError LbNetwork_Create(char *, char *plyr_name, uint32_t *plyr_num, void *optns)
+TbError LbNetwork_Create(char *sessn_name, char *plyr_name, uint32_t *plyr_num, void *optns)
 {
+    (void)sessn_name; // Unused parameter
     if (!netstate.sp) {
         ERRORLOG("No network SP selected");
         return Lb_FAIL;
@@ -321,8 +322,9 @@ TbError LbNetwork_Stop(void)
     return Lb_OK;
 }
 
-TbError LbNetwork_EnumeratePlayers(struct TbNetworkSessionNameEntry *, TbNetworkCallbackFunc callback, void *buf)
+TbError LbNetwork_EnumeratePlayers(struct TbNetworkSessionNameEntry *sessn_entry, TbNetworkCallbackFunc callback, void *buf)
 {
+    (void)sessn_entry; // Unused parameter
     struct TbNetworkCallbackData data;
     for (NetUserId id = 0; id < (NetUserId)netstate.max_players; id += 1) {
         if (!IsUserActive(id)) {

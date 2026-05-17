@@ -72,8 +72,9 @@ void SendUserUpdate(NetUserId dest, NetUserId updated_user)
     send_message_buffer(dest, write_pos);
 }
 
-TbError LbNetwork_Init(uint32_t srvcindex, uint32_t maxplayrs, struct TbNetworkPlayerInfo *locplayr, struct ServiceInitData *)
+TbError LbNetwork_Init(uint32_t srvcindex, uint32_t maxplayrs, struct TbNetworkPlayerInfo *locplayr, struct ServiceInitData *servdata)
 {
+    (void)servdata; // Unused parameter
     local_player_info = locplayr;
     memset(&netstate, 0, sizeof(netstate));
     netstate.max_players = maxplayrs;
