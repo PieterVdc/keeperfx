@@ -61,6 +61,7 @@
 #include "front_lvlstats.h"
 #include "front_easter.h"
 #include "front_network.h"
+#include "net_game.h"
 #include "frontmenu_net.h"
 #include "frontmenu_options.h"
 #include "frontmenu_specials.h"
@@ -95,7 +96,6 @@
 extern "C" {
 #endif
 
-extern void enum_sessions_callback(struct TbNetworkCallbackData *netcdat, void *ptr);
 extern long double last_draw_completed_time;
 long double get_time_tick_ns();
 /******************************************************************************/
@@ -475,137 +475,7 @@ int frontend_font_string_width(int fnt_idx, const char *str)
     return LbTextStringWidth(str);
 }
 
-void get_player_gui_clicks(void)
-{
-  if ( ((game.operation_flags & GOF_Paused) != 0) && ((game.operation_flags & GOF_WorldInfluence) == 0))
-    return;
-  struct PlayerInfo *player = get_my_player();
-  switch (player->view_type)
-  {
-  case PVT_CreaturePasngr:
-      if (right_button_released)
-      {
-        struct Thing *thing = thing_get(player->controlled_thing_idx);
-        if (thing->class_id == TCls_Creature)
-        {
-          if (a_menu_window_is_active())
-          {
-            game.view_mode_flags &= ~GNFldD_CreaturePasngr;
-            player->allocflags &= ~PlaF_CreaturePassengerMode;
-            turn_off_all_window_menus();
-          } else
-          {
-            game.view_mode_flags |= GNFldD_CreaturePasngr;
-            player->allocflags |= PlaF_CreaturePassengerMode;
-            turn_on_menu(GMnu_QUERY);
-          }
-        }
-      }
-      break;
-  case PVT_CreatureContrl:
-  case PVT_MapScreen:
-  case PVT_MapFadeIn:
-  case PVT_MapFadeOut:
-      break;
-  default:
-      if (right_button_clicked)
-      {
-          if (right_click_tag_mode_toggle)
-          {
-              if (player->work_state == PSt_CtrlDungeon)
-              {
-                  switch (player->primary_cursor_state)
-                  {
-                      case CSt_PickAxe:
-                      {
-                          if (!a_menu_window_is_active())
-                          {
-                              if (!left_button_held)
-                              {
-                                  long mode = settings.highlight_mode;
-                                  mode ^= 1;
-                                  set_players_packet_action(player, PckA_RoomspaceHighlightToggle, mode, 1, 0, 0);
-                              }
-                              else
-                              {
-                                  set_players_packet_action(player, PckA_SetRoomspaceHighlight, settings.highlight_mode, 1, 0, 0);
-                                  right_button_clicked = 0;
-                              }
-                          }
-                      break;
-                      }
-                      case CSt_PowerHand:
-                      {
-                         if (player->thing_under_hand == 0)
-                         {
-                             if (!a_menu_window_is_active())
-                             {
-                                if (flag_is_set(player->additional_flags, PlaAF_ChosenSubTileIsHigh))
-                                {
-                                    if (!left_button_held)
-                                    {
-                                        long mode = settings.highlight_mode;
-                                        mode ^= 1;
-                                        set_players_packet_action(player, PckA_RoomspaceHighlightToggle, mode, 1, 0, 0);
-                                    }
-                                    else
-                                    {
-                                        set_players_packet_action(player, PckA_SetRoomspaceHighlight, settings.highlight_mode, 1, 0, 0);
-                                    }
-                                    right_button_clicked = 0;
-                                }
-                             }
-                          }
-                         break;
-                       } 
-                  }
-              }
-          }
-        // do NOT do right_button_clicked = 0 here: it breaks dropping creatures!
-      }
-      if (right_button_released)
-      {
-        if ((player->work_state != PSt_HoldInHand) || power_hand_is_empty(player))
-        {
-          if ( !turn_off_all_window_menus() )
-          {
-            if (player->work_state == PSt_CreatrQuery)
-            {
-              turn_off_query_menus();
-              set_players_packet_action(player, PckA_SetPlyrState, PSt_CtrlDungeon, 0, 0, 0);
-              right_button_released = 0;
-            } else
-            if ((player->work_state != PSt_CreatrInfo) && (player->work_state != PSt_CreatrInfoAll) && (player->work_state != PSt_CtrlDungeon))
-            {
-              set_players_packet_action(player, PckA_SetPlyrState, PSt_CtrlDungeon, 0, 0, 0);
-              right_button_released = 0;
-            }
-          }
-        }
-      } else
-      if (lbKeyOn[KC_ESCAPE])
-      {
-        lbKeyOn[KC_ESCAPE] = 0;
-        if (a_menu_window_is_active())
-        {
-            turn_off_all_window_menus();
-        } else
-        {
-            if (menu_is_active(GMnu_MAIN))
-            {
-              fake_button_click(BID_OPTIONS);
-            }
-            turn_on_menu(GMnu_OPTIONS);
-        }
-      }
-      break;
-  }
 
-  if ( game_is_busy_doing_gui() )
-  {
-    set_players_packet_control(player, PCtr_Gui);
-  }
-}
 
 void add_message(long plyr_idx, char *msg)
 {
@@ -797,7 +667,7 @@ void maintain_scroll_up(struct GuiButton *gbtn)
     gbtn->flags ^= (gbtn->flags ^ LbBtnF_Enabled * (scrollwnd->start_y < 0)) & LbBtnF_Enabled;
     if (!check_current_gui_layer(GuiLayer_OneClick))
     {
-        if (wheel_scrolled_up && (is_game_key_pressed(Gkey_RotateMod, NULL, true)))
+        if (wheel_scrolled_up && (is_game_key_pressed(Gkey_RotateMod, false, true)))
         {
             scrollwnd->action = 1;
         }
@@ -812,7 +682,7 @@ void maintain_scroll_down(struct GuiButton *gbtn)
         * (scrollwnd->window_height - scrollwnd->text_height + 2 < scrollwnd->start_y)) & LbBtnF_Enabled;
     if (!check_current_gui_layer(GuiLayer_OneClick))
     {
-        if (wheel_scrolled_down && (is_game_key_pressed(Gkey_RotateMod, NULL, true)))
+        if (wheel_scrolled_down && (is_game_key_pressed(Gkey_RotateMod, false, true)))
         {
             scrollwnd->action = 2;
         }
@@ -851,11 +721,6 @@ void frontend_main_menu_netservice_maintain(struct GuiButton *gbtn)
 void frontend_main_menu_highscores_maintain(struct GuiButton *gbtn)
 {
     gbtn->flags |= LbBtnF_Enabled;
-}
-
-TbBool frontend_should_all_players_quit(void)
-{
-    return (net_service_index_selected <= 1);
 }
 
 TbBool frontend_is_player_allied(long idx1, long idx2)
@@ -1508,7 +1373,7 @@ void set_packet_start(struct GuiButton *gbtn)
     struct ScreenPacket *nspck;
     nspck = &net_screen_packet[my_player_number];
     if (screen_packet_action(nspck) == NetAct_None)
-        screen_packet_set_action(nspck, NetAct_HostStartLevel);
+        screen_packet_set_action(nspck, NetAct_OpenLandView);
 }
 
 void draw_scrolling_button_string(struct GuiButton *gbtn, const char *text)
@@ -3092,10 +2957,8 @@ TbBool frontscreen_end_input(TbBool force)
 
 short get_frontend_global_inputs(void)
 {
-    int32_t val;
-    if (is_game_key_pressed(Gkey_ExitGame, &val ,false))
+    if (is_game_key_pressed(Gkey_ExitGame, true ,false))
     {
-        clear_key_pressed(val);
         exit_keeper = true;
     } else {
         return false;
@@ -3438,7 +3301,7 @@ void draw_debug_messages() {
  */
 short frontend_draw(void)
 {
-    LbWindowsControl();
+    poll_inputs();
     short result;
     switch (frontend_menu_state)
     {
@@ -3590,7 +3453,11 @@ void update_player_objectives(PlayerNumber plyr_idx)
           display_objectives(player->id_number, 0, 0);
           break;
       case VicS_LostLevel:
-          set_level_objective(player->id_number, get_string(CpgStr_LevelLost));
+          TextStringId msg_idx = CpgStr_LevelLost;
+          if (((game.system_flags & GSF_NetworkActive) != 0) && (player->id_number == get_host_player_id())) {
+              msg_idx = GUIStr_NetHostLostWaitingForPlayers;
+          }
+          set_level_objective(player->id_number, get_string(msg_idx));
           display_objectives(player->id_number, 0, 0);
           break;
       }
@@ -3778,10 +3645,12 @@ FrontendMenuState get_menu_state_when_back_from_substate(FrontendMenuState subst
     case FeSt_LEVEL_STATS:
         if ((game.system_flags & GSF_NetworkActive) != 0)
             return FeSt_NET_SESSION;
+        lvnum = get_loaded_level_number();
+        if (is_multiplayer_level(lvnum))
+            return get_menu_state_based_on_last_level(lvnum);
         player = get_my_player();
         if (player->victory_state == VicS_WonLevel)
             return FeSt_HIGH_SCORES;
-        lvnum = get_loaded_level_number();
         return get_menu_state_based_on_last_level(lvnum);
     case FeSt_HIGH_SCORES:
         if (fe_high_score_table_from_main_menu)

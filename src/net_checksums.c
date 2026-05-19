@@ -98,7 +98,6 @@ TbBigChecksum get_thing_checksum(const struct Thing* thing) {
         CHECKSUM_ADD(checksum, cctrl->digger.stack_update_turn);
         CHECKSUM_ADD(checksum, cctrl->digger.working_stl);
         CHECKSUM_ADD(checksum, cctrl->digger.task_stl);
-        CHECKSUM_ADD(checksum, cctrl->digger.task_idx);
         CHECKSUM_ADD(checksum, cctrl->digger.consecutive_reinforcements);
         CHECKSUM_ADD(checksum, cctrl->digger.last_did_job);
         CHECKSUM_ADD(checksum, cctrl->digger.task_stack_pos);
@@ -204,7 +203,8 @@ short checksums_different(void) {
         }
         struct Packet* packet = get_packet_direct(player->packet_num);
         if (is_packet_empty(packet)) {
-            MULTIPLAYER_LOG("checksums_different: packet[%d] is EMPTY", i);
+            ERRORLOG("Missing checksum packet for player %d packet %d; host turn: %d", i, player->packet_num, host_packet->turn);
+            desync_turn = host_packet->turn;
             mismatch = true;
             continue;
         }

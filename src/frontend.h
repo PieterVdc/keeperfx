@@ -356,7 +356,6 @@ void choose_workshop_item(int manufctr_idx, TextStringId tooltip_id);
 int frontend_load_data(void);
 void frontend_draw_scroll_tab(struct GuiButton *gbtn, long scroll_offset, long first_elem, long last_elem);
 long frontend_scroll_tab_to_offset(struct GuiButton *gbtn, long scr_pos, long first_elem, long last_elem);
-TbBool frontend_should_all_players_quit(void);
 void frontend_init_options_menu(struct GuiMenu *gmnu);
 void frontend_draw_text(struct GuiButton *gbtn);
 void frontend_change_state(struct GuiButton *gbtn);
@@ -417,7 +416,6 @@ void try_restore_frontend_error_box(); // Restore error box if frontend state wa
 
 short menu_is_active(short idx);
 TbBool a_menu_window_is_active(void);
-void get_player_gui_clicks(void);
 short game_is_busy_doing_gui(void);
 void set_gui_visible(TbBool visible);
 void toggle_gui(void);
