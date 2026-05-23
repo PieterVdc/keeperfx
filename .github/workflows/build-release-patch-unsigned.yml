@@ -62,7 +62,7 @@ jobs:
   build-release-patch-linux-unsigned:
 
     name: "Build Release Patch Linux x86_64 (Unsigned)"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v4
