@@ -116,18 +116,10 @@ jobs:
         ldd bin/keeperfx | awk '/=> \/|^\// {print $(NF-1)}' | sort -u > pkg/linux/required-libs.txt
         while read -r lib; do
           lib_name=$(basename "$lib")
-          case "$lib_name" in
-            # Keep core ABI/runtime libraries system-provided.
-            ld-linux-*.so*|libc.so*|libm.so*|libpthread.so*|librt.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|libz.so*|
-            # Keep common multimedia and desktop stack libraries system-provided.
-            libSDL2*.so*|libopenal.so*|libasound.so*|libpulse*.so*|libdbus-1.so*|
-            libX11.so*|libXext.so*|libXcursor.so*|libXi.so*|libXrandr.so*|libXrender.so*|libXfixes.so*|libXss.so*|libXxf86vm.so*|
-            libxcb*.so*|libwayland-*.so*|libxkbcommon.so*|libdrm.so*|libgbm.so*|libGL.so*|libEGL.so*|libvulkan.so*|
-            libavcodec.so*|libavformat.so*|libavutil.so*|libswresample.so*|libswscale.so*|
-            libFLAC.so*|libogg.so*|libvorbis*.so*|libopus.so*|libmpg123.so*|libmodplug.so*|libmp3lame.so*|libtheora*.so*)
-              continue
-              ;;
-          esac
+          # Keep core/runtime and common desktop/media stacks system-provided.
+          if echo "$lib_name" | grep -Eq '^(ld-linux-.*\.so.*|libc\.so.*|libm\.so.*|libpthread\.so.*|librt\.so.*|libdl\.so.*|libgcc_s\.so.*|libstdc\+\+\.so.*|libz\.so.*|libSDL2.*\.so.*|libopenal\.so.*|libasound\.so.*|libpulse.*\.so.*|libdbus-1\.so.*|libX11\.so.*|libXext\.so.*|libXcursor\.so.*|libXi\.so.*|libXrandr\.so.*|libXrender\.so.*|libXfixes\.so.*|libXss\.so.*|libXxf86vm\.so.*|libxcb.*\.so.*|libwayland-.*\.so.*|libxkbcommon\.so.*|libdrm\.so.*|libgbm\.so.*|libGL\.so.*|libEGL\.so.*|libvulkan\.so.*|libavcodec\.so.*|libavformat\.so.*|libavutil\.so.*|libswresample\.so.*|libswscale\.so.*|libFLAC\.so.*|libogg\.so.*|libvorbis.*\.so.*|libopus\.so.*|libmpg123\.so.*|libmodplug\.so.*|libmp3lame\.so.*|libtheora.*\.so.*)$'; then
+            continue
+          fi
           cp -L "$lib" pkg/linux/lib/
         done < pkg/linux/required-libs.txt
 
