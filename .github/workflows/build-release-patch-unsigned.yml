@@ -84,6 +84,7 @@ jobs:
           libluajit-5.1-dev \
           libminizip-dev \
           libnatpmp-dev \
+          libspng-dev \
           libsdl2-dev \
           libsdl2-image-dev \
           libsdl2-mixer-dev \
@@ -91,38 +92,7 @@ jobs:
           libswresample-dev \
           libminiupnpc-dev \
           zlib1g-dev \
-          ca-certificates \
-          tar \
           zip
-
-        if ! pkg-config --exists spng; then
-          SPNG_VERSION=v0.7.4
-          curl -L -o /tmp/libspng.tar.gz "https://github.com/randy408/libspng/archive/refs/tags/${SPNG_VERSION}.tar.gz"
-          rm -rf /tmp/libspng-src
-          mkdir -p /tmp/libspng-src
-          tar -xzf /tmp/libspng.tar.gz -C /tmp/libspng-src --strip-components=1
-
-          gcc -fPIC -O2 -c /tmp/libspng-src/spng/spng.c -o /tmp/libspng-src/spng.o
-          gcc -shared -Wl,-soname,libspng.so.0 -o /tmp/libspng-src/libspng.so.0 /tmp/libspng-src/spng.o -lz -lm
-
-          sudo install -Dm644 /tmp/libspng-src/spng/spng.h /usr/local/include/spng.h
-          sudo install -Dm755 /tmp/libspng-src/libspng.so.0 /usr/local/lib/libspng.so.0
-          sudo ln -sf /usr/local/lib/libspng.so.0 /usr/local/lib/libspng.so
-          sudo install -d /usr/local/lib/pkgconfig
-          cat << 'EOF' | sudo tee /usr/local/lib/pkgconfig/spng.pc > /dev/null
-          prefix=/usr/local
-          exec_prefix=${prefix}
-          libdir=${exec_prefix}/lib
-          includedir=${prefix}/include
-
-          Name: spng
-          Description: Simple PNG library
-          Version: 0.7.4
-          Libs: -L${libdir} -lspng
-          Cflags: -I${includedir}
-          EOF
-          sudo ldconfig
-        fi
 
     - name: Build and package Linux release zip
       id: build-linux
