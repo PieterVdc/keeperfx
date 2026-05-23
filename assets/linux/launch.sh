@@ -8,5 +8,3 @@ export LD_LIBRARY_PATH="$SCRIPT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # Now we launch KeeperFX - explicitly pass LD_LIBRARY_PATH through sudo using env
 env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" "./keeperfx"
-
-&
