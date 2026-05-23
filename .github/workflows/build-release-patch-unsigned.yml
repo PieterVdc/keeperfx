@@ -123,10 +123,9 @@ jobs:
         done < pkg/linux/required-libs.txt
 
         chmod +x pkg/linux/launch.sh
-        (cd pkg/linux && zip -9 -r "../${LINUX_ZIP_NAME}.zip" .)
 
     - name: Upload Linux artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.build-linux.outputs.zip_name }}
-        path: pkg/${{ steps.build-linux.outputs.zip_name }}.zip
+        path: pkg/linux/**
