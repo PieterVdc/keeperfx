@@ -58,3 +58,69 @@ jobs:
     outputs:
       artifact-id: ${{ steps.upload-artifact.outputs.artifact-id }}
       zip-name: ${{ env.ZIP_NAME }}
+
+  build-release-patch-linux-unsigned:
+
+    name: "Build Release Patch Linux x86_64 (Unsigned)"
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Update system
+      run: |
+        set -eux
+        sudo apt update
+        sudo apt install -y \
+          build-essential \
+          pkg-config \
+          curl \
+          libavcodec-dev \
+          libavformat-dev \
+          libavutil-dev \
+          libopenal-dev \
+          libluajit-5.1-dev \
+          libminizip-dev \
+          libnatpmp-dev \
+          libspng-dev \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          libsdl2-mixer-dev \
+          libsdl2-net-dev \
+          libswresample-dev \
+          libminiupnpc-dev \
+          zlib1g-dev \
+          zip
+
+    - name: Build and package Linux release zip
+      id: build-linux
+      run: |
+        set -eux
+        VER_MAJOR=$(grep -E '^VER_MAJOR=' version.mk | cut -d= -f2)
+        VER_MINOR=$(grep -E '^VER_MINOR=' version.mk | cut -d= -f2)
+        VER_RELEASE=$(grep -E '^VER_RELEASE=' version.mk | cut -d= -f2)
+        BUILD_NUMBER=$(git rev-list --count HEAD)
+
+        LINUX_ZIP_NAME=keeperfx-linux_x86_64-${VER_MAJOR}_${VER_MINOR}_${VER_RELEASE}_${BUILD_NUMBER}-patch
+        echo "zip_name=$LINUX_ZIP_NAME" >> $GITHUB_OUTPUT
+
+        make BUILD_NUMBER=$BUILD_NUMBER VER_SUFFIX= -f linux.mk
+
+        mkdir -p pkg/linux
+        cp bin/keeperfx pkg/linux/
+
+        ldd bin/keeperfx | awk '/=> \/|^\// {print $(NF-1)}' | sort -u > pkg/linux/required-libs.txt
+        while read -r lib; do
+          cp -L "$lib" pkg/linux/
+        done < pkg/linux/required-libs.txt
+
+        rm -f pkg/linux/required-libs.txt
+        (cd pkg/linux && zip -9 -r "../${LINUX_ZIP_NAME}.zip" .)
+
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.build-linux.outputs.zip_name }}
+        path: pkg/${{ steps.build-linux.outputs.zip_name }}.zip
