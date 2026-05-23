@@ -293,6 +293,7 @@ KFX_CXXFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=x86-64 $(KFX_INCLUDES) -
 KFX_LDFLAGS += \
 	-g \
 	-rdynamic \
+	-Wl,-rpath,'$$ORIGIN/lib:$$ORIGIN' \
 	-Wall -Wextra -Werror \
 	-Ldeps/astronomy -lastronomy \
 	-Ldeps/centijson -ljson \

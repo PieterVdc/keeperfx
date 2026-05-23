@@ -108,12 +108,19 @@ jobs:
 
         make BUILD_NUMBER=$BUILD_NUMBER VER_SUFFIX= -f linux.mk
 
-        mkdir -p pkg/linux
+        mkdir -p pkg/linux/lib
         cp bin/keeperfx pkg/linux/
 
         ldd bin/keeperfx | awk '/=> \/|^\// {print $(NF-1)}' | sort -u > pkg/linux/required-libs.txt
         while read -r lib; do
-          cp -L "$lib" pkg/linux/
+          lib_name=$(basename "$lib")
+          case "$lib_name" in
+            # Keep core ABI/runtime libraries system-provided.
+            ld-linux-*.so*|libc.so*|libm.so*|libpthread.so*|librt.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|libz.so*)
+              continue
+              ;;
+          esac
+          cp -L "$lib" pkg/linux/lib/
         done < pkg/linux/required-libs.txt
 
         rm -f pkg/linux/required-libs.txt
