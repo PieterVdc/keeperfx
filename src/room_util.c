@@ -312,64 +312,53 @@ void replace_slabs_from_script_bulk(const struct SlabReplacement* replacements, 
     // This implementation will batch process slab replacements to avoid redundant updates.
     // It's a complex operation, so we'll break it down.
 
-    // Step 1: Categorize replacements
-    struct SlabReplacement non_room_placements[count];
-    int non_room_count = 0;
-    struct SlabReplacement room_placements[count];
-    int room_count = 0;
-
-    for (int i = 0; i < count; i++)
-    {
-        RoomKind rkind = slab_corresponding_room(replacements[i].slabkind);
-        if (rkind == 0)
-        {
-            non_room_placements[non_room_count++] = replacements[i];
-        }
-        else
-        {
-            room_placements[room_count++] = replacements[i];
-        }
-    }
-
-    // Step 2: Process room slab removals and non-room placements
-    // This part is complex because deleting a room slab can cause a room to split.
-    // A full bulk implementation would require tracking all room changes and then
-    // running a single 'recreate_rooms' pass at the end.
+    // Step 1: Initial Processing and Room Deletion
+    // First, handle all deletions. This is complex because deleting a slab can split a room.
+    // A truly optimal solution would manually rebuild the room lists, but for now,
+    // we will call delete_room_slab which is inefficient but correct.
+    // We will collect the affected rooms to recalculate them only once later.
     for (int i = 0; i < count; i++)
     {
         struct Room* room = slab_room_get(replacements[i].slb_x, replacements[i].slb_y);
         if (!room_is_invalid(room))
         {
+            // This is the main bottleneck. A fully optimized version would avoid calling this in a loop.
             delete_room_slab(replacements[i].slb_x, replacements[i].slb_y, 0);
         }
     }
 
-    // Step 3: Place new slabs
-    for (int i = 0; i < non_room_count; i++)
+    // Step 2: Place new slabs without updating neighbors
+    for (int i = 0; i < count; i++)
     {
-        const struct SlabReplacement* repl = &non_room_placements[i];
-        if (slab_kind_is_animated(repl->slabkind))
+        const struct SlabReplacement* repl = &replacements[i];
+        RoomKind rkind = slab_corresponding_room(repl->slabkind);
+
+        if (rkind == 0)
         {
-            place_animating_slab_type_on_map(repl->slabkind, 0, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0), repl->plyr_idx);
+            if (slab_kind_is_animated(repl->slabkind))
+            {
+                // Animated slabs handle their neighbors differently, so we call the standard function.
+                place_animating_slab_type_on_map(repl->slabkind, 0, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0), repl->plyr_idx);
+            }
+            else
+            {
+                // For standard slabs, place them without updating neighbors to prevent redundant work.
+                place_slab_type_on_map(repl->slabkind, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0), repl->plyr_idx, 1);
+            }
         }
         else
         {
-            place_slab_type_on_map(repl->slabkind, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0), repl->plyr_idx, 0);
+            // place_room is already somewhat optimized for placing adjacent tiles.
+            place_room(repl->plyr_idx, rkind, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0));
         }
     }
 
-    for (int i = 0; i < room_count; i++)
-    {
-        const struct SlabReplacement* repl = &room_placements[i];
-        RoomKind rkind = slab_corresponding_room(repl->slabkind);
-        place_room(repl->plyr_idx, rkind, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0));
-    }
-
-    // Step 4: Perform deferred updates
-    // A true bulk implementation would collect all unique slabs that need updates
-    // and iterate over them once.
+    // Step 3: Collect all unique slabs and rooms that need a final update.
+    // We need to update the slabs we changed, plus a 1-tile border around them.
     MapSlabCoord dirty_slabs[count * 9];
     int dirty_count = 0;
+    struct Room* dirty_rooms[count * 9]; // A slab can affect multiple rooms around it
+    int dirty_room_count = 0;
 
     for (int i = 0; i < count; i++)
     {
@@ -378,31 +367,67 @@ void replace_slabs_from_script_bulk(const struct SlabReplacement* replacements, 
             MapSlabCoord x = replacements[i].slb_x + my_around_nine[j].delta_x;
             MapSlabCoord y = replacements[i].slb_y + my_around_nine[j].delta_y;
 
-            // Simple check to avoid duplicates. A better implementation would use a hash set.
-            TbBool found = false;
+            if (slab_coords_invalid(x, y)) continue;
+
+            // Add slab to dirty list if not already present
+            TbBool slab_found = false;
             for (int k = 0; k < dirty_count; k++)
             {
                 if (dirty_slabs[k*2] == x && dirty_slabs[k*2+1] == y)
                 {
-                    found = true;
+                    slab_found = true;
                     break;
                 }
             }
-            if (!found)
+            if (!slab_found)
             {
                 dirty_slabs[dirty_count*2] = x;
                 dirty_slabs[dirty_count*2+1] = y;
                 dirty_count++;
             }
+
+            // Add room to dirty list if it's a room and not already present
+            struct Room* room = slab_room_get(x, y);
+            if (!room_is_invalid(room))
+            {
+                TbBool room_found = false;
+                for (int k = 0; k < dirty_room_count; k++)
+                {
+                    if (dirty_rooms[k] == room)
+                    {
+                        room_found = true;
+                        break;
+                    }
+                }
+                if (!room_found)
+                {
+                    dirty_rooms[dirty_room_count++] = room;
+                }
+            }
         }
     }
 
+    // Step 4: Perform deferred updates
+    // First, fix the visual appearance of all affected slabs.
     for (int i = 0; i < dirty_count; i++)
     {
         MapSlabCoord x = dirty_slabs[i*2];
         MapSlabCoord y = dirty_slabs[i*2+1];
-        set_alt_bit_on_slabs_around(x, y);
-        do_slab_efficiency_alteration(x, y);
+        struct SlabMap* slb = get_slabmap_block(x, y);
+        if (!slabmap_block_invalid(slb) && !slab_kind_is_animated(slb->kind))
+        {
+             // Calling with keep_blocks_around = 0 will update this slab based on its final neighbors.
+            place_slab_type_on_map(slb->kind, slab_subtile(x, 0), slab_subtile(y, 0), slabmap_owner(slb), 0);
+        }
+    }
+
+    // Finally, recalculate efficiency for each affected room only once.
+    for (int i = 0; i < dirty_room_count; i++)
+    {
+        if (room_exists(dirty_rooms[i]))
+        {
+            do_room_recalculation(dirty_rooms[i]);
+        }
     }
 }
 
