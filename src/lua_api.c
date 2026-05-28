@@ -1983,7 +1983,7 @@ static int lua_Change_slab_texture(lua_State *L)
         iter_param.primary_number = texture_id;
         iter_param.secondary_number = fill_type;
         iter_param.tertiary_number = get_slabmap_block(slb_x, slb_y)->kind;
-        slabs_fill_iterate_from_slab(slb_x, slb_y, slabs_change_type, &iter_param);
+        slabs_fill_iterate_from_slab(slb_x, slb_y, slabs_change_texture, &iter_param);
     }
     else
     {

@@ -292,62 +292,118 @@ TbBool delete_room_slab(MapSlabCoord slb_x, MapSlabCoord slb_y, TbBool is_destro
 
 TbBool replace_slab_from_script(MapSlabCoord slb_x, MapSlabCoord slb_y, unsigned char slabkind)
 {
-    struct Room* room = slab_room_get(slb_x, slb_y);
+    struct SlabReplacement replacement;
+    replacement.slb_x = slb_x;
+    replacement.slb_y = slb_y;
+    replacement.slabkind = slabkind;
     struct SlabMap* slb = get_slabmap_for_subtile(slab_subtile(slb_x, 0), slab_subtile(slb_y, 0));
-    short plyr_idx = slabmap_owner(slb);
+    replacement.plyr_idx = slabmap_owner(slb);
     if (slab_kind_has_no_ownership(slabkind))
     {
-        plyr_idx = game.neutral_player_num;
+        replacement.plyr_idx = game.neutral_player_num;
     }
-    RoomKind rkind = slab_corresponding_room(slabkind);
-    //When the slab to be replaced does not have a room yes, simply place the room/slab.
-    if (room_is_invalid(room))
-    {
-        // If we're looking to place a non-room slab, simply place it.
-        if (rkind == 0)
-        {
-            if (slab_kind_is_animated(slabkind))
-            {
-                place_animating_slab_type_on_map(slabkind, 0, slab_subtile(slb_x, 0), slab_subtile(slb_y, 0), plyr_idx);
-            }
-            else
-            {
-                place_slab_type_on_map(slabkind, slab_subtile(slb_x, 0), slab_subtile(slb_y, 0), plyr_idx, 0);
-                set_alt_bit_on_slabs_around(slb_x, slb_y);
-            }
-            return true;
-        }
-        else
-        {
-            // Create the new one-slab room
-            if (place_room(plyr_idx, rkind, slab_subtile(slb_x, 0), slab_subtile(slb_y, 0)))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    else
-    {
-        if (rkind == 0)
-        {
-            delete_room_slab(slb_x, slb_y, 0);
-            if (slab_kind_is_animated(slabkind))
-            {
-                place_animating_slab_type_on_map(slabkind, 0, slab_subtile(slb_x, 0), slab_subtile(slb_y, 0), plyr_idx);
-            }
-            else
-            {
-                place_slab_type_on_map(slabkind, slab_subtile(slb_x, 0), slab_subtile(slb_y, 0), plyr_idx, 0);
-            }
-        }
-        else
-        {
-            // Create a new one-slab room
-            place_room(plyr_idx, rkind, slab_subtile(slb_x, 0), slab_subtile(slb_y, 0));
-        }
-    }
+
+    replace_slabs_from_script_bulk(&replacement, 1);
     return true;
+}
+
+void replace_slabs_from_script_bulk(const struct SlabReplacement* replacements, int count)
+{
+    // This implementation will batch process slab replacements to avoid redundant updates.
+    // It's a complex operation, so we'll break it down.
+
+    // Step 1: Categorize replacements
+    struct SlabReplacement non_room_placements[count];
+    int non_room_count = 0;
+    struct SlabReplacement room_placements[count];
+    int room_count = 0;
+
+    for (int i = 0; i < count; i++)
+    {
+        RoomKind rkind = slab_corresponding_room(replacements[i].slabkind);
+        if (rkind == 0)
+        {
+            non_room_placements[non_room_count++] = replacements[i];
+        }
+        else
+        {
+            room_placements[room_count++] = replacements[i];
+        }
+    }
+
+    // Step 2: Process room slab removals and non-room placements
+    // This part is complex because deleting a room slab can cause a room to split.
+    // A full bulk implementation would require tracking all room changes and then
+    // running a single 'recreate_rooms' pass at the end.
+    for (int i = 0; i < count; i++)
+    {
+        struct Room* room = slab_room_get(replacements[i].slb_x, replacements[i].slb_y);
+        if (!room_is_invalid(room))
+        {
+            delete_room_slab(replacements[i].slb_x, replacements[i].slb_y, 0);
+        }
+    }
+
+    // Step 3: Place new slabs
+    for (int i = 0; i < non_room_count; i++)
+    {
+        const struct SlabReplacement* repl = &non_room_placements[i];
+        if (slab_kind_is_animated(repl->slabkind))
+        {
+            place_animating_slab_type_on_map(repl->slabkind, 0, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0), repl->plyr_idx);
+        }
+        else
+        {
+            place_slab_type_on_map(repl->slabkind, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0), repl->plyr_idx, 0);
+        }
+    }
+
+    for (int i = 0; i < room_count; i++)
+    {
+        const struct SlabReplacement* repl = &room_placements[i];
+        RoomKind rkind = slab_corresponding_room(repl->slabkind);
+        place_room(repl->plyr_idx, rkind, slab_subtile(repl->slb_x, 0), slab_subtile(repl->slb_y, 0));
+    }
+
+    // Step 4: Perform deferred updates
+    // A true bulk implementation would collect all unique slabs that need updates
+    // and iterate over them once.
+    MapSlabCoord dirty_slabs[count * 9];
+    int dirty_count = 0;
+
+    for (int i = 0; i < count; i++)
+    {
+        for (int j = 0; j < AROUND_NINE_LENGTH; j++)
+        {
+            MapSlabCoord x = replacements[i].slb_x + my_around_nine[j].delta_x;
+            MapSlabCoord y = replacements[i].slb_y + my_around_nine[j].delta_y;
+
+            // Simple check to avoid duplicates. A better implementation would use a hash set.
+            TbBool found = false;
+            for (int k = 0; k < dirty_count; k++)
+            {
+                if (dirty_slabs[k*2] == x && dirty_slabs[k*2+1] == y)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                dirty_slabs[dirty_count*2] = x;
+                dirty_slabs[dirty_count*2+1] = y;
+                dirty_count++;
+            }
+        }
+    }
+
+    for (int i = 0; i < dirty_count; i++)
+    {
+        MapSlabCoord x = dirty_slabs[i*2];
+        MapSlabCoord y = dirty_slabs[i*2+1];
+        set_alt_bit_on_slabs_around(x, y);
+        do_slab_efficiency_alteration(x, y);
+    }
 }
 
 void change_slab_owner_from_script(MapSlabCoord slb_x, MapSlabCoord slb_y, PlayerNumber plyr_idx)
