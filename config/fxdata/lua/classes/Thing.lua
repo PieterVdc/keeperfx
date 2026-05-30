@@ -5,7 +5,7 @@
 ---@class Thing
 ---@field ThingIndex integer
 ---@field creation_turn integer
----@field class string
+---@field thing_class string
 ---@field model string
 ---@field anim_sprite string AnimationID or Custom sprite name
 ---@field anim_speed integer
@@ -19,17 +19,31 @@
 ---@field solid_size_z integer Vertical size for navigation.
 ---@field pos Pos3d
 ---@field orientation integer
+---@field pitch integer
 ---@field owner Player
 ---@field health integer
 ---@field max_health integer If the health gets beyond this point, it will be decreased.
 ---@field picked_up boolean
 if not Thing then Thing = {} end
 
+---@class Object: Thing
+if not Object then Object = {} end
+
+---@class Corpse: Thing
+if not Corpse then Corpse = {} end
+
+---Destroys the object, triggers onObjectDestroyed if applicable.
+function Object:destroy() end
+
 --- @param action function|string the function to call when the event happens
 function Thing:OnDamage(action)
     RegisterThingDamageEvent(action,self)
 end
 
+--- @param action function|string the function to call when the event happens
+function Object:OnDestroyed(action)
+    RegisterObjectDestroyedEvent(action,self)
+end
 
 ----functions below are implemented in C, so they have no body here
 
@@ -39,3 +53,9 @@ end
 function Thing:isValid() return false end
 
 function Thing:delete() end
+
+---sets the velocity of the thing
+---@param speed integer speed / the distance it moves every tick
+---@param orientation? integer 0-2047, the angle to move in the X/Y plane.
+---@param pitch? integer 0-2047, the angle to move in the Z plane
+function Thing:set_velocity(speed,orientation,pitch) end

@@ -1017,7 +1017,7 @@ TbBool parse_named_field_blocks(char *buf, long len, const char *config_textname
 {
     int32_t pos = 0;
     // Initialize the array
-    if ((flags & CnfLd_AcceptPartial) == 0)
+    if ((flags & (CnfLd_AcceptPartial|CnfLd_PreListed)) == 0)
     {
         set_defaults(named_fields_set,config_textname);
     }
@@ -1343,6 +1343,10 @@ char *prepare_file_path_buf_mod(char *dst, int dst_size, const char *mod_dir, sh
   case FGrp_CrtrData:
       mdir=keeper_runtime_directory;
       sdir="creatrs";
+      break;
+  case FGrp_MpLevels:
+      mdir=keeper_runtime_directory;
+      sdir="multiplayer";
       break;
   default:
       mdir="./";
@@ -2074,9 +2078,9 @@ TbBool is_level_in_current_campaign(LevelNumber lvnum)
 
 
 /* @comment
- *     The loading items of load_config and load_config_for_mod_one need to be consistent.
+ *     The loading items of load_config and load_config_for_mod need to be consistent.
  */
-static void load_config_for_mod_one(const struct ConfigFileData* file_data, unsigned short flags, const struct ModConfigItem *mod_item)
+static void load_config_for_mod(const struct ConfigFileData* file_data, unsigned short flags, const struct ModConfigItem *mod_item)
 {
     set_flag(flags, (CnfLd_AcceptPartial | CnfLd_IgnoreErrors));
 
@@ -2122,12 +2126,12 @@ static void load_config_for_mod_list(const struct ConfigFileData* file_data, uns
         if (mod_item->state.mod_dir == 0)
             continue;
 
-        load_config_for_mod_one(file_data, flags, mod_item);
+        load_config_for_mod(file_data, flags, mod_item);
     }
 }
 
 /* @comment
- *     The loading items of load_config and load_config_for_mod_one need to be consistent.
+ *     The loading items of load_config and load_config_for_mod need to be consistent.
  */
 TbBool load_config(const struct ConfigFileData* file_data, unsigned short flags)
 {

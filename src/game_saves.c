@@ -42,6 +42,8 @@
 #include "game_merge.h"
 #include "frontmenu_ingame_map.h"
 #include "gui_boxmenu.h"
+#include "net_exchange_gameplay.h"
+#include "packets.h"
 #include "keeperfx.hpp"
 #include "api.h"
 #include "lvl_filesdk1.h"
@@ -150,7 +152,7 @@ TbBool save_packet_chunks(TbFileHandle fhandle,struct CatalogueEntry *centry)
             chunks_done |= SGF_InfoBlock;
     }
     // If it's not start of a level, save progress data too
-    if (game.play_gameturn != 0)
+    if (get_gameturn() != 0)
     {
         { // Game data chunk
             hdr.id = SGC_GameOrig;
@@ -187,7 +189,7 @@ int load_game_chunks(TbFileHandle fhandle, struct CatalogueEntry *centry)
             if (load_catalogue_entry(fhandle, &hdr, centry))
             {
                 chunks_done |= SGF_InfoBlock;
-                if (!change_campaign(centry->campaign_fname)) {
+                if (!change_campaign(CampgnT_Default, centry->campaign_fname)) {
                     ERRORLOG("Unable to load campaign");
                     return GLoad_Failed;
                 }
@@ -407,6 +409,15 @@ TbBool load_game(long slot_num)
     LbFileClose(fh);
     snprintf(game.campaign_fname, sizeof(game.campaign_fname), "%s", campaign.fname);
     reinit_level_after_load();
+    initialize_packet_history();
+    clear_packets();
+    process_pause_packet(0, 0);
+    clear_flag(game.operation_flags, GOF_Paused);
+    clear_flag(game.operation_flags, GOF_WorldInfluence);
+    close_main_cheat_menu();
+    close_creature_cheat_menu();
+    close_instance_cheat_menu();
+    close_secondary_cheat_menu();
     output_message(SMsg_GameLoaded, 0);
     panel_map_update(0, 0, game.map_subtiles_x+1, game.map_subtiles_y+1);
     calculate_moon_phase(false,false);
@@ -594,7 +605,7 @@ TbBool continue_game_available(void)
         WARNLOG("Can't read continue game file head");
         return false;
     }
-    if (!change_campaign(cmpgn_fname))
+    if (!change_campaign(CampgnT_Campaign, cmpgn_fname))
     {
         ERRORLOG("Unable to load campaign");
         return false;
@@ -625,7 +636,7 @@ short load_continue_game(void)
         return false;
     }
     cmpgn_fname[CAMPAIGN_FNAME_LEN-1] = '\0';
-    if (!change_campaign(cmpgn_fname))
+    if (!change_campaign(CampgnT_Campaign, cmpgn_fname))
     {
         ERRORLOG("Unable to load campaign");
         return false;

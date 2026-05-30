@@ -44,7 +44,6 @@ enum PlayerInitFlags {
     PlaF_NewMPMessage            = 0x04,
     PlaF_CreaturePassengerMode   = 0x08,
     PlaF_KeyboardInputDisabled   = 0x10,
-    PlaF_ChosenSlabHasActiveTask = 0x20, // Enabled when there are active tasks for the current slab. Used to determine if a high slab is tagged for digging (or not).
     PlaF_CompCtrl                = 0x40,
     PlaF_MouseInputDisabled      = 0x80,
 };
@@ -172,8 +171,7 @@ struct PlayerInfo {
     short thing_under_hand;
     TbBool possession_lock;
     unsigned char view_mode;
-    /** Pointer to the currently active camera. */
-    struct Camera *acamera;
+    unsigned char active_camera_idx;
     struct Camera cameras[4];
     MapCoord zoom_to_pos_x;
     MapCoord zoom_to_pos_y;
@@ -245,7 +243,7 @@ struct PlayerInfo {
     TbBool one_click_lock_cursor;
     TbBool ignore_next_PCtr_RBtnRelease;
     TbBool ignore_next_PCtr_LBtnRelease;
-    char swap_to_untag_mode; // 0 = no, 1 = maybe, 2= yes, -1 = disable
+    char swap_to_untag_mode;
     unsigned char roomspace_highlight_mode;
     TbBool roomspace_no_default;
     MapSubtlCoord cursor_subtile_x;
@@ -267,6 +265,7 @@ struct PlayerInfo {
 /******************************************************************************/
 
 extern unsigned char my_player_number;
+extern short local_thing_under_hand;
 
 #pragma pack()
 /******************************************************************************/
@@ -306,6 +305,8 @@ void reset_player_mode(struct PlayerInfo *player, unsigned short nview);
 
 void clear_players(void);
 
+struct Camera *get_player_active_camera(const struct PlayerInfo *player);
+void set_player_active_camera(struct PlayerInfo *player, unsigned char cam_idx);
 unsigned char rotate_mode_to_view_mode(unsigned char mode);
 
 unsigned char get_player_color_idx(PlayerNumber plyr_idx);

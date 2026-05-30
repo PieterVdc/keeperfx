@@ -45,6 +45,13 @@ void frontnet_players_down_maintain(struct GuiButton *gbtn)
 {
 }
 
+static TbBool frontnet_can_join_session(void)
+{
+    return (net_session_index_active >= 0)
+        && (net_session_index_active < net_number_of_sessions)
+        && (net_session[net_session_index_active] != NULL);
+}
+
 void frontnet_join_game_maintain(struct GuiButton *gbtn)
 {
 }

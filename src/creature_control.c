@@ -148,7 +148,7 @@ struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *playe
         toggle_status_menu(0);
         turn_off_roaming_menus();
     }
-    const struct Camera* cam = player->acamera;
+    const struct Camera* cam = get_player_active_camera(player);
     set_selected_creature(player, thing);
     player->view_mode_restore = cam->view_mode;
     thing->alloc_flags |= TAlF_IsControlled;
@@ -232,8 +232,6 @@ struct CreatureSound *get_creature_sound(struct Thing *thing, long snd_idx)
     }
     switch (snd_idx)
     {
-    case CrSnd_Hurt:
-        return &game.conf.crtr_conf.creature_sounds[cmodel].hurt;
     case CrSnd_Hit:
         return &game.conf.crtr_conf.creature_sounds[cmodel].hit;
     case CrSnd_Happy:
@@ -325,11 +323,6 @@ void play_creature_sound_and_create_sound_thing(struct Thing *thing, long snd_id
     if (!thing_is_invalid(efftng)) {
         thing_play_sample(efftng, crsound->index+i, NORMAL_PITCH, 0, 3, 0, sound_priority, FULL_LOUDNESS);
     }
-}
-
-void reset_creature_eye_lens(struct Thing *thing)
-{
-    setup_eye_lens(0);
 }
 
 TbBool creature_can_gain_experience(const struct Thing *thing)

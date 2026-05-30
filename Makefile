@@ -101,6 +101,9 @@ obj/bflib_crash.o \
 obj/bflib_dialog.o \
 obj/bflib_datetm.o \
 obj/bflib_dernc.o \
+obj/bflib_enet.o \
+obj/net_portforward.o \
+obj/net_holepunch.o \
 obj/bflib_fileio.o \
 obj/bflib_filelst.o \
 obj/bflib_guibtns.o \
@@ -116,6 +119,7 @@ obj/bflib_netsession.o \
 obj/bflib_netsp.o \
 obj/bflib_network.o \
 obj/bflib_network_exchange.o \
+obj/net_resync.o \
 obj/bflib_planar.o \
 obj/bflib_render.o \
 obj/bflib_render_gpoly.o \
@@ -130,6 +134,7 @@ obj/bflib_vidraw_spr_norm.o \
 obj/bflib_vidraw_spr_onec.o \
 obj/bflib_vidraw_spr_remp.o \
 obj/bflib_vidsurface.o \
+obj/button_snapping.o \
 obj/cdrom.o \
 obj/config.o \
 obj/config_campaigns.o \
@@ -195,6 +200,7 @@ obj/front_fmvids.o \
 obj/front_highscore.o \
 obj/front_input.o \
 obj/front_landview.o \
+obj/front_landview_multiplayer.o \
 obj/front_lvlstats.o \
 obj/front_lvlstats_data.o \
 obj/front_network.o \
@@ -247,7 +253,9 @@ obj/PaletteEffect.o \
 obj/LuaLensEffect.o \
 obj/light_data.o \
 obj/lua_api.o \
+obj/lua_api_camera.o \
 obj/lua_api_lens.o \
+obj/lua_api_map.o \
 obj/lua_api_player.o \
 obj/lua_api_room.o \
 obj/lua_api_things.o \
@@ -278,6 +286,7 @@ obj/net_game.o \
 obj/net_input_lag.o \
 obj/net_received_packets.o \
 obj/net_redundant_packets.o \
+obj/net_checksums.o \
 obj/packets.o \
 obj/packets_cheats.o \
 obj/packets_input.o \
@@ -310,6 +319,7 @@ obj/room_util.o \
 obj/room_workshop.o \
 obj/roomspace.o \
 obj/roomspace_detection.o \
+obj/scrcapt.o \
 obj/slab_data.o \
 obj/sounds.o \
 obj/spdigger_stack.o \
@@ -358,6 +368,9 @@ LINKLIB = -mwindows \
 	-L"sdl/lib" -lSDL2 -lSDL2_mixer \
 	-L"deps/openal" -lOpenAL32 \
 	-L"deps/astronomy" -lastronomy \
+	-L"deps/enet6/lib" -lenet6 \
+	-L"deps/miniupnpc" -lminiupnpc \
+	-L"deps/libnatpmp" -lnatpmp -liphlpapi \
 	-L"deps/spng" -lspng \
 	-L"deps/centijson" -ljson \
 	-L"deps/zlib" -lminizip -lz \
@@ -374,7 +387,8 @@ INCS = \
 	-I"deps/openal/include" \
 	-I"deps/luajit/include" \
 	-I"deps/miniupnpc/include" \
-	-I"deps/libnatpmp/include"
+	-I"deps/libnatpmp/include" \
+	-I"deps/libcurl/include"
 CXXINCS =  $(INCS)
 
 STDOBJS   = $(subst obj/,obj/std/,$(OBJS))
@@ -415,7 +429,7 @@ WARNFLAGS = -Wall -W -Wshadow -Wno-sign-compare -Wno-unused-parameter -Wno-maybe
 # disabled warnings: -Wextra -Wtype-limits
 CXXFLAGS = $(CXXINCS) -c -std=gnu++1y -fmessage-length=0 $(WARNFLAGS) $(DEPFLAGS) $(OPTFLAGS) $(DBGFLAGS) $(FTEST_DBGFLAGS) $(INCFLAGS)
 CFLAGS = $(INCS) -c -std=gnu11 -fmessage-length=0 $(WARNFLAGS) -Werror=implicit $(DEPFLAGS) $(FTEST_DBGFLAGS) $(OPTFLAGS) $(DBGFLAGS) $(INCFLAGS)
-LDFLAGS = $(LINKLIB) $(OPTFLAGS) $(DBGFLAGS) $(FTEST_DBGFLAGS) $(LINKFLAGS) -Wl,-Map,"$(@:%.exe=%.map)",--cref,--print-memory-usage
+LDFLAGS = $(LINKLIB) $(OPTFLAGS) $(DBGFLAGS) $(FTEST_DBGFLAGS) $(LINKFLAGS) -Wl,-Map,"$(@:%.exe=%.map)"
 
 ifeq ($(USE_PRE_FILE), 1)
 CXXFLAGS += -DUSE_PRE_FILE=1
@@ -630,10 +644,10 @@ libexterns: libexterns.mk
 
 clean-libexterns: libexterns.mk
 	-$(MAKE) -f libexterns.mk clean-libexterns
-	-$(RM) -rf deps/zlib deps/spng deps/astronomy deps/centijson deps/luajit
+	-$(RM) -rf deps/enet6 deps/zlib deps/spng deps/astronomy deps/centijson deps/luajit deps/miniupnpc deps/libnatpmp
 	-$(RM) libexterns
 
-deps/zlib deps/spng deps/astronomy deps/centijson deps/openal deps/luajit:
+deps/enet6 deps/zlib deps/spng deps/astronomy deps/centijson deps/ffmpeg deps/openal deps/luajit deps/miniupnpc deps/libnatpmp:
 	$(MKDIR) $@
 
 src/api.c: deps/centijson/include/json.h
@@ -642,9 +656,11 @@ src/moonphase.c: deps/astronomy/include/astronomy.h
 deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
 src/bflib_sndlib.cpp: deps/openal/include/AL/al.h
+src/net_exchange_gameplay.c: deps/zlib/include/zlib.h
 src/net_resync.cpp: deps/zlib/include/zlib.h
 src/console_cmd.c: deps/luajit/include/lua.h
 src/net_portforward.cpp: deps/miniupnpc/include/miniupnpc/miniupnpc.h deps/libnatpmp/include/natpmp/natpmp.h
+src/net_matchmaking.c: deps/libcurl/include/curl/curl.h
 
 deps/zlib-mingw32.tar.gz:
 	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/initial/zlib-mingw32.tar.gz"
@@ -695,6 +711,12 @@ deps/libnatpmp-mingw32.tar.gz:
 
 deps/libnatpmp/include/natpmp/natpmp.h: deps/libnatpmp-mingw32.tar.gz | deps/libnatpmp
 	tar xzmf $< -C deps/libnatpmp
+
+deps/libcurl-mingw32.tar.gz:
+	curl -Lso $@ "https://github.com/dkfans/kfx-deps/releases/download/20260310/libcurl-mingw32.tar.gz"
+
+deps/libcurl/include/curl/curl.h: deps/libcurl-mingw32.tar.gz | deps/libcurl
+	tar xzmf $< -C deps/libcurl
 
 cppcheck: | src/ver_defs.h
 cppcheck: | deps/zlib/include/zlib.h
