@@ -81,6 +81,7 @@ src/config_strings.c \
 src/config_terrain.c \
 src/config_cubes.c \
 src/config_textures.c \
+src/config_translation.c \
 src/config_trapdoor.c \
 src/config_spritecolors.c \
 src/console_cmd.c \
@@ -249,6 +250,7 @@ src/room_util.c \
 src/room_workshop.c \
 src/roomspace.c \
 src/roomspace_detection.c \
+src/roomspace_prediction.c \
 src/scrcapt.c \
 src/slab_data.c \
 src/sounds.c \

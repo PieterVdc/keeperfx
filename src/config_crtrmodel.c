@@ -36,6 +36,7 @@
 #include "config_magic.h"
 #include "config_terrain.h"
 #include "config_lenses.h"
+#include "config_translation.h"
 #include "creature_control.h"
 #include "creature_graphics.h"
 #include "creature_states.h"
@@ -129,6 +130,8 @@ const struct NamedCommand creatmodel_properties_commands[] = {
   {"PREFER_STEAL",      33},
   {"EVENTFUL_DEATH",    34},
   {"DIGGING_CREATURE",  35},
+  {"NO_HEALTH_FLOWER",  36},
+  {"CANNOT_PICK_UP",    37},
   {NULL,                 0},
   };
 
@@ -752,6 +755,14 @@ TbBool parse_creaturemodel_attributes_blocks(long crtr_model,char *buf,long len,
                 crconf->model_flags |= CMF_IsDiggingCreature;
                 n++;
                 break;
+            case 36: // NO_HEALTH_FLOWER
+                crconf->model_flags |= CMF_NoHealthFlower;
+                n++;
+                break;
+            case 37: // CANNOT_PICK_UP
+                crconf->model_flags |= CMF_CannotPickUp;
+                n++;
+                break;
             default:
               CONFWRNLOG("Incorrect value of \"%s\" parameter \"%s\" in [%s] block of %s %s file.",
                   COMMAND_TEXT(cmd_num),word_buf, block_name, creature_code_name(crtr_model), config_textname);
@@ -762,7 +773,7 @@ TbBool parse_creaturemodel_attributes_blocks(long crtr_model,char *buf,long len,
       case 29: // NAMETEXTID
           if (get_conf_parameter_single(buf,&pos,len,word_buf,sizeof(word_buf)) > 0)
           {
-            k = atoi(word_buf);
+            k = get_string_id_by_alias(word_buf);
             if (k > 0)
             {
               crconf->namestr_idx = k;

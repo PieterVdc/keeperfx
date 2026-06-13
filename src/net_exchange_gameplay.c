@@ -94,7 +94,7 @@ static void update_turn_speed_adjustment(void)
 {
     TbClockMSec sync_age_ms = LbTimerClock() - server_turn_received_at;
     multiplayer_speed_adjustment_ns = 0;
-    if (netstate.my_id == SERVER_ID || server_turn_received_at == 0 || turns_per_second <= 0
+    if (game.frame_skip > 0 || netstate.my_id == SERVER_ID || server_turn_received_at == 0 || turns_per_second <= 0
         || sync_age_ms > TURN_SYNC_INTERVAL_MS * 3) {
         return;
     }
@@ -153,7 +153,7 @@ void process_gameplay_chat_message(int player_id, const char *message)
     struct PlayerInfo *player = prepare_network_chat_message(player_id, message);
     if (message[0] != '\0') {
         lua_on_chatmsg(player_id, player->mp_message_text);
-        if (player->mp_message_text[0] != cmd_char || !cmd_exec(player_id, player->mp_message_text + 1) || (game.system_flags & GSF_NetworkActive) != 0) {
+        if (player->mp_message_text[0] != cmd_char || !cmd_exec(player_id, player->mp_message_text + 1) || network_is_active()) {
             message_add(MsgType_Player, player_id, player->mp_message_text);
         }
     }
