@@ -28,10 +28,12 @@
 #include "bflib_mouse.h"
 #include "bflib_sound.h"
 #include "bflib_fmvids.h"
+#include "bflib_sprfnt.h"
 #include "config_campaigns.h"
 #include "engine_render.h"
 #include "frontend.h"
 #include "front_simple.h"
+#include "front_input.h"
 #include "gui_draw.h"
 #include "scrcapt.h"
 #include "sounds.h"
@@ -155,6 +157,7 @@ const struct NamedCommand conf_commands[] = {
   {"FRAMES_PER_SECOND"             , 39},
   {"TAG_MODE_TOGGLING"             , 40},
   {"DEFAULT_TAG_MODE"              , 41},
+  {"ZOOM_TO_MOUSE"                 , 42},
   {NULL,                   0},
   };
 
@@ -192,6 +195,13 @@ const struct NamedCommand conf_commands[] = {
   {"DRAG",     2},
   {"PRESET",   3}, //legacy
   {"REMEMBER", 3},
+  {NULL,       0},
+  };
+
+  const struct NamedCommand zoom_to_mouse_options[] = {
+  {"NEVER",    ZoomToMouse_Never},
+  {"WHEEL",    ZoomToMouse_Wheel},
+  {"ALWAYS",   ZoomToMouse_Always},
   {NULL,       0},
   };
 
@@ -385,6 +395,8 @@ static void load_file_configuration(const char *fname, const char *sname, const 
             break;
           }
           install_info.lang_id = i;
+          if (is_dbc_language(i))
+              dbc_set_language(i);
           break;
       case 4: // KEYBOARD
           // Works only in DK Premium
@@ -466,7 +478,7 @@ static void load_file_configuration(const char *fname, const char *sname, const 
           {
             i = atoi(word_buf);
           }
-          if ((i >= 0) && (i <= 1000)) {
+          if ((i >= 0) && (i <= 10000)) {
               base_mouse_sensitivity = i*256/100;
           } else {
               CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
@@ -904,6 +916,17 @@ static void load_file_configuration(const char *fname, const char *sname, const 
             default_tag_mode = i;
           }
           break;
+      case 42: // ZOOM_TO_MOUSE
+          i = recognize_conf_parameter(buf,&pos,len,zoom_to_mouse_options);
+          if (i <= 0)
+          {
+            CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",COMMAND_TEXT(cmd_num),config_textname);
+          }
+          else
+          {
+            zoom_to_mouse_option = i;
+          }
+          break;
       case ccr_comment:
           break;
       case ccr_endOfFile:
@@ -1012,37 +1035,6 @@ short load_configuration(void)
   load_file_configuration(fname, sname, config_textname, 0);
 
   load_configuration_for_mod_all();
-
-  // Updating game according to loaded settings
-  switch (install_info.lang_id)
-  {
-  case 1:
-      LbKeyboardSetLanguage(1);
-      break;
-  case 2:
-      LbKeyboardSetLanguage(2);
-      break;
-  case 3:
-      LbKeyboardSetLanguage(3);
-      break;
-  case 4:
-      LbKeyboardSetLanguage(4);
-      break;
-  case 5:
-      LbKeyboardSetLanguage(5);
-      break;
-  case 6:
-      LbKeyboardSetLanguage(6);
-      break;
-  case 7:
-      LbKeyboardSetLanguage(7);
-      break;
-  case 8:
-      LbKeyboardSetLanguage(8);
-      break;
-  default:
-      break;
-  }
 
   // Returning if the setting are valid
   return (install_info.lang_id > 0) && (install_info.inst_path[0] != '\0');

@@ -28,6 +28,7 @@
 #include "bflib_planar.h"
 #include "bflib_vidraw.h"
 #include "bflib_sound.h"
+#include "config_sounds.h"
 #include "bflib_fileio.h"
 
 #include "config_creature.h"
@@ -2451,7 +2452,7 @@ TbBool creature_pick_up_interesting_object_laying_nearby(struct Thing *creatng)
                     creatng->creature.gold_carried += tgthing->valuable.gold_stored;
                     delete_thing_structure(tgthing, 0);
                 }
-                thing_play_sample(creatng, 32, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+                thing_play_sample(creatng, snd_gold_pickup, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
             }
         } else
         {
@@ -4082,7 +4083,7 @@ ThingIndex process_player_use_instance(struct Thing *thing, CrInstance inst_id, 
             // If cannot find a valid target, do not use it and don't consider it used.
 
             // Make a rejection sound
-            play_non_3d_sample(119);
+            play_non_3d_sample(snd_refusal);
             return 0;
         }
     }
@@ -4689,6 +4690,14 @@ TbBool thing_is_creature_digger(const struct Thing *thing)
   if (!thing_is_creature(thing))
     return false;
   return any_flag_is_set(get_creature_model_flags(thing),(CMF_IsSpecDigger|CMF_IsDiggingCreature));
+}
+
+TbBool is_creature_droppable_on_path(const struct Thing *thing)
+{
+    if (!thing_is_creature(thing)) {
+        return false;
+    }
+    return any_flag_is_set(get_creature_model_flags(thing), (CMF_IsSpecDigger|CMF_DropOnPath));
 }
 
 /** Returns if a thing is special digger creature.
@@ -6529,32 +6538,23 @@ TngUpdateRet update_creature(struct Thing *thing)
 
 TbBool creature_is_slappable(const struct Thing *thing, PlayerNumber plyr_idx)
 {
-    struct Room *room;
-    if (creature_is_being_unconscious(thing))
-    {
+    if (creature_is_being_unconscious(thing)) {
         return false;
     }
-    if (creature_is_leaving_and_cannot_be_stopped(thing))
-    {
+    if (creature_is_leaving_and_cannot_be_stopped(thing)) {
         return false;
     }
-    if (thing->owner != plyr_idx)
-    {
-        if (creature_is_kept_in_prison(thing) || creature_is_being_tortured(thing))
-        {
-            room = get_room_creature_works_in(thing);
-            return (room->owner == plyr_idx);
+    if (thing->owner != plyr_idx) {
+        if (creature_is_kept_in_prison(thing) || creature_is_being_tortured(thing)) {
+            return creature_is_kept_in_custody_by_player(thing, plyr_idx);
         }
         return false;
     }
-    if (creature_is_being_sacrificed(thing) || creature_is_being_summoned(thing))
-    {
+    if (creature_is_being_sacrificed(thing) || creature_is_being_summoned(thing)) {
         return false;
     }
-    if (creature_is_kept_in_prison(thing) || creature_is_being_tortured(thing))
-    {
-        room = get_room_creature_works_in(thing);
-        return (room->owner == plyr_idx);
+    if (creature_is_kept_in_prison(thing) || creature_is_being_tortured(thing)) {
+        return creature_is_kept_in_custody_by_player(thing, plyr_idx);
     }
     return true;
 }
@@ -6858,8 +6858,7 @@ void controlled_creature_pick_thing_up(struct Thing *creatng, struct Thing *pick
     struct CreatureControl* cctrl = creature_control_get_from_thing(creatng);
     cctrl->pickup_object_id = picktng->index;
     struct CreatureSound* crsound = get_creature_sound(creatng, CrSnd_Hit);
-    unsigned short smpl_idx = crsound->index + 1;
-    thing_play_sample(creatng, smpl_idx, 90, 0, 3, 0, 2, FULL_LOUDNESS * 5/4);
+    thing_play_sample(creatng, creature_sound_unified_id(crsound, 1), 90, 0, 3, 0, 2, FULL_LOUDNESS * 5/4);
     display_controlled_pick_up_thing_name(picktng, (GUI_MESSAGES_DELAY >> 4), plyr_idx);
 }
 /**
@@ -7116,7 +7115,7 @@ void direct_control_pick_up_or_drop(PlayerNumber plyr_idx, struct Thing *creatng
                     {
                         if (is_my_player_number(plyr_idx))
                         {
-                            play_non_3d_sample(119);
+                            play_non_3d_sample(snd_refusal);
                         }
                         return;
                     }
@@ -7147,7 +7146,7 @@ void direct_control_pick_up_or_drop(PlayerNumber plyr_idx, struct Thing *creatng
                         {
                             if (is_my_player_number(plyr_idx))
                             {
-                                play_non_3d_sample(119);
+                                play_non_3d_sample(snd_refusal);
                             }
                             return;
                         }

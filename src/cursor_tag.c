@@ -71,14 +71,13 @@ unsigned char tag_cursor_blocks_dig(struct PlayerInfo *player, const struct Pack
         }
         else
         {
-            struct Dungeon* dungeon = get_players_dungeon(player);
-            if ( (render_roomspace->drag_mode) && (dungeon->task_count + render_roomspace->slab_count > MAPTASKS_COUNT) )
-            {
-                line_color = SLC_REDFLASH;
-            }
-            else if (dungeon->task_count >= MAPTASKS_COUNT)
-            {
-                line_color = SLC_REDYELLOW;
+            struct Dungeon* dungeon = get_dungeon(player->id_number);
+            if (!dungeon_invalid(dungeon)) {
+                if ((render_roomspace->drag_mode) && (dungeon->task_count + render_roomspace->slab_count > MAPTASKS_COUNT)) {
+                    line_color = SLC_REDFLASH;
+                } else if (dungeon->task_count >= MAPTASKS_COUNT) {
+                    line_color = SLC_REDYELLOW;
+                }
             }
         }
     }
@@ -96,7 +95,7 @@ unsigned char tag_cursor_blocks_dig(struct PlayerInfo *player, const struct Pack
     return line_color;
 }
 
-void tag_cursor_blocks_thing_in_hand(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool is_special_digger, TbBool full_slab)
+void tag_cursor_blocks_thing_in_hand(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool allow_unclaimed_path, TbBool full_slab)
 {
   SYNCDBG(7,"Starting");
   MapSlabCoord slb_x = subtile_slab(stl_x);
@@ -104,7 +103,7 @@ void tag_cursor_blocks_thing_in_hand(PlayerNumber plyr_idx, MapSubtlCoord stl_x,
   if (is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && (game.small_map_state != 2) )
     {
         map_volume_box.visible = true;
-        map_volume_box.color = can_drop_thing_here(stl_x, stl_y, plyr_idx, is_special_digger);
+        map_volume_box.color = can_drop_thing_here(stl_x, stl_y, plyr_idx, allow_unclaimed_path);
         if (full_slab)
         {
             map_volume_box.beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
@@ -270,7 +269,7 @@ TbBool tag_cursor_blocks_place_thing(PlayerNumber plyr_idx, MapSubtlCoord stl_x,
     MapSlabCoord slb_x = subtile_slab(stl_x);
     MapSlabCoord slb_y = subtile_slab(stl_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
-    long height = get_floor_height(stl_x, stl_y);
+    MapCoord height = get_floor_height(stl_x, stl_y);
     unsigned char colour;
     if (map_is_solid_at_height(stl_x, stl_y, height, height))
     {

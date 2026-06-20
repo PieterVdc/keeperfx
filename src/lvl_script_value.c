@@ -573,6 +573,27 @@ void script_process_value(unsigned long var_index, unsigned long plr_range_id, l
           recalculate_all_creature_digger_lists();
           update_creatr_model_activities_list(1);
           break;
+      case 36: // NO_HEALTH_FLOWER
+          if (param3 >= 1) {
+              set_flag(crconf->model_flags, CMF_NoHealthFlower);
+          } else {
+              clear_flag(crconf->model_flags, CMF_NoHealthFlower);
+          }
+          break;
+      case 37: // CANNOT_PICK_UP
+          if (param3 >= 1) {
+              set_flag(crconf->model_flags, CMF_CannotPickUp);
+          } else {
+              clear_flag(crconf->model_flags, CMF_CannotPickUp);
+          }
+          break;
+      case 38: // DROP_ON_PATH
+          if (param3 >= 1) {
+              set_flag(crconf->model_flags, CMF_DropOnPath);
+          } else {
+              clear_flag(crconf->model_flags, CMF_DropOnPath);
+          }
+          break;
       default:
           SCRPTERRLOG("Unknown creature property '%ld'", param2);
           break;

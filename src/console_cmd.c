@@ -24,7 +24,7 @@
 #include "bflib_datetm.h"
 #include "bflib_sound.h"
 #include "bflib_sndlib.h"
-#include "config.h"
+#include "config_sounds.h"
 #include "config_keeperfx.h"
 #include "config_campaigns.h"
 #include "config_effects.h"
@@ -46,6 +46,7 @@
 #include "gui_boxmenu.h"
 #include "gui_msgs.h"
 #include "gui_soundmsgs.h"
+#include "gui_tooltips.h"
 #include "keeperfx.hpp"
 #include "lvl_script_lib.h"
 #include "map_blocks.h"
@@ -2274,7 +2275,7 @@ TbBool cmd_freeze_creature(PlayerNumber plyr_idx, char * args)
         targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "no thing selected or not creature");
         return false;
     }
-    thing_play_sample(thing, 50, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
+    thing_play_sample(thing, snd_spell_frozen, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
     // Not sure how to handle this yet, for now simply hardcode the intended spell kind with a number.
     apply_spell_effect_to_thing(thing, 3, 8, plyr_idx); // 3 was 'SplK_Freeze' in the enum.
     return true;
@@ -2292,7 +2293,7 @@ TbBool cmd_slow_creature(PlayerNumber plyr_idx, char * args)
         targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "no thing selected or not creature");
         return false;
     }
-    thing_play_sample(thing, 50, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
+    thing_play_sample(thing, snd_spell_frozen, NORMAL_PITCH, 0, 3, 0, 4, FULL_LOUDNESS);
     // Not sure how to handle this yet, for now simply hardcode the intended spell kind with a number.
     apply_spell_effect_to_thing(thing, 12, 8, plyr_idx); // 12 was 'SplK_Slow' in the enum.
     return true;
@@ -2594,6 +2595,19 @@ TbBool cmd_quick_show(PlayerNumber plyr_idx, char * args)
     return true;
 }
 
+TbBool cmd_toggle_tooltip_land_coord(PlayerNumber plyr_idx, char * args)
+{
+    tool_tip_dbg.land_coord = !tool_tip_dbg.land_coord;
+    targeted_message_add(MsgType_Player, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "tooltip_land_coord is turned %s", tool_tip_dbg.land_coord ? "on" : "off");
+    return true;
+}
+
+TbBool cmd_toggle_lights(PlayerNumber plyr_idx, char * args)
+{
+    light_set_lights_on(game.lish.light_enabled == 0);
+    return true;
+}
+
 TbBool cmd_lua(PlayerNumber plyr_idx, char * args)
 {
     if (game.easter_eggs_enabled == false) {
@@ -2644,38 +2658,38 @@ TbBool cmd_cheat_menu(PlayerNumber plyr_idx, char * args)
     }
 
     if (menu_type != 1)
-	{
+    {
         close_main_cheat_menu();
-	}
+    }
     if (menu_type != 2)
-	{
+    {
         close_creature_cheat_menu();
-	}
+    }
     if (menu_type != 3)
-	{
+    {
         close_instance_cheat_menu();
-	}
-	if (menu_type != 4)
-	{
+    }
+    if (menu_type != 4)
+    {
         close_secondary_cheat_menu();
-	}
+    }
 
     if (menu_type == 1)
-	{
+    {
         toggle_main_cheat_menu();
-	}
+    }
     else if (menu_type == 2)
-	{
+    {
         toggle_creature_cheat_menu();
-	}
+    }
     else if (menu_type == 3)
-	{
+    {
         toggle_instance_cheat_menu();
-	}
-	else if (menu_type == 4)
-	{
+    }
+    else if (menu_type == 4)
+    {
         toggle_secondary_cheat_menu();
-	}
+    }
 
     return true;
 }
@@ -2811,6 +2825,8 @@ static const struct ConsoleCommand console_commands[] = {
     { "possession.unlock", cmd_possession_unlock, NULL },
     { "string.show", cmd_string_show, NULL },
     { "quick.show", cmd_quick_show, NULL },
+    { "toggle.tooltip.land.coord", cmd_toggle_tooltip_land_coord, NULL },
+    { "toggle.lights", cmd_toggle_lights, NULL },
     { "lua", cmd_lua, NULL },
     { "luatypedump", cmd_luatypedump, NULL },
     { "cheat.menu", cmd_cheat_menu, NULL },
