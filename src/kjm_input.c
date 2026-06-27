@@ -32,6 +32,7 @@
 #include "bflib_sprfnt.h"
 #include "bflib_inputctrl.h"
 #include "bflib_datetm.h"
+#include "bflib_text.h"
 
 #include "button_snapping.h"
 #include "config_settings.h"
@@ -751,23 +752,41 @@ TbBool add_input_text_to_message(char *message, int max_message_length, struct T
         return false;
 
     int chpos = strlen(message);
-    for (int ti = 0; ti < text_len && chpos < max_message_length - 1; ++ti) {
-        unsigned char c = (unsigned char)text_input[ti];
-        // Limit it to ASCII characters, to ignore codepage differences and multibyte stuff.
-        if (c >= 0x20 && c < 0x7f) {
-            message[chpos++] = (char)c;
-            message[chpos] = '\0';
+    for (int ti = 0; ti < text_len && chpos < max_message_length - 1;) {
 
-            // Enforce max_width even when multiple characters arrive in one frame.
-            if (pixel_size * LbTextStringWidth(message) >= max_width) {
+        size_t seq_len = 0;
+        read_utf_8_codepoint((const char *)text_input + ti, &seq_len);
+        ti += seq_len;
+
+        if (chpos + seq_len >= max_message_length - 1)
+            break;
+
+        for (int i = 0; i < seq_len; i++)
+            message[chpos++] = text_input[ti - seq_len + i];
+        message[chpos] = '\0';
+
+        // Enforce max_width even when multiple characters arrive in one frame.
+        if (pixel_size * LbTextStringWidth(message) >= max_width) {
+            for (int i = 0; i < seq_len; i++)
                 message[--chpos] = '\0';
-                break;
-            }
+            break;
         }
     }
     return true;
 }
 
+TbBool remove_last_char_from_message(char *message)
+{
+    int chpos = strlen(message);
+    if (chpos <= 0)
+        return false;
+
+    size_t seq_len = 0;
+    read_utf_8_codepoint_reverse(message, &seq_len);
+    for (int i = 0; i < seq_len; i++)
+        message[--chpos] = '\0';
+    return true;
+}
 /******************************************************************************/
 #ifdef __cplusplus
 }

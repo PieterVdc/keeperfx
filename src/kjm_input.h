@@ -91,7 +91,9 @@ void clear_key_pressed(long key);
 void update_key_modifiers(void);
 void define_key_input(void);
 void init_key_to_strings(void);
+
 TbBool add_input_text_to_message(char *message, int max_message_length, struct TbSpriteSheet *font, int max_width);
+TbBool remove_last_char_from_message(char *message);
 
 TbBool mouse_is_over_panel_map(ScreenCoord x, ScreenCoord y);
 TbBool mouse_is_over_side_panel_bottom();

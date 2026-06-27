@@ -445,9 +445,7 @@ static short get_players_message_inputs(void)
         memcpy(player->mp_message_text, player->mp_message_text_last, PLAYER_MP_MESSAGE_LEN);
         clear_key_pressed(KC_UP);
     } else if (is_key_pressed(KC_BACK,KMod_DONTCARE)){
-        int chpos = strlen(player->mp_message_text);
-        if (chpos > 0)
-            player->mp_message_text[chpos-1] = '\0';
+        remove_last_char_from_message(player->mp_message_text);
         clear_key_pressed(KC_BACK);
     } else {
         return add_input_text_to_message(player->mp_message_text, PLAYER_MP_MESSAGE_LEN, winfont, 450);

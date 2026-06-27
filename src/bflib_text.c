@@ -254,3 +254,31 @@ uint32_t read_utf_8_codepoint_f(const char *text, size_t *out_seq_len, const cha
     }
 }
 
+uint32_t read_utf_8_codepoint_reverse(const char *text, size_t *out_seq_len)
+{
+    size_t len = strlen(text);
+    if (len == 0)
+    {
+        *out_seq_len = 0;
+        return 0;
+    }
+
+    const char *ptr = text + len - 1;
+    size_t seq_len = 1;
+
+    while (ptr > text && (*ptr & 0xC0) == 0x80)
+    {
+        ptr--;
+        seq_len++;
+    }
+
+    uint32_t codepoint = read_utf_8_codepoint(ptr, out_seq_len);
+    if (*out_seq_len != seq_len)
+    {
+        ERRORLOG("Mismatch in UTF-8 sequence length;");
+        *out_seq_len = seq_len;
+        return '?';
+    }
+
+    return codepoint;
+}
