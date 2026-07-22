@@ -1558,6 +1558,9 @@ unsigned char *load_data_file_to_buffer(int32_t *ldsize, short fgroup, const cha
   vsnprintf(fname, sizeof(fname), fmt_str, arg);
   char ffullpath[2048];
   prepare_file_path_buf(ffullpath, sizeof(ffullpath), fgroup, fname);
+
+       WARNMSG("File \"%s\" ffullpath.", ffullpath);
+
   va_end(arg);
   // Load the file
    long fsize = LbFileLengthRnc(ffullpath);

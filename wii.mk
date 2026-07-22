@@ -23,6 +23,10 @@ endif
 
 include $(DEVKITPPC)/wii_rules
 
+# Ensure cross-toolchain binaries (powerpc-eabi-*) are available even when
+# the shell PATH does not include devkitPPC/bin.
+export PATH := $(DEVKITPPC)/bin:$(PATH)
+
 ifeq (,$(findstring Windows,$(OS)))
 HOST_EXEEXT :=
 else
@@ -52,6 +56,9 @@ KFX_SOURCES := $(filter-out \
 	src/bflib_dialog.c \
 	src/lua_api.c \
 	src/lua_api_lens.c \
+	src/lua_api_camera.c \
+	src/lua_api_map.c \
+	src/lua_api_sound.c \
 	src/lua_api_player.c \
 	src/lua_api_room.c \
 	src/lua_api_slabs.c \
@@ -62,6 +69,18 @@ KFX_SOURCES := $(filter-out \
 	src/lua_triggers.c \
 	src/lua_utils.c \
 	src/custom_sprites.c \
+	src/frontmenu_net.c \
+	src/frontmenu_net_data.cpp \
+	src/front_network.c \
+	src/front_landview_multiplayer.c \
+	src/net_exchange_common.c \
+	src/net_exchange_gameplay.c \
+	src/net_game.c \
+	src/net_main.c \
+	src/net_holepunch.c \
+	src/net_lan.c \
+	src/net_lobby.c \
+	src/net_matchmaking.c \
 	src/kfx/lense/LuaLensEffect.cpp \
 	src/scrcapt.c \
 	src/net_checksums.c \
@@ -83,6 +102,7 @@ TOML_OBJECTS = $(patsubst deps/centitoml/%.c,obj/centitoml/%.o,$(TOML_SOURCES))
 KFX_INCLUDES = \
 	-Isrc \
 	-I$(DEVKITPRO)/libogc/include \
+	-I$(DEVKITPRO)/portlibs/wii/include \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
@@ -106,6 +126,7 @@ KFX_LDFLAGS += \
 	-Wl,--wrap=_sbrk_r \
 	-L$(DEVKITPRO)/libogc/lib/wii \
 	-L$(DEVKITPRO)/portlibs/wii/lib \
+	-lfat \
 	-logc \
 	-lm
 

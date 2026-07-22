@@ -32,6 +32,18 @@
 #include "lua_base.h"
 #include "lua_triggers.h"
 #include "lua_cfg_funcs.h"
+#include "frontmenu_net.h"
+#include "net_lobby.h"
+#include "net_matchmaking.h"
+#include "net_checksums.h"
+#include "net_game.h"
+#include "net_exchange_common.h"
+#include "net_exchange_gameplay.h"
+#include "front_network.h"
+#include "front_landview.h"
+#include "bflib_inputctrl.h"
+#include "bflib_joyst.h"
+#include "bflib_guibtns.h"
 #include "post_inc.h"
 /******************************************************************************/
 
@@ -108,19 +120,80 @@ void port_forward_remove_mapping(void)
 }
 
 /******************************************************************************/
+// frontmenu_net.c / net_lobby.c stubs
+TbBool frontnet_start_input(void)
+{
+	return false;
+}
+
+TbError LbNetwork_Stop(void)
+{
+	return Lb_OK;
+}
+
+void LbNetwork_InitSessionsFromCmdLine(const char *str)
+{
+	(void)str;
+}
+
+void LbNetwork_SetServerPort(int port)
+{
+	(void)port;
+}
+
+/******************************************************************************/
+// custom sound stubs used by sound_manager.cpp
+int custom_sound_bank_size(void)
+{
+	return 0;
+}
+
+TbBool custom_sound_load_wav(const char *filepath, int sample_id)
+{
+	(void)filepath;
+	(void)sample_id;
+	return false;
+}
+
+TbBool custom_sound_load_wav_mem(const unsigned char *data, size_t size, const char *logical_name, int sample_id)
+{
+	(void)data;
+	(void)size;
+	(void)logical_name;
+	(void)sample_id;
+	return false;
+}
+
+void custom_sound_bank_clear(void)
+{
+}
+
+SoundSmplTblID get_custom_offset(void)
+{
+	return 0;
+}
+
+/******************************************************************************/
 //centijson value stubs for toml_api.c
 static VALUE wii_stub_value;
 static const char wii_stub_empty_string[] = "";
 struct TbFileFind { int dummy; };
 
 struct TbSpriteSheet * gui_panel_sprites = NULL;
+short td_to_fp_sprite_add[KEEPERSPRITE_ADD_NUM] = {0};
+short fp_to_td_sprite_add[KEEPERSPRITE_ADD_NUM] = {0};
 short iso_td_add[KEEPERSPRITE_ADD_NUM] = {0};
 short td_iso_add[KEEPERSPRITE_ADD_NUM] = {0};
 TbSpriteData keepersprite_add[KEEPERSPRITE_ADD_NUM] = {0};
 struct KeeperSprite creature_table_add[KEEPERSPRITE_ADD_NUM] = {0};
+TbBigChecksum required_sprite_zip_checksums[9] = {0};
 
 int total_sprite_zip_count = 0;
 short bad_icon_id = -1;
+
+void show_ignored_fxdata_zip_messages(void)
+{
+}
 
 void init_custom_sprites(LevelNumber level_no)
 {
@@ -630,10 +703,11 @@ const char* lua_get_serialised_data(size_t *len)
 	return NULL;
 }
 
-void lua_set_serialised_data(const char *data, size_t len)
+TbBool lua_set_serialised_data(const char *data, size_t len)
 {
 	(void)data;
 	(void)len;
+	return false;
 }
 
 void cleanup_serialized_data(void)
@@ -765,3 +839,287 @@ short luafunc_thing_update_func(FuncIdx func_idx,struct Thing *thing)
 	(void)thing;
 	return 1;
 }
+
+void *iconv_open(const char *tocode, const char *fromcode)
+{
+	(void)tocode;
+	(void)fromcode;
+	return (void *)1;
+}
+
+size_t iconv(void *cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft)
+{
+	(void)cd;
+	if (inbuf == NULL || inbytesleft == NULL || outbuf == NULL || outbytesleft == NULL) {
+		return (size_t)-1;
+	}
+	while (*inbytesleft > 0 && *outbytesleft > 0) {
+		**outbuf = **inbuf;
+		(*outbuf)++;
+		(*inbuf)++;
+		(*inbytesleft)--;
+		(*outbytesleft)--;
+	}
+	return 0;
+}
+
+int iconv_close(void *cd)
+{
+	(void)cd;
+	return 0;
+}
+
+/******************************************************************************/
+// Additional Wii link stubs
+struct GuiMenu frontend_net_service_menu = {0};
+struct GuiMenu frontend_net_session_menu = {0};
+struct GuiMenu frontend_net_start_menu = {0};
+struct GuiMenu frontend_add_session_box = {0};
+
+void frontnet_session_create(struct GuiButton *gbtn)
+{
+	(void)gbtn;
+}
+
+void frontnet_session_join(struct GuiButton *gbtn)
+{
+	(void)gbtn;
+}
+
+TbError LbNetwork_ExchangeFrontend(void *send_buf, void *server_buf, size_t frame_size)
+{
+	(void)send_buf;
+	(void)server_buf;
+	(void)frame_size;
+	return Lb_OK;
+}
+
+TbError LbNetwork_EnableNewPlayers(TbBool allow)
+{
+	(void)allow;
+	return Lb_OK;
+}
+
+TbError LbNetwork_EnumeratePlayers(struct TbNetworkSessionNameEntry *sesn, TbNetworkCallbackFunc callback, void *user_data)
+{
+	(void)sesn;
+	(void)callback;
+	(void)user_data;
+	return Lb_OK;
+}
+
+TbError LbNetwork_EnumerateSessions(TbNetworkCallbackFunc callback, void *ptr)
+{
+	(void)callback;
+	(void)ptr;
+	return Lb_OK;
+}
+
+TbControllerButtons controller_button_state = CBtn_NONE;
+
+float cbtn_axis_value(TbControllerButtons btn)
+{
+	(void)btn;
+	return 0.0f;
+}
+
+TbBool controller_connected(void)
+{
+	return false;
+}
+
+TbBool LbPollInputs(void)
+{
+	return true;
+}
+
+TbBool LbIsTextInputActive(void)
+{
+	return false;
+}
+
+void LbStartTextInput(void)
+{
+}
+
+void LbStopTextInput(void)
+{
+}
+
+int LbGetTextInput(char *dst, int maxChars)
+{
+	if (dst != NULL && maxChars > 0)
+	{
+		dst[0] = '\0';
+	}
+	return 0;
+}
+
+SoundSmplTblID get_speech_offset(void)
+{
+	return 0;
+}
+
+void sound_register_id_redirect(SoundSmplTblID from_id, SoundSmplTblID to_id)
+{
+	(void)from_id;
+	(void)to_id;
+}
+
+void sound_register_stack_policy(SoundSmplTblID smptbl_id, unsigned char mode, short max_instances)
+{
+	(void)smptbl_id;
+	(void)mode;
+	(void)max_instances;
+}
+
+void sound_save_id_redirect_snapshot(void)
+{
+}
+
+void sound_restore_id_redirect_snapshot(void)
+{
+}
+
+TbBool play_music_fgroup(short fgroup, const char *fname)
+{
+	(void)fgroup;
+	(void)fname;
+	return false;
+}
+
+void intentional_desync(void)
+{
+}
+
+void lua_on_object_destroyed(struct Thing *objtng)
+{
+	(void)objtng;
+}
+
+void lua_on_pick_up(struct Thing *thing, PlayerNumber plyr_idx)
+{
+	(void)thing;
+	(void)plyr_idx;
+}
+
+void lua_on_slap(struct Thing *thing, PlayerNumber plyr_idx)
+{
+	(void)thing;
+	(void)plyr_idx;
+}
+
+void lua_on_shot_hit(struct Thing *shot, struct Thing *shooter, struct Thing *target, MapSubtlCoord next_stl_x, MapSubtlCoord next_stl_y, bool rebound_hit)
+{
+	(void)shot;
+	(void)shooter;
+	(void)target;
+	(void)next_stl_x;
+	(void)next_stl_y;
+	(void)rebound_hit;
+}
+
+short luafunc_trap_activation_func(FuncIdx func_idx, struct Thing *trap, struct Thing *creature)
+{
+	(void)func_idx;
+	(void)trap;
+	(void)creature;
+	return 1;
+}
+
+short luafunc_shot_hit_thing_func(FuncIdx func_idx, struct Thing *shot, struct Thing *shooter, struct Thing *target, MapSubtlCoord next_stl_x, MapSubtlCoord next_stl_y)
+{
+	(void)func_idx;
+	(void)shot;
+	(void)shooter;
+	(void)target;
+	(void)next_stl_x;
+	(void)next_stl_y;
+	return 1;
+}
+
+// Network fully disabled on Wii build
+struct NetState netstate = {0};
+
+int net_service_index_selected = FrontendNetSvc_Skirmish;
+struct TbNetworkSessionNameEntry *net_session[SESSION_ENTRIES_COUNT] = {0};
+long net_number_of_sessions = 0;
+long net_session_index_active = -1;
+struct TbNetworkPlayerName net_player[MAX_NET_USERS] = {0};
+struct ConfigInfo net_config_info = {0};
+char net_service[16][NET_SERVICE_LEN] = {{0}};
+char net_player_name[20] = {0};
+char tmp_net_player_name[24] = {0};
+long fe_net_level_selected = SINGLEPLAYER_NOTSTARTED;
+
+TbBool frontnet_service_selected(enum FrontendNetService service)
+{
+	(void)service;
+	return false;
+}
+
+void enum_sessions_callback(struct TbNetworkCallbackData *netcdat, void *ptr)
+{
+	(void)netcdat;
+	(void)ptr;
+}
+
+void setup_alliances(void) {}
+void frontnet_service_setup(void) {}
+void frontnet_session_setup(void) {}
+void frontnet_start_setup(void) {}
+void frontnet_service_update(void) {}
+void frontnet_session_update(void) {}
+void frontnet_start_update(void) {}
+
+void frontnet_send_campaign_change_message(const char *campaign_fname)
+{
+	(void)campaign_fname;
+}
+
+void frontnetmap_unload(void) {}
+TbBool frontnetmap_load(void) { return false; }
+void frontnetmap_input(void) {}
+void frontnetmap_draw(void) {}
+TbBool frontnetmap_update(void) { return false; }
+
+short setup_network_service(enum FrontendNetService service)
+{
+	(void)service;
+	return false;
+}
+
+int setup_old_network_service(void)
+{
+	return false;
+}
+
+TbBool init_players_network_game(void)
+{
+	return false;
+}
+
+void setup_count_players(void) {}
+void are_disconnect_victories_allowed(void) {}
+TbBool network_human_contenders_remain(void) { return false; }
+void process_player_leave_game_packet(struct PlayerInfo *player) { (void)player; }
+void process_disconnected_network_players(void) {}
+void sync_initial_network_seed(void) {}
+unsigned long get_host_player_id(void) { return my_player_number; }
+
+void initialize_packet_history(void) {}
+void store_packet_history(PlayerNumber player, const struct Packet *packet) { (void)player; (void)packet; }
+const struct Packet *get_history_packet(PlayerNumber player, GameTurn turn) { (void)player; (void)turn; return NULL; }
+const struct Packet *get_latest_history_packet(PlayerNumber player) { (void)player; return NULL; }
+void network_update(void *server_buf, size_t frame_size) { (void)server_buf; (void)frame_size; }
+TbError LbNetwork_ExchangeGameplay(void *send_buf, void *server_buf, size_t frame_size)
+{
+	(void)send_buf;
+	(void)server_buf;
+	(void)frame_size;
+	return Lb_OK;
+}
+void LbNetwork_BroadcastUnpause(void) {}
+void process_gameplay_chat_message(int player_id, const char *message) { (void)player_id; (void)message; }
+void send_network_chat_message(int player_id, const char *message) { (void)player_id; (void)message; }
+void wait_for_all_players(void) {}

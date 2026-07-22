@@ -32,7 +32,40 @@
 #include "packets.h"
 #include "lua_triggers.h"
 #include "keeperfx.hpp"
+#if defined(__has_include)
+#if __has_include(<zlib.h>)
 #include <zlib.h>
+#define KFX_ZLIB_AVAILABLE 1
+#endif
+#endif
+#ifndef KFX_ZLIB_AVAILABLE
+typedef unsigned char Bytef;
+typedef unsigned long uLongf;
+#define Z_OK 0
+
+static int kfx_compress(Bytef *dest, uLongf *destLen, const Bytef *src, uLongf srcLen)
+{
+    if (*destLen < srcLen) {
+        return -1;
+    }
+    memcpy(dest, src, srcLen);
+    *destLen = srcLen;
+    return Z_OK;
+}
+
+static int kfx_uncompress(Bytef *dest, uLongf *destLen, const Bytef *src, uLongf srcLen)
+{
+    if (*destLen < srcLen) {
+        return -1;
+    }
+    memcpy(dest, src, srcLen);
+    *destLen = srcLen;
+    return Z_OK;
+}
+
+#define compress kfx_compress
+#define uncompress kfx_uncompress
+#endif
 #include "post_inc.h"
 
 extern void network_yield_waiting_gameplay_packets(void);

@@ -189,7 +189,7 @@ static TbBool load_translation_config_file(const char* filepath, unsigned short 
     }
     free(buf);
 
-    value_dict_walk_sorted(&root, translation_section_visitor, NULL);
+    //value_dict_walk_sorted(&root, translation_section_visitor, NULL);
 
     value_fini(&root);
     return true;

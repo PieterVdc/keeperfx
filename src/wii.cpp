@@ -1,10 +1,13 @@
 #include "platform.h"
 #include <gccore.h>
+#include <fat.h>
 #include <errno.h>
 #include <reent.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <unistd.h>
+#include <dirent.h>
 
 extern "C" {
 void* __ppc_main_sp = (void*)0x817FFFE0;
@@ -128,6 +131,61 @@ static void wii_bootstrap_banner(void)
     }
 }
 
+static void wii_debug_list_dir(const char *path)
+{
+    DIR *dir = opendir(path);
+    if (dir == NULL) {
+        SYS_Report("WII_FS: opendir('%s') failed errno=%d\n", path, errno);
+        return;
+    }
+    SYS_Report("WII_FS: opendir('%s') ok:\n", path);
+    struct dirent *ent;
+    int n = 0;
+    while (n < 30 && (ent = readdir(dir)) != NULL) {
+        SYS_Report("WII_FS:   %s\n", ent->d_name);
+        n++;
+    }
+    closedir(dir);
+}
+
+static void wii_init_filesystem(void)
+{
+    SYS_Report("WII_FS: wii_init_filesystem entered (build %s)\n", __DATE__ " " __TIME__);
+    // version check to detect stale binary
+    SYS_Report("WII_FS: VERSION_TAG=KEEPERFX_WII_2026_03_06\n");
+
+    SYS_Report("WII_FS: calling fatInitDefault...\n");
+    const int fat_ok = fatInitDefault();
+    SYS_Report("WII_FS: fatInitDefault=%d\n", fat_ok);
+    if (!fat_ok) {
+        SYS_Report("WII_FS: FAT mount failed - need SD/USB in Dolphin\n");
+    }
+
+    // Try to chdir to a location with KeeperFX files
+    static const char *cwd_candidates[] = {
+        "sd:/apps/keeperfx",
+        "sd:/keeperfx",
+        "sd:/",
+        "usb:/apps/keeperfx",
+        "usb:/keeperfx",
+        "usb:/",
+    };
+
+    for (unsigned long i = 0; i < sizeof(cwd_candidates) / sizeof(cwd_candidates[0]); i++) {
+        const char *candidate = cwd_candidates[i];
+        int rc = chdir(candidate);
+        SYS_Report("WII_FS: chdir('%s') = %d (errno=%d)\n", candidate, rc, errno);
+        if (rc == 0) {
+            wii_debug_list_dir(".");
+            return;
+        }
+    }
+
+    // Dump what we can see from current dir regardless
+    SYS_Report("WII_FS: all chdir candidates failed, listing '.':\n");
+    wii_debug_list_dir(".");
+}
+
 extern "C" int wii_kfx_entry(int argc, char *argv[])
 {
     SYS_Report("WII_WRAP: wii_kfx_entry begin\n");
@@ -137,6 +195,7 @@ extern "C" int wii_kfx_entry(int argc, char *argv[])
     char* safe_argv[] = { app_path_bin, NULL };
     int safe_argc = 1;
 
+    wii_init_filesystem();
     wii_bootstrap_banner();
     int result = kfxmain(safe_argc, safe_argv);
     return result;

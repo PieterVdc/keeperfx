@@ -36,6 +36,10 @@
 #include <unistd.h>
 #endif
 
+#if defined PLATFORM_WII
+#include <ogc/machine/processor.h>
+#endif
+
 #include "bflib_basics.h"
 #include "bflib_datetm.h"
 

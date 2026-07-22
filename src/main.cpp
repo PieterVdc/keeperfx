@@ -1181,6 +1181,7 @@ short setup_game(void)
 
   if (result == 1)
   {
+#if !defined(PLATFORM_WII)
       KEEPERSPEECH_REASON reason = KeeperSpeechInit();
       if (reason == KSR_NO_LIB_INSTALLED) {
           SYNCLOG("Speech recognition disabled: %s",
@@ -1190,6 +1191,7 @@ short setup_game(void)
           ERRORLOG("Failed to initialize Speech recognition module: %s",
               KeeperSpeechErrorMessage(reason));
       }
+#endif
   }
 
   return result;
@@ -3452,7 +3454,7 @@ static void gameplay_loop_draw()
         if (process_frame_time < 1.0)
         {
             if (game.process_turn_time < 1.0)
-                SDL_Delay(1);
+                LbSleepFor(1);
             do_draw = false;
         }
         else

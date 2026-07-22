@@ -115,10 +115,11 @@ TbResult LbMouseSetPosition(long x, long y)
   {
     return Lb_FAIL;
   }
+#if !defined(PLATFORM_WII)
   SDL_Window *window = lbWindow;
   SDL_WarpMouseInWindow(window, x, y);
-  return Lb_SUCCESS;
 #endif
+  return Lb_SUCCESS;
 }
 
 void LbMoveHostCursorToGameCursor(void)

@@ -73,7 +73,8 @@ extern "C" void pause_music() {}
 
 extern "C" void resume_music() {}
 
-extern "C" void stop_music() {
+extern "C" void stop_music(TbBool fade_out) {
+	(void)fade_out;
 	game.music_track = 0;
 	memset(game.music_fname, 0, sizeof(game.music_fname));
 }
@@ -130,8 +131,7 @@ extern "C" SoundMilesID play_sample(
 	SoundPan pan,
 	SoundPitch pitch,
 	char repeats,
-	unsigned char ctype,
-	SoundBankID bank_id
+	unsigned char ctype
 ) {
 	(void)emit_id;
 	(void)smptbl_id;
@@ -140,19 +140,16 @@ extern "C" SoundMilesID play_sample(
 	(void)pitch;
 	(void)repeats;
 	(void)ctype;
-	(void)bank_id;
 	return 0;
 }
 
-extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundBankID bank_id) {
+extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id) {
 	(void)emit_id;
 	(void)smptbl_id;
-	(void)bank_id;
 }
 
-extern "C" SoundSFXID get_sample_sfxid(SoundSmplTblID smptbl_id, SoundBankID bank_id) {
+extern "C" SoundSFXID get_sample_sfxid(SoundSmplTblID smptbl_id) {
 	(void)smptbl_id;
-	(void)bank_id;
 	return 0;
 }
 

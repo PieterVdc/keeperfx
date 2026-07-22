@@ -2110,25 +2110,11 @@ static void get_packet_control_mouse_clicks(void)
     if ( left_button_clicked )
     {
       set_players_packet_control(player, PCtr_LBtnClick);
-
-      if ( last_speech_event.type == KS_HAND_CHOOSE ) {
-        synthetic_left = 1;
-      }
-      else {
-        synthetic_left = 0; //good idea to cancel current pick up, mouse takes precedence
-      }
     }
 
     if ( right_button_clicked )
     {
       set_players_packet_control(player, PCtr_RBtnClick);
-
-      if ( last_speech_event.type == KS_HAND_ACTION ) {
-        synthetic_right = 1;
-      }
-      else {
-        synthetic_right = 0; //good idea to cancel current slap
-      }
     }
 
     if ( left_button_released)
@@ -2801,131 +2787,37 @@ static void get_creature_control_nonaction_inputs(void)
 
 static void get_player_gui_clicks(void)
 {
-  if ( ((game.operation_flags & GOF_Paused) != 0) && ((game.operation_flags & GOF_WorldInfluence) == 0))
-    return;
-  struct PlayerInfo *player = get_my_player();
-  switch (player->view_type)
-  {
-  case PVT_CreaturePasngr:
-      if (right_button_released)
-      {
-        struct Thing *thing = thing_get(player->controlled_thing_idx);
-        if (thing->class_id == TCls_Creature)
-        {
-          if (a_menu_window_is_active())
-          {
-            game.view_mode_flags &= ~GNFldD_CreaturePasngr;
-            player->allocflags &= ~PlaF_CreaturePassengerMode;
-            turn_off_all_window_menus();
-        }
-        else
-        {
-            if (menu_is_active(GMnu_MAIN))
-            {
-                fake_button_click(BID_OPTIONS);
-            }
-            turn_on_menu(GMnu_OPTIONS);
-        }
-    }
-}
-
-static void speech_pickup_of_gui_job(int job_idx)
-{
-    SYNCDBG(7, "Picking up creature of breed %s for job of type %d",
-        last_speech_event.u.creature.model_name, job_idx);
-    int kind = creature_model_id(last_speech_event.u.creature.model_name);
-    if (kind < 0) {
-        SYNCDBG(0, "No such creature");
+    if (((game.operation_flags & GOF_Paused) != 0) && ((game.operation_flags & GOF_WorldInfluence) == 0))
         return;
-    }
 
-    unsigned short pick_flags = TPF_PickableCheck;
-    if (lbKeyOn[KC_LCONTROL] || lbKeyOn[KC_RCONTROL] || (job_idx == -1))
-        pick_flags |= TPF_OrderedPick;
-    if (lbKeyOn[KC_LSHIFT] || lbKeyOn[KC_RSHIFT])
-        pick_flags |= TPF_ReverseOrder;
-    pick_up_creature_of_model_and_gui_job(kind, job_idx, my_player_number, pick_flags);
-}
-
-/**
- * Processes speech inputs that can be handled separately without interfacing with
- * mouse/keyboard code.
- */
-static void get_dungeon_speech_inputs(void)
-{
-    SYNCDBG(8,"Starting");
-
-    int id;
-    switch (last_speech_event.type)
+    struct PlayerInfo *player = get_my_player();
+    switch (player->view_type)
     {
-    case KS_PICKUP_IDLE:
-        speech_pickup_of_gui_job(CrGUIJob_Wandering);
-        break;
-    case KS_PICKUP_WORKING:
-        speech_pickup_of_gui_job(CrGUIJob_Working);
-        break;
-    case KS_PICKUP_FIGHTING:
-        speech_pickup_of_gui_job(CrGUIJob_Fighting);
-        break;
-    case KS_PICKUP_ANY:
-        speech_pickup_of_gui_job(CrGUIJob_Any);
-        break;
-    case KS_SELECT_ROOM:
-    {
-        struct RoomConfigStats* room_stats = get_room_kind_stats(last_speech_event.u.room.id);
-        activate_room_build_mode(last_speech_event.u.room.id, room_stats->tooltip_stridx);
-        break;
-    }
-    case KS_SELECT_POWER:
-        id = power_model_id(last_speech_event.u.power.model_name);
-        if (id < 0) {
-            WARNLOG("Bad power string %s", last_speech_event.u.power.model_name);
+    case PVT_CreaturePasngr:
+        if (right_button_released)
+        {
+            struct Thing *thing = thing_get(player->controlled_thing_idx);
+            if (thing->class_id == TCls_Creature)
+            {
+                if (a_menu_window_is_active())
+                {
+                    game.view_mode_flags &= ~GNFldD_CreaturePasngr;
+                    player->allocflags &= ~PlaF_CreaturePassengerMode;
+                    turn_off_all_window_menus();
+                }
+                else
+                {
+                    if (menu_is_active(GMnu_MAIN))
+                    {
+                        fake_button_click(BID_OPTIONS);
+                    }
+                    turn_on_menu(GMnu_OPTIONS);
+                }
+            }
         }
-        else {
-            choose_spell(id, 2); //TODO: see what happens with tool tip
-        }
-        break;
-    case KS_SELECT_TRAP:
-        id = trap_model_id(last_speech_event.u.trapdoor.model_name);
-        if (id < 0) {
-            WARNLOG("Bad trap string %s", last_speech_event.u.trapdoor.model_name);
-        }
-        else if ((id = get_manufacture_data_index_for_thing(TCls_Trap, id)) > 0) {
-            choose_workshop_item(id, 2); //TODO: see what happens with tool tip
-        }
-        else {
-            WARNLOG("Trap %s is not in trap data array", last_speech_event.u.trapdoor.model_name);
-        }
-        break;
-    case KS_SELECT_DOOR:
-        id = door_model_id(last_speech_event.u.trapdoor.model_name);
-        if (id < 0) {
-            WARNLOG("Bad door string %s", last_speech_event.u.trapdoor.model_name);
-        }
-        else if ((id = get_manufacture_data_index_for_thing(TCls_Door, id)) > 0) {
-            choose_workshop_item(id, 2); //TODO: see what happens with tool tip
-        }
-        else {
-            WARNLOG("Door %s is not in trap data array", last_speech_event.u.trapdoor.model_name);
-        }
-        break;
-    case KS_VIEW_INFO:
-        set_menu_mode(BID_INFO_TAB); //TODO SPEECH not working for some reason, debug
-        break;
-    case KS_VIEW_ROOMS:
-        set_menu_mode(BID_ROOM_TAB);
-        break;
-    case KS_VIEW_POWERS:
-        set_menu_mode(BID_SPELL_TAB);
-        break;
-    case KS_VIEW_TRAPS:
-        set_menu_mode(BID_MNFCT_TAB);
-        break;
-    case KS_VIEW_CREATURES:
-        set_menu_mode(BID_CREATR_TAB);
         break;
     default:
-        break; //don't care
+        break;
     }
 }
 

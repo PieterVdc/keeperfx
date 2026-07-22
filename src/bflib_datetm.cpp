@@ -26,7 +26,6 @@
 #include "bflib_basics.h"
 #include "game_legacy.h"
 
-#include <SDL2/SDL.h>
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -294,7 +293,7 @@ TbResult LbDateTimeDecode(const time_t *datetime,struct TbDate *curr_date,struct
 
 inline void LbDoMultitasking(void)
 {
-    SDL_Delay(LARGE_DELAY_TIME>>1);
+  LbDelayMilliseconds(LARGE_DELAY_TIME >> 1);
 }
 
 TbBool LbSleepFor(TbClockMSec delay)

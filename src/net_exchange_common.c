@@ -28,9 +28,19 @@
 #include "net_lobby.h"
 #include "packets.h"
 #include "player_data.h"
+#ifdef PLATFORM_WII
+#include <unistd.h>
+#else
 #include <SDL2/SDL.h>
+#endif
 #include "post_inc.h"
 /******************************************************************************/
+
+#ifdef PLATFORM_WII
+#define NET_DELAY_MS(ms) usleep((ms) * 1000)
+#else
+#define NET_DELAY_MS(ms) SDL_Delay(ms)
+#endif
 
 // When set too high the downside is these increase bandwidth usage and possibly congestion. When set too low you get stutters (pay attention to "Stutter Avg").
 #define SEND_DUPLICATE_PACKETS 3
@@ -374,7 +384,7 @@ TbError exchange_frame_block(enum NetMessageType msg_type, void *send_buf, void 
         } else {
             network_yield_draw_gameplay();
         }
-        SDL_Delay(1);
+        NET_DELAY_MS(1);
     }
     TbBool frames_received = all_expected_exchange_frames_received(has_received_frame, is_host);
     netstate.seq_nbr += 1;
@@ -460,7 +470,7 @@ void wait_for_all_players(void)
             }
         }
         if (result != Lb_OK) {
-            SDL_Delay(1);
+            NET_DELAY_MS(1);
         }
     }
     netstate.seq_nbr += 1;

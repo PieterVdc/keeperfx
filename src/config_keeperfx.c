@@ -42,6 +42,11 @@
 #include "moonphase.h"
 #include "post_inc.h"
 
+#ifdef PLATFORM_WII
+#include <dirent.h>
+#include <errno.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -49,6 +54,90 @@ extern "C" {
 
 
 static const char keeper_config_file[]="keeperfx.cfg";
+
+#ifdef PLATFORM_WII
+static void wii_debug_log_file_probe(const char *path)
+{
+  const TbBool exists = LbFileExists(path);
+  const long len = LbFileLengthRnc(path);
+  SYNCMSG("WII_FS: file '%s' exists=%d len=%ld", path, (int)exists, len);
+}
+
+static void wii_debug_list_dir(const char *path)
+{
+  DIR *dir = opendir(path);
+  if (dir == NULL)
+  {
+      SYNCMSG("WII_FS: dir '%s' open failed errno=%d", path, errno);
+      return;
+  }
+
+  SYNCMSG("WII_FS: dir '%s' entries:", path);
+  struct dirent *entry = NULL;
+  int count = 0;
+  while (count < 40 && (entry = readdir(dir)) != NULL)
+  {
+      SYNCMSG("WII_FS:   - %s", entry->d_name);
+      count++;
+  }
+  if (entry != NULL)
+  {
+      SYNCMSG("WII_FS:   ... truncated after %d entries ...", count);
+  }
+  closedir(dir);
+}
+
+static void wii_debug_dump_filesystem_view(void)
+{
+  static TbBool printed = false;
+  if (printed)
+      return;
+  printed = true;
+
+  SYNCMSG("WII_FS: runtime_dir='%s' install_path='%s'", keeper_runtime_directory, install_info.inst_path);
+
+  wii_debug_list_dir(".");
+  wii_debug_list_dir("bin");
+  wii_debug_list_dir("config");
+  wii_debug_list_dir("mods");
+  wii_debug_list_dir("bin/mods");
+  wii_debug_list_dir("config/mods");
+
+  wii_debug_log_file_probe("keeperfx.cfg");
+  wii_debug_log_file_probe("bin/keeperfx.cfg");
+  wii_debug_log_file_probe("config/keeperfx.cfg");
+  wii_debug_log_file_probe("mods/load_order.cfg");
+  wii_debug_log_file_probe("bin/mods/load_order.cfg");
+  wii_debug_log_file_probe("config/mods/load_order.cfg");
+}
+#endif
+
+static TbBool select_existing_config_path(const char **sname, const char **fname)
+{
+  static const char *candidates[] = {
+    "keeperfx.cfg",
+    "bin/keeperfx.cfg",
+    "config/keeperfx.cfg",
+  };
+
+  if (*fname != NULL && LbFileLengthRnc(*fname) >= 2)
+  {
+    return true;
+  }
+
+  for (unsigned long i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++)
+  {
+    const char *candidate = candidates[i];
+    if (LbFileLengthRnc(candidate) >= 2)
+    {
+      *sname = candidate;
+      *fname = candidate;
+      return true;
+    }
+  }
+
+  return false;
+}
 
 char cmd_char = '!';
 unsigned short AtmosRepeat = 1013;
@@ -1031,6 +1120,9 @@ short load_configuration(void)
   strcpy(install_info.inst_path,"");
   // Set default runtime directory and load the config file
   strcpy(keeper_runtime_directory,".");
+#ifdef PLATFORM_WII
+  wii_debug_dump_filesystem_view();
+#endif
   // Config file variables
   const char* sname; // Filename
   const char* fname; // Filepath
@@ -1067,17 +1159,7 @@ short load_configuration(void)
   {
     sname = keeper_config_file;
     fname = prepare_file_path(FGrp_Main, sname);
-
-    if (LbFileLengthRnc(fname) < 2)
-    {
-      const char* fallback_sname = "config/keeperfx.cfg";
-      const char* fallback_fname = prepare_file_path(FGrp_Main, fallback_sname);
-      if (LbFileLengthRnc(fallback_fname) >= 2)
-      {
-        sname = fallback_sname;
-        fname = fallback_fname;
-      }
-    }
+    select_existing_config_path(&sname, &fname);
   }
 
   const char *config_textname = "Base config";

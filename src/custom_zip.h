@@ -22,7 +22,24 @@
 #define GIT_CUSTOM_ZIP_H
 
 #include "globals.h"
+#if defined(__has_include)
+#if __has_include(<minizip/unzip.h>)
 #include <minizip/unzip.h>
+#define KFX_HAS_MINIZIP 1
+#elif __has_include(<unzip.h>)
+#include <unzip.h>
+#define KFX_HAS_MINIZIP 1
+#else
+#define KFX_HAS_MINIZIP 0
+#endif
+#else
+#include <minizip/unzip.h>
+#define KFX_HAS_MINIZIP 1
+#endif
+
+#if !KFX_HAS_MINIZIP
+typedef void *unzFile;
+#endif
 
 #ifdef __cplusplus
 extern "C" {

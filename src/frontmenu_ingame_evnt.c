@@ -871,13 +871,21 @@ void draw_network_stats()
     if (tx_units_per_px < 16)
         tx_units_per_px = 16;
 
-    unsigned long ping = GetPing(my_player_number);
+    unsigned long ping = 0;
+    unsigned int packet_loss_percent = 0;
+    unsigned int transit = 0;
+    unsigned int lost_packet_count = 0;
+    unsigned int outgoing_rate_kb10 = 0;
+    unsigned int incoming_rate_kb10 = 0;
+#ifndef PLATFORM_WII
+    ping = GetPing(my_player_number);
+    packet_loss_percent = GetPacketLoss(my_player_number);
+    transit = GetClientDataInTransit();
+    lost_packet_count = GetClientPacketsLost();
+    outgoing_rate_kb10 = (GetUploadRateBytesPerSecond() * 10) / 1024;
+    incoming_rate_kb10 = (GetDownloadRateBytesPerSecond() * 10) / 1024;
+#endif
     unsigned long half_ping = ping / 2;
-    unsigned int packet_loss_percent = GetPacketLoss(my_player_number);
-    unsigned int transit = GetClientDataInTransit();
-    unsigned int lost_packet_count = GetClientPacketsLost();
-    unsigned int outgoing_rate_kb10 = (GetUploadRateBytesPerSecond() * 10) / 1024;
-    unsigned int incoming_rate_kb10 = (GetDownloadRateBytesPerSecond() * 10) / 1024;
     int32_t packet_misses;
     TbClockMSec increase_countdown;
     TbClockMSec decrease_countdown;

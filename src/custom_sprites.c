@@ -34,7 +34,6 @@
 #include <spng.h>
 #include <json.h>
 #include <json-dom.h>
-#include <minizip/unzip.h>
 #include "post_inc.h"
 
 // Performance tests

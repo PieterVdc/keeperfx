@@ -28,6 +28,30 @@ const struct ModsConfig *get_loaded_mods_conf(void)
     return &stored_mods_conf;
 }
 
+static TbBool select_existing_mods_order_path(const char **sname, const char **fname, long *len)
+{
+    static const char *candidates[] = {
+        MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME,
+        "bin/" MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME,
+        "config/" MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME,
+    };
+
+    for (unsigned long i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++)
+    {
+        const char *candidate = candidates[i];
+        long candidate_len = LbFileLengthRnc(candidate);
+        if (candidate_len >= 2)
+        {
+            *sname = candidate;
+            *fname = candidate;
+            *len = candidate_len;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static TbBool parse_block_mods(char *buf, long len, const char *block_name, struct ModConfigItem* mod_items, int32_t *mod_cnt, long mod_max)
 {
     int32_t pos = 0;
@@ -143,19 +167,11 @@ TbBool load_mods_order_config_file()
 
     const char *sname = MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME;
     const char *fname = prepare_file_path(FGrp_Main, sname);
-    const char *fallback_sname = "config/" MODS_DIR_NAME "/" MODS_LOAD_ORDER_FILE_NAME;
 
     long len = LbFileLengthRnc(fname);
     if (len < 2)
     {
-        const char *fallback_fname = prepare_file_path(FGrp_Main, fallback_sname);
-        long fallback_len = LbFileLengthRnc(fallback_fname);
-        if (fallback_len >= 2)
-        {
-            sname = fallback_sname;
-            fname = fallback_fname;
-            len = fallback_len;
-        }
+        select_existing_mods_order_path(&sname, &fname, &len);
     }
     if (len < 2)
     {

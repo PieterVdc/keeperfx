@@ -23,13 +23,48 @@
 #include "bflib_basics.h"
 #include "bflib_fileio.h"
 #include "config.h"
-#include <json.h>
-#include <json-dom.h>
+#include "json.h"
 #include "post_inc.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
+
+#if !KFX_HAS_MINIZIP
+
+int fastUnzLocateFile(unzFile zip, const char *szFileName, int iCaseSensitivity)
+{
+    (void)zip;
+    (void)szFileName;
+    (void)iCaseSensitivity;
+    return -1;
+}
+
+int fastUnzConstructCache(unzFile zip)
+{
+    (void)zip;
+    return -1;
+}
+
+int fastUnzClearCache(void)
+{
+    return 0;
+}
+
+TbBool read_map_zip_entry(LevelNumber lvnum, const char *entry_name, unsigned char **out_data, size_t *out_size)
+{
+    (void)lvnum;
+    (void)entry_name;
+    if (out_data != NULL) {
+        *out_data = NULL;
+    }
+    if (out_size != NULL) {
+        *out_size = 0;
+    }
+    return false;
+}
+
+#else
 
 /*
  * Speedup zip stuff
@@ -166,3 +201,5 @@ TbBool read_map_zip_entry(LevelNumber lvnum, const char *entry_name, unsigned ch
     unzClose(zip);
     return ok;
 }
+
+#endif
