@@ -14,16 +14,25 @@
 #endif
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+
+// Single-header MP3 decoder (no external DLL dependency)
+#define DR_MP3_IMPLEMENTATION
+#include "../deps/dr_mp3.h"
 #include <memory>
 #include <vector>
 #include <fstream>
+#include <sstream>
 #include <string>
+#include <algorithm>
 #include <utility>
 #include <array>
+#include <unordered_map>
 #include <deque>
 #include <mutex>
 #include <atomic>
-#include <set>
+#include <cmath>
+
 #include "post_inc.h"
 
 #if defined(PLATFORM_WII)
@@ -200,7 +209,7 @@ SoundVolume g_music_volume = 0;
 ALCdevice_ptr g_openal_device;
 ALCcontext_ptr g_openal_context;
 std::atomic<Mix_Music *> g_mix_music;
-std::set<uint32_t> g_tick_samples;
+
 bool g_bb_king_mode = false;
 
 enum source_flags {
@@ -262,8 +271,8 @@ public:
 	SoundMilesID mss_id = 0;
 	SoundEmitterID emit_id = 0;
 	SoundSmplTblID smptbl_id = 0;
-	SoundBankID bank_id = 0;
 	int flags = 0;
+	SoundVolume base_gain = 0; // requested (un-ducked) volume; used to recompute duck-scaled gain
 
 	openal_source() {
 		ALuint sources[1];
@@ -302,6 +311,14 @@ public:
 
 	void gain(SoundVolume volume) {
 		alSourcef(id, AL_GAIN, float(volume) / FULL_LOUDNESS);
+		const auto errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			throw openal_error("Cannot set volume", errcode);
+		}
+	}
+
+	void gain_scaled(SoundVolume volume, float scale) {
+		alSourcef(id, AL_GAIN, (float(volume) / FULL_LOUDNESS) * scale);
 		const auto errcode = alGetError();
 		if (errcode != AL_NO_ERROR) {
 			throw openal_error("Cannot set volume", errcode);
@@ -353,14 +370,14 @@ public:
 	, mss_id(std::exchange(other.mss_id, 0))
 	, emit_id(std::exchange(other.emit_id, 0))
 	, smptbl_id(std::exchange(other.smptbl_id, 0))
-	, bank_id(std::exchange(other.bank_id, 0)){}
+	, base_gain(std::exchange(other.base_gain, 0)){}
 
 	inline openal_source & operator=(openal_source && other) {
 		id = std::exchange(other.id, 0);
 		mss_id = std::exchange(other.mss_id, 0);
 		emit_id = std::exchange(other.emit_id, 0);
 		smptbl_id = std::exchange(other.smptbl_id, 0);
-		bank_id = std::exchange(other.bank_id, 0);
+		base_gain = std::exchange(other.base_gain, 0);
 		return *this;
 	}
 };
@@ -399,7 +416,7 @@ struct WAVEFORMATEX {
 
 class wave_file {
 public:
-	wave_file(std::ifstream & stream) {
+	wave_file(std::istream & stream) {
 		riff_chunk_t riff_header;
 		stream.read(reinterpret_cast<char *>(&riff_header), sizeof(riff_header));
 		if (riff_header.tag != make_fourcc("RIFF")) {
@@ -498,6 +515,17 @@ struct sound_sample {
 			throw openal_error("Cannot buffer sample data", errcode);
 		}
 	}
+
+	sound_sample(const char * _name, SoundSFXID _sfx_id,
+	             const std::vector<uint8_t> & pcm, ALenum format, int samplerate) {
+		name = _name;
+		sfx_id = _sfx_id;
+		alBufferData(buffer.id, format, pcm.data(), (ALsizei)pcm.size(), samplerate);
+		const auto errcode = alGetError();
+		if (errcode != AL_NO_ERROR) {
+			throw openal_error("Cannot buffer sample data", errcode);
+		}
+	}
 };
 
 #pragma pack(1)
@@ -561,12 +589,61 @@ std::vector<sound_sample> load_sound_bank(const char * filename) {
 		stream.seekg(directory.first_data_offset + sample.data_offset, std::ios::beg);
 		buffers.emplace_back(sample.filename, sample.sfxid, wave_file(stream));
 	}
-	JUSTLOG("Loaded %d sound samples from %s", (int) buffers.size(), filename);
 	return buffers;
 }
 
 std::vector<openal_source> g_sources;
 std::array<std::vector<sound_sample>, 2> g_banks;
+std::vector<sound_sample> g_custom_bank;  // Third bank for custom sounds loaded at runtime
+SoundSmplTblID g_speech_offset = 0;  // Unified ID start of speech bank
+SoundSmplTblID g_custom_offset = 0;  // Unified ID start of custom bank
+
+static std::unordered_map<SoundSmplTblID, SoundSmplTblID> g_id_redirects;
+
+struct SoundStackPolicy {
+	unsigned char mode = SStack_Limit;
+	short max_instances = 1;
+};
+static std::unordered_map<SoundSmplTblID, SoundStackPolicy> g_stack_policies;
+
+// Tick-scoped gate reproducing the pre-Custom-Sounds behaviour exactly: a sample ID with
+// no explicit STACK= policy may only start once per "tick", regardless of which emitter
+// triggers it.
+static unsigned long g_audio_tick_counter = 0; // tick != turn; ticks continue while navigating the frontend/main menu
+static std::unordered_map<SoundSmplTblID, unsigned long> g_tick_samples_last_tick;
+
+static SoundStackPolicy get_stack_policy(SoundSmplTblID smptbl_id) {
+	const auto it = g_stack_policies.find(smptbl_id);
+	if (it != g_stack_policies.end()) {
+		return it->second;
+	}
+	return SoundStackPolicy{}; // default: Limit, max 1
+}
+
+// Recompute duck-scaled gain for every currently active instance of a sample.
+// Called after a new instance starts, and after MonitorStreamedSoundTrack() prunes a
+// finished one, so remaining instances' volume rises back up as concurrency drops.
+static void apply_duck_gain(SoundSmplTblID smptbl_id) {
+	int count = 0;
+	for (const auto & source : g_sources) {
+		if (source.emit_id != 0 && source.smptbl_id == smptbl_id) {
+			++count;
+		}
+	}
+	if (count == 0) {
+		return;
+	}
+	const float scale = 1.0f / std::sqrt(float(count));
+	for (auto & source : g_sources) {
+		if (source.emit_id != 0 && source.smptbl_id == smptbl_id) {
+			try {
+				source.gain_scaled(source.base_gain, scale);
+			} catch (const std::exception & e) {
+				ERRORLOG("%s", e.what());
+			}
+		}
+	}
+}
 
 void load_sound_banks() {
 	char snd_fname[2048];
@@ -583,39 +660,38 @@ void load_sound_banks() {
 	}
 	g_banks[0] = load_sound_bank(snd_fname);
 	g_banks[1] = load_sound_bank(spc_fname);
+	g_speech_offset = (SoundSmplTblID)g_banks[0].size();
+	g_custom_offset = g_speech_offset + (SoundSmplTblID)g_banks[1].size();
 }
 
 void print_device_info() {
 	if (alcIsExtensionPresent(nullptr, "ALC_ENUMERATE_ALL_EXT")) {
 		const auto devices = alcGetString(nullptr, ALC_ALL_DEVICES_SPECIFIER);
-		JUSTLOG("Available audio devices:");
 		for (auto device = devices; device[0] != 0; device += strlen(device)) {
-			JUSTLOG("  %s", device);
+			// Device enumeration
 		}
-		const auto default_device = alcGetString(nullptr, ALC_DEFAULT_ALL_DEVICES_SPECIFIER);
-		JUSTLOG("Default audio device: %s", default_device);
 	} else if (alcIsExtensionPresent(nullptr, "ALC_ENUMERATION_EXT")) {
 		const auto devices = alcGetString(nullptr, ALC_DEVICE_SPECIFIER);
-		JUSTLOG("Available audio devices:");
 		for (auto device = devices; device[0] != 0; device += strlen(device)) {
-			JUSTLOG("  %s", device);
+			// Device enumeration
 		}
-		const auto default_device = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER);
-		JUSTLOG("Default audio device: %s", default_device);
 	} else {
 		// Cannot enumerate devices :(
 	}
 }
 
-Mix_Chunk * g_streamed_sample = nullptr;
+__attribute__((unused)) Mix_Chunk * g_streamed_sample = nullptr;
 std::mutex g_mix_mutex;
+
+std::string g_current_music_fname; // empty if a numbered track (or nothing) is playing
+int g_current_music_track = 0;     // 0 if a custom file (or nothing) is playing
 
 struct queued_sample {
 	std::string fname;
 	SoundVolume volume;
 };
 
-void SDLCALL on_music_finished() {
+__attribute__((unused)) static void SDLCALL on_music_finished() {
 	// don't grab mutex or we'll deadlock, just free memory
 	Mix_FreeMusic(g_mix_music.exchange(nullptr));
 }
@@ -645,6 +721,8 @@ extern "C" void FreeAudio() {
 			Mix_FreeMusic(music);
 			SYNCDBG(8, "Freed SDL_mixer music");
 		}
+		g_current_music_track = 0;
+		g_current_music_fname.clear();
 		if (g_streamed_sample) {
 			Mix_FreeChunk(g_streamed_sample);
 			g_streamed_sample = nullptr;
@@ -668,12 +746,68 @@ extern "C" void FreeAudio() {
 	g_sources.clear();
 	g_banks[0].clear();
 	g_banks[1].clear();
+	g_custom_bank.clear();  // Clear custom sounds when cleaning up audio
+	g_id_redirects.clear(); // Clear raw-ID redirects alongside custom bank
+	g_stack_policies.clear(); // Clear stacking policies alongside custom bank
+	g_tick_samples_last_tick.clear(); // Clear per-tick stacking gate alongside custom bank
 	SYNCDBG(7, "Cleared OpenAL sources and sound banks");
 
 	// Now destroy OpenAL context and device (unique_ptr handles proper cleanup)
 	g_openal_context = nullptr;
 	g_openal_device = nullptr;
 	SYNCDBG(6, "Audio cleanup complete");
+}
+
+extern "C" void custom_sound_bank_clear() {
+	g_custom_bank.clear();
+	g_id_redirects.clear();
+	g_stack_policies.clear();
+	g_tick_samples_last_tick.clear();
+}
+
+extern "C" void sound_register_id_redirect(SoundSmplTblID from_id, SoundSmplTblID to_id) {
+	g_id_redirects[from_id] = to_id;
+	SYNCDBG(7, "Registered ID redirect: %d -> %d", from_id, to_id);
+}
+
+extern "C" void sound_clear_id_redirects(void) {
+	g_id_redirects.clear();
+}
+
+extern "C" void sound_register_stack_policy(SoundSmplTblID smptbl_id, unsigned char mode, short max_instances) {
+	SoundStackPolicy policy;
+	policy.mode = mode;
+	policy.max_instances = (mode == SStack_Limit) ? std::max<short>(max_instances, 1) : std::max<short>(max_instances, 0);
+	g_stack_policies[smptbl_id] = policy;
+	SYNCDBG(7, "Registered stack policy for sample %d: mode %d, max %d", smptbl_id, mode, policy.max_instances);
+}
+
+extern "C" void sound_clear_stack_policies(void) {
+	g_stack_policies.clear();
+}
+
+static std::unordered_map<SoundSmplTblID, SoundSmplTblID> g_id_redirects_snapshot;
+static std::unordered_map<SoundSmplTblID, SoundStackPolicy> g_stack_policies_snapshot;
+static size_t g_custom_bank_watermark = 0;
+
+extern "C" void sound_save_id_redirect_snapshot(void) {
+	g_id_redirects_snapshot = g_id_redirects;
+	g_stack_policies_snapshot = g_stack_policies;
+	g_custom_bank_watermark = g_custom_bank.size();
+	SYNCDBG(7, "Saved sound snapshot: %" PRIuSIZE " redirects, %" PRIuSIZE " stack policies, %" PRIuSIZE " custom bank entries",
+		SZCAST(g_id_redirects_snapshot.size()), SZCAST(g_stack_policies_snapshot.size()), SZCAST(g_custom_bank_watermark));
+}
+
+extern "C" void sound_restore_id_redirect_snapshot(void) {
+	g_id_redirects = g_id_redirects_snapshot;
+	g_stack_policies = g_stack_policies_snapshot;
+	if (g_custom_bank.size() > g_custom_bank_watermark) {
+		SYNCDBG(7, "Trimming custom bank from %" PRIuSIZE " to %" PRIuSIZE " entries",
+			SZCAST(g_custom_bank.size()), SZCAST(g_custom_bank_watermark));
+		g_custom_bank.erase(g_custom_bank.begin() + (ptrdiff_t)g_custom_bank_watermark, g_custom_bank.end());
+	}
+	SYNCDBG(7, "Restored sound snapshot: %" PRIuSIZE " redirects, %" PRIuSIZE " stack policies",
+		SZCAST(g_id_redirects.size()), SZCAST(g_stack_policies.size()));
 }
 
 extern "C" void SetSoundMasterVolume(SoundVolume volume) {
@@ -699,10 +833,15 @@ extern "C" void set_music_volume(SoundVolume value) {
 
 extern "C" TbBool play_music(const char * fname) {
 	std::lock_guard<std::mutex> guard(g_mix_mutex);
-    if (strcmp(game.music_fname, fname) == 0)
-        return false;
+	if (g_current_music_fname == fname) {
+		return true;
+	}
     game.music_track = -1;
-	snprintf(game.music_fname, sizeof(game.music_fname), "%s", fname);
+	// Guard against fname aliasing game.music_fname itself — snprintf with overlapping
+	// src/dest is undefined behaviour.
+	if (fname != game.music_fname) {
+		snprintf(game.music_fname, sizeof(game.music_fname), "%s", fname);
+	}
 	// Mix_PlayMusic will stop anything currently playing and eventually
 	// calls on_music_finished so theres no need to call Mix_FreeMusic first.
 	const auto music = Mix_LoadMUS(game.music_fname);
@@ -716,21 +855,82 @@ extern "C" TbBool play_music(const char * fname) {
 	}
 	// g_mix_music will be null here as Mix_PlayMusic ends up calling on_music_finished
 	g_mix_music = music;
-	JUSTLOG("Playing %s", game.music_fname);
+	g_current_music_fname = fname;
+	g_current_music_track = 0;
 	return true;
+}
+
+static const char * find_music_file_for_mod_list(short fgroup, const char * fname, const struct ModConfigItem *mod_items, long mod_cnt)
+{
+    if (fgroup != FGrp_CmpgMedia && fgroup != FGrp_Music)
+        return NULL;
+
+    // Since the path for FGrp_CmpgMedia is configurable/dynamic, the mod's designer cannot obtain it in advance.
+    // it would make more sense to force-unify FGrp_CmpgMedia and FGrp_Music into FGrp_Music.
+    fgroup = FGrp_Music;
+
+    // Note that this is the reverse mods direction
+    for (long i=mod_cnt-1; i>=0; i--)
+    {
+        const struct ModConfigItem *mod_item = mod_items + i;
+        if (mod_item->state.mod_dir == 0)
+            continue;
+
+        if (mod_item->state.music == 0)
+            continue;
+
+        char mod_dir[256] = {0};
+        sprintf(mod_dir, "%s/%s", MODS_DIR_NAME, mod_item->name);
+
+        const char *fpath = prepare_file_path_mod(mod_dir, fgroup, fname);
+        if (fpath[0] != 0 && LbFileExists(fpath))
+            return fpath;
+    }
+
+    return NULL;
+}
+
+extern "C" TbBool play_music_fgroup(short fgroup, const char * fname) {
+    const char * fpath = NULL;
+
+    // Note that this is the reverse mods direction
+    if (fpath == NULL && mods_conf.after_map_cnt > 0)
+    {
+        fpath = find_music_file_for_mod_list(fgroup, fname, mods_conf.after_map_item, mods_conf.after_map_cnt);
+    }
+    if (fpath == NULL && mods_conf.after_campaign_cnt > 0)
+    {
+        fpath = find_music_file_for_mod_list(fgroup, fname, mods_conf.after_campaign_item, mods_conf.after_campaign_cnt);
+    }
+    if (fpath == NULL && mods_conf.after_base_cnt > 0)
+    {
+        fpath = find_music_file_for_mod_list(fgroup, fname, mods_conf.after_base_item, mods_conf.after_base_cnt);
+    }
+
+    if (fpath == NULL)
+        fpath = prepare_file_fmtpath(fgroup, "%s", fname);
+
+    return play_music(fpath);
 }
 
 extern "C" TbBool play_music_track(int track) {
 	game.music_track = track;
 	memset(game.music_fname, 0, sizeof(game.music_fname));
 	if (game.music_track == 0) {
-		stop_music();
+		stop_music(true);
 		return true;
 	} else if (features_enabled & Ft_NoCdMusic) {
+		// play_music() itself skips restarting if this exact resolved file is
+		// already the one actually playing (e.g. reloading a save for the same level).
 		return play_music(prepare_file_fmtpath(FGrp_Music, "keeper%02d.ogg", track));
 	} else {
+		if (track == g_current_music_track) {
+			// Already playing this exact numbered track — skip restarting it.
+			return true;
+		}
 		if (PlayRedbookTrack(track)) {
-			JUSTLOG("Playing track %d", game.music_track);
+			g_current_music_track = track;
+			g_current_music_fname.clear();
 			return true;
 		} else {
 			WARNLOG("Cannot play track %d", game.music_track);
@@ -740,7 +940,6 @@ extern "C" TbBool play_music_track(int track) {
 }
 
 extern "C" void pause_music() {
-	JUSTLOG("Pausing music");
 	if (features_enabled & Ft_NoCdMusic) {
 		Mix_PauseMusic();
 	} else {
@@ -749,7 +948,6 @@ extern "C" void pause_music() {
 }
 
 extern "C" void resume_music() {
-	JUSTLOG("Resuming music");
 	if (features_enabled & Ft_NoCdMusic) {
 		Mix_ResumeMusic();
 	} else {
@@ -757,13 +955,18 @@ extern "C" void resume_music() {
 	}
 }
 
-extern "C" void stop_music() {
-	JUSTLOG("Stopping music");
+extern "C" void stop_music(TbBool fade_out) {
 	game.music_track = 0;
 	memset(game.music_fname, 0, sizeof(game.music_fname));
+	g_current_music_track = 0;
+	g_current_music_fname.clear();
 	if (features_enabled & Ft_NoCdMusic) {
-		if (Mix_FadingMusic() != MIX_FADING_OUT) {
-			Mix_FadeOutMusic(1000);
+		if (fade_out) {
+			if (Mix_FadingMusic() != MIX_FADING_OUT) {
+				Mix_FadeOutMusic(1000);
+			}
+		} else {
+			Mix_HaltMusic();
 		}
 	} else {
 		StopRedbookTrack();
@@ -774,20 +977,26 @@ extern "C" TbBool GetSoundInstalled() {
 	return g_openal_device && g_openal_context;
 }
 
-// This function gets called every tick
+// This function gets called every tick, both during active gameplay and while navigating
+// the frontend/main menu, this should probably be buffer based and not tick based..
 extern "C" void MonitorStreamedSoundTrack() {
+	++g_audio_tick_counter;
 	for (auto & source : g_sources) {
 		try {
 			if (source.emit_id > 0 && !source.is_playing()) {
+				const SoundSmplTblID finished_smptbl_id = source.smptbl_id;
 				source.emit_id = 0;
 				source.smptbl_id = 0;
-				source.bank_id = 0;
+				// If this sample uses Duck-mode stacking, the remaining active instances
+				// (if any) should return to a louder gain now that one has ended.
+				if (get_stack_policy(finished_smptbl_id).mode == SStack_Duck) {
+					apply_duck_gain(finished_smptbl_id);
+				}
 			}
 		} catch (const std::exception & e) {
 			ERRORLOG("%s", e.what());
 		}
 	}
-	g_tick_samples.clear();
 }
 
 extern "C" void * GetSoundDriver() {
@@ -911,30 +1120,104 @@ extern "C" SoundMilesID play_sample(
 	SoundPan pan,
 	SoundPitch pitch,
 	char repeats, // possible values: -1, 0
-	unsigned char ctype, // possible values: 2, 3
-	SoundBankID bank_id
+	unsigned char ctype // possible values: 2, 3
 ) {
 	if (emit_id <= 0) {
-		ERRORLOG("Can't play sample %d from bank %u, invalid emitter ID", smptbl_id, bank_id);
-		return 0;
-	} else if (bank_id > g_banks.size()) {
-		ERRORLOG("Can't play sample %d from bank %u, invalid bank ID", smptbl_id, bank_id);
-		return 0;
-	} else if (smptbl_id == 0) {
-		return 0; // silently ignore
-	} else if (smptbl_id <= 0 || smptbl_id >= g_banks[bank_id].size()) {
-		ERRORLOG("Can't play sample %d from bank %u, invalid sample ID", smptbl_id, bank_id);
+		ERRORLOG("Can't play sample %d, invalid emitter ID", smptbl_id);
 		return 0;
 	}
-	// (ab)use the fact that bank_id and smptbl_id are currently 8- and 16-bits wide respectively.
-	const uint32_t tick_sample_key = (uint32_t(bank_id) << 16) | (smptbl_id & 0xffff);
-	if (g_tick_samples.count(tick_sample_key) > 0) {
-		return 0; // don't play the same sample multiple times on the same tick
+	// Apply raw-ID redirect before bank dispatch (only for effect-bank IDs)
+	if (smptbl_id > 0 && smptbl_id < g_speech_offset) {
+		auto redir = g_id_redirects.find(smptbl_id);
+		if (redir != g_id_redirects.end()) {
+			smptbl_id = redir->second;
+		}
+	}
+	// Resolve sample data from unified ID space
+	const openal_buffer * buf = nullptr;
+	if (smptbl_id >= g_custom_offset) {
+		const SoundSmplTblID idx = smptbl_id - g_custom_offset;
+		if (idx < 0 || idx >= (SoundSmplTblID)g_custom_bank.size()) {
+			ERRORLOG("Can't play custom sample %d, out of range", smptbl_id);
+			return 0;
+		}
+		buf = &g_custom_bank[idx].buffer;
+	} else if (smptbl_id >= g_speech_offset) {
+		const SoundSmplTblID idx = smptbl_id - g_speech_offset;
+		if (idx <= 0 || idx >= (SoundSmplTblID)g_banks[1].size()) {
+			ERRORLOG("Can't play speech sample %d, out of range", smptbl_id);
+			return 0;
+		}
+		buf = &g_banks[1][idx].buffer;
+	} else {
+		if (smptbl_id <= 0 || smptbl_id >= (SoundSmplTblID)g_banks[0].size()) {
+			if (smptbl_id != 0) {
+				ERRORLOG("Can't play effect sample %d, out of range", smptbl_id);
+			}
+			return 0;
+		}
+		buf = &g_banks[0][smptbl_id].buffer;
 	}
 	try {
-		g_tick_samples.emplace(tick_sample_key);
+		// Look up the stacking policy once — used by both the restart-in-place path below
+		// and the new-voice-allocation path further down.
+		const auto stack_policy_it = g_stack_policies.find(smptbl_id);
+		const bool has_explicit_stack_policy = (stack_policy_it != g_stack_policies.end());
+		SoundStackPolicy stack_policy{};
+		if (has_explicit_stack_policy) {
+			stack_policy = stack_policy_it->second;
+		}
+
+		// ctype 2/3: if this emitter is already playing the same sample, restart it in-place
+		// rather than allocating a new source (mirrors MSS single-voice-per-slot behaviour and
+		// prevents sounds from stacking — e.g. hailstorm projectiles all hitting the same target).
+		if (ctype == 2 || ctype == 3) {
+			for (auto & source : g_sources) {
+				if (source.emit_id == emit_id && source.smptbl_id == smptbl_id) {
+					source.stop();
+					source.base_gain = volume;
+					source.gain(volume);
+					source.pan(pan);
+					source.repeat(repeats == -1);
+					source.pitch(pitch);
+					source.play(*buf);
+					if (has_explicit_stack_policy && stack_policy.mode == SStack_Duck) {
+						// This source may be part of a Duck-mode group with other concurrently
+						// playing instances (from other emitters) — rescale it (and them) back
+						// down instead of leaving it at the full, un-ducked volume just set above.
+						apply_duck_gain(smptbl_id);
+					}
+					return source.mss_id;
+				}
+			}
+		}
+		// Cross-emitter stacking policy: caps how many different emitters may play the
+		// same sample concurrently (or ducks their combined volume). Only applies when
+		// allocating a genuinely new voice, not on the same-emitter restart-in-place above.
+		if (!has_explicit_stack_policy) {
+			// No explicit STACK= policy: reproduce the OG behaviour exactly — this sample may
+			// only start once per tick, regardless of which emitter triggers it.
+			const auto tick_it = g_tick_samples_last_tick.find(smptbl_id);
+			if (tick_it != g_tick_samples_last_tick.end() && tick_it->second == g_audio_tick_counter) {
+				return 0; // dropped: already triggered this tick
+			}
+			g_tick_samples_last_tick[smptbl_id] = g_audio_tick_counter;
+		} else {
+			if (stack_policy.max_instances > 0) {
+				int active_count = 0;
+				for (const auto & source : g_sources) {
+					if (source.emit_id != 0 && source.smptbl_id == smptbl_id) {
+						++active_count;
+					}
+				}
+				if (active_count >= stack_policy.max_instances) {
+					return 0; // dropped: at this sample's concurrency cap
+				}
+			}
+		}
 		for (auto & source : g_sources) {
 			if (source.emit_id == 0) {
+				source.base_gain = volume;
 				source.gain(volume);
 				source.pan(pan);
 				source.repeat(repeats == -1);
@@ -950,17 +1233,18 @@ extern "C" SoundMilesID play_sample(
 				} else {
 					source.pitch(pitch);
 				}
-				source.play(g_banks[bank_id][smptbl_id].buffer);
+				source.play(*buf);
 				source.emit_id = emit_id;
 				source.smptbl_id = smptbl_id;
-				source.bank_id = bank_id;
+				if (has_explicit_stack_policy && stack_policy.mode == SStack_Duck) {
+					apply_duck_gain(smptbl_id);
+				}
 				return source.mss_id;
 			}
 		}
-        if (game.frame_skip < 2)
-        {
-            ERRORLOG("Can't play sample %d from bank %u, too many samples playing at once", smptbl_id, bank_id);
-        }
+		if (game.frame_skip < 2) {
+			ERRORLOG("Can't play sample %d, too many samples playing at once", smptbl_id);
+		}
 		return 0;
 	} catch (const std::exception & e) {
 		ERRORLOG("%s", e.what());
@@ -968,14 +1252,13 @@ extern "C" SoundMilesID play_sample(
 	return 0;
 }
 
-extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, SoundBankID bank_id) {
+extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id) {
 	for (auto & source : g_sources) {
-		if (emit_id == source.emit_id && smptbl_id == source.smptbl_id && bank_id == source.bank_id) {
+		if (emit_id == source.emit_id && smptbl_id == source.smptbl_id) {
 			try {
 				source.stop();
 				source.emit_id = 0;
 				source.smptbl_id = 0;
-				source.bank_id = 0;
 			} catch (const std::exception & e) {
 				ERRORLOG("%s", e.what());
 			}
@@ -983,14 +1266,21 @@ extern "C" void stop_sample(SoundEmitterID emit_id, SoundSmplTblID smptbl_id, So
 	}
 }
 
-extern "C" SoundSFXID get_sample_sfxid(SoundSmplTblID smptbl_id, SoundBankID bank_id) {
-	if (bank_id > 1) {
+extern "C" SoundSFXID get_sample_sfxid(SoundSmplTblID smptbl_id) {
+	if (smptbl_id >= g_custom_offset) {
 		return 0;
-	} else if (smptbl_id < 0 || smptbl_id >= g_banks[bank_id].size()) {
-		return 0;
+	} else if (smptbl_id >= g_speech_offset) {
+		const SoundSmplTblID idx = smptbl_id - g_speech_offset;
+		if (idx <= 0 || idx >= (SoundSmplTblID)g_banks[1].size()) return 0;
+		return g_banks[1][idx].sfx_id;
+	} else {
+		if (smptbl_id <= 0 || smptbl_id >= (SoundSmplTblID)g_banks[0].size()) return 0;
+		return g_banks[0][smptbl_id].sfx_id;
 	}
-	return g_banks[bank_id][smptbl_id].sfx_id;
 }
+
+extern "C" SoundSmplTblID get_speech_offset(void) { return g_speech_offset; }
+extern "C" SoundSmplTblID get_custom_offset(void) { return g_custom_offset; }
 
 extern "C" int InitialiseSDLAudio()
 {
@@ -998,7 +1288,7 @@ extern "C" int InitialiseSDLAudio()
 		ERRORLOG("Unable to initialise SDL audio subsystem: %s", SDL_GetError());
 		return 0;
 	}
-	int flags = Mix_Init(MIX_INIT_OGG|MIX_INIT_MP3);
+	int flags = Mix_Init(MIX_INIT_OGG|MIX_INIT_MP3|MIX_INIT_FLAC);
 	if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0)
 	{
 		ERRORLOG("Could not open audio device for SDL mixer: %s", Mix_GetError());

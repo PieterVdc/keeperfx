@@ -39,7 +39,6 @@
 #include "map_utils.h"
 #include "dungeon_data.h"
 #include "room_data.h"
-#include "ariadne_wallhug.h"
 #include "power_hand.h"
 #include "gui_soundmsgs.h"
 #include "game_legacy.h"
@@ -665,7 +664,7 @@ long computer_check_for_pretty(struct Computer2 *comp, struct ComputerCheck * ch
         if (stack_len <= check->primary_parameter * dungeon->total_area / 100) {
             return CTaskRet_Unk4;
         }
-        long n = find_in_imp_stack_starting_at(DigTsk_ImproveDungeon, PLAYER_RANDOM(compdngn->owner, stack_len), dungeon);
+        long n = find_in_dungeon_imp_stack_starting_at(DigTsk_ImproveDungeon, PLAYER_RANDOM(compdngn->owner, stack_len), dungeon);
         if (n < 0) {
             return CTaskRet_Unk4;
         }

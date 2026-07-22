@@ -22,6 +22,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "game_legacy.h"
+#include "config_sounds.h"
 #include "kjm_input.h"
 #include "front_input.h"
 #include "player_utils.h"
@@ -180,6 +181,7 @@ struct RoomSpace create_box_roomspace_from_drag(struct RoomSpace roomspace, MapS
     roomspace.drag_start_y = start_y;
     roomspace.drag_end_x = end_x;
     roomspace.drag_end_y = end_y;
+    detect_roomspace_direction(&roomspace);
     return roomspace;
 }
 
@@ -187,7 +189,6 @@ static struct RoomSpace create_dig_highlight_roomspace(struct RoomSpace roomspac
 {
     if (highlight_mode == drag_placement_mode) {
         roomspace = create_box_roomspace_from_drag(roomspace, drag_start_x, drag_start_y, slb_x, slb_y);
-        detect_roomspace_direction(&roomspace);
         return roomspace;
     }
     if (highlight_mode == roomspace_detection_mode) {
@@ -219,6 +220,7 @@ struct RoomSpace create_box_roomspace(struct RoomSpace roomspace, int width, int
     roomspace.untag_mode = false;
     roomspace.one_click_mode_exclusive = false;
     roomspace.drag_mode = false;
+    roomspace.drag_direction = top_left_to_bottom_right;
     return roomspace;
 }
 
@@ -740,28 +742,6 @@ void get_dungeon_sell_user_roomspace(struct RoomSpace *roomspace, PlayerNumber p
         current_roomspace.is_roomspace_a_box = true;
         current_roomspace.render_roomspace_as_box = true;
         current_roomspace = create_box_roomspace_from_drag(current_roomspace, drag_start_x, drag_start_y, slb_x, slb_y);
-        if (roomspace->drag_start_y > roomspace->drag_end_y)
-        {
-            if (roomspace->drag_start_x > roomspace->drag_end_x)
-            {
-                current_roomspace.drag_direction = bottom_right_to_top_left;
-            }
-            else
-            {
-                current_roomspace.drag_direction = bottom_left_to_top_right;
-            }
-        }
-        else
-        {
-            if (roomspace->drag_start_x > roomspace->drag_end_x)
-            {
-                current_roomspace.drag_direction = top_right_to_bottom_left;
-            }
-            else
-            {
-                current_roomspace.drag_direction = top_left_to_bottom_right;
-            }
-        }
         current_roomspace = check_roomspace_for_sellable_slabs(current_roomspace, plyr_idx);
         player->roomspace_width = current_roomspace.width;
         player->roomspace_height = current_roomspace.height;
@@ -857,10 +837,6 @@ void get_dungeon_build_user_roomspace(struct RoomSpace *roomspace, PlayerNumber 
         else
         {
             temp_best_room = create_box_roomspace(best_roomspace, 1, 1, slb_x, slb_y);
-        }
-        if (!player->roomspace.is_active)
-        {
-            detect_roomspace_direction(&temp_best_room);
         }
         if (room_role_matches(rkind,RoRoF_PassWater|RoRoF_PassLava))
         {
@@ -1076,10 +1052,10 @@ static void find_next_point(struct RoomSpace *roomspace, unsigned char mode)
     }
 }
 
-int apply_roomspace_dig_tag_selection(PlayerNumber plyr_idx, struct RoomSpace *roomspace, MapSlabCoord previous_slb_x, MapSlabCoord previous_slb_y, unsigned char highlight_mode, unsigned char *predicted_slab_tag_modes, int *predicted_task_count)
+int apply_roomspace_dig_tag_selection(PlayerNumber plyr_idx, struct RoomSpace *roomspace, MapSlabCoord previous_slb_x, MapSlabCoord previous_slb_y, unsigned char highlight_mode, unsigned char *predicted_slab_tag_modes, SlabCodedCoords *predicted_slabs, int *predicted_slab_count, int *predicted_task_count)
 {
     int dig_change_count = 0;
-    if ((predicted_slab_tag_modes == NULL) != (predicted_task_count == NULL)) {
+    if ((predicted_slab_tag_modes == NULL) != (predicted_slabs == NULL) || (predicted_slabs == NULL) != (predicted_slab_count == NULL) || (predicted_slab_count == NULL) != (predicted_task_count == NULL)) {
         ERRORLOG("Prediction slab tag modes and task count must be supplied together");
         return dig_change_count;
     }
@@ -1113,6 +1089,9 @@ int apply_roomspace_dig_tag_selection(PlayerNumber plyr_idx, struct RoomSpace *r
                             return dig_change_count;
                         }
                         int32_t slb_num = get_slab_number(path_slb_x, path_slb_y);
+                        if (predicted_slab_tag_modes[slb_num] == 0) {
+                            predicted_slabs[(*predicted_slab_count)++] = slb_num;
+                        }
                         predicted_slab_tag_modes[slb_num] = dig_tag_mode;
                         dig_change_count++;
                         if (dig_tag_mode == DigTagMode_Tag) {
@@ -1160,11 +1139,11 @@ int apply_roomspace_dig_tag_selection(PlayerNumber plyr_idx, struct RoomSpace *r
 void keeper_highlight_roomspace(PlayerNumber plyr_idx, struct RoomSpace *roomspace)
 {
     struct PlayerInfo* player = get_player(plyr_idx);
-    int dig_change_count = apply_roomspace_dig_tag_selection(plyr_idx, roomspace, player->previous_cursor_subtile_x / STL_PER_SLB, player->previous_cursor_subtile_y / STL_PER_SLB, player->roomspace_highlight_mode, NULL, NULL);
+    int dig_change_count = apply_roomspace_dig_tag_selection(plyr_idx, roomspace, player->previous_cursor_subtile_x / STL_PER_SLB, player->previous_cursor_subtile_y / STL_PER_SLB, player->roomspace_highlight_mode, NULL, NULL, NULL, NULL);
     if (is_my_player(player))
     {
         if ((dig_change_count > 0) && !local_dig_prediction_is_enabled()) {
-            play_non_3d_sample(118);
+                play_non_3d_sample(snd_tile_dig);
         }
     }
 }

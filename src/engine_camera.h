@@ -83,6 +83,8 @@ struct Camera {
     TbBool in_active_movement_x;
     long inertia_y;
     TbBool in_active_movement_y;
+    TbBool use_rotation_pivot;
+    struct Coord2d rotation_pivot;
 };
 
 
@@ -104,17 +106,22 @@ long get_angle_yz_to_vec(const struct CoordDelta3d *vec);
 void project_point_to_wall_on_angle(const struct Coord3d *pos1, struct Coord3d *pos2, long angle_xy, long angle_z, long distance, long num_steps);
 
 void view_zoom_camera_in(struct Camera *cam, long limit_max, long limit_min);
+void view_zoom_camera_in_to(struct Camera *cam, int32_t limit_max, int32_t limit_min, MapCoord x, MapCoord y);
 void set_camera_zoom(struct Camera *cam, long val);
 void view_zoom_camera_out(struct Camera *cam, long limit_max, long limit_min);
+void view_zoom_camera_out_from(struct Camera *cam, int32_t limit_max, int32_t limit_min, MapCoord x, MapCoord y);
 long get_camera_zoom(struct Camera *cam);
 unsigned long scale_camera_zoom_to_screen(unsigned long zoom_lvl);
 void update_camera_zoom_bounds(struct Camera *cam,unsigned long zoom_max,unsigned long zoom_min);
 
 void view_set_camera_y_inertia(struct Camera *cam, long delta, long ilimit);
 void view_set_camera_x_inertia(struct Camera *cam, long delta, long ilimit);
-void view_set_camera_rotation_inertia(struct Camera *cam, long delta, long ilimit);
+void view_set_camera_rotation_inertia(struct Camera *cam, int32_t delta, int32_t ilimit);
+void view_set_camera_rotation_inertia_around(struct Camera *cam, int32_t delta, int32_t ilimit, MapCoord x, MapCoord y);
 void view_set_camera_tilt(struct Camera *cam, unsigned char mode);
 void view_process_camera_inertia(struct Camera *cam);
+void view_set_camera_move_to_position(struct Camera *cam, MapCoord x, MapCoord y, MapCoordDelta *move_x, MapCoordDelta *move_y);
+TbBool view_move_camera_to_position(struct Camera *cam, MapCoord x, MapCoord y, MapCoordDelta move_x, MapCoordDelta move_y);
 
 void update_all_players_cameras(void);
 void init_player_cameras(struct PlayerInfo *player);

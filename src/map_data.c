@@ -40,8 +40,6 @@ struct Map bad_map_block;
  */
 MapSubtlCoord map_subtiles_z = 8;
 
-NavColour *IanMap = NULL;
-long nav_map_initialised = 0;
 /******************************************************************************/
 /**
  * Returns if the subtile coords are in range of subtiles which have slab entry.
@@ -89,29 +87,6 @@ TbBool map_block_invalid(const struct Map *map)
   if (map == INVALID_MAP_BLOCK)
     return true;
   return (map < &game.map[0]);
-}
-
-NavColour get_navigation_map(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
-{
-  if ((stl_x < 0) || (stl_x > game.map_subtiles_x))
-      return 0;
-  if ((stl_y < 0) || (stl_y > game.map_subtiles_y))
-      return 0;
-  return game.navigation_map[navmap_tile_number(stl_x,stl_y)];
-}
-
-void set_navigation_map(MapSubtlCoord stl_x, MapSubtlCoord stl_y, NavColour navcolour)
-{
-  if ((stl_x < 0) || (stl_x > game.map_subtiles_x))
-      return;
-  if ((stl_y < 0) || (stl_y > game.map_subtiles_y))
-      return;
-  game.navigation_map[navmap_tile_number(stl_x,stl_y)] = navcolour;
-}
-
-unsigned long get_navigation_map_floor_height(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
-{
-    return get_navigation_map(stl_x, stl_y) & NAVMAP_FLOORHEIGHT_MASK;
 }
 
 long get_ceiling_height(const struct Coord3d *pos)
@@ -322,7 +297,7 @@ TbBool map_block_revealed(const struct Map *mapblk, PlayerNumber plyr_idx)
 {
     if (map_block_invalid(mapblk))
         return false;
-    if (game.conf.rules[plyr_idx].game.allies_share_vision)
+    if (game.conf.rules[plyr_idx].gameplay.allies_share_vision)
     {
         for (PlayerNumber i = 0; i < PLAYERS_COUNT; i++)
         {
@@ -606,7 +581,7 @@ void clear_slab_dig(MapSlabCoord slb_x, MapSlabCoord slb_y, PlayerNumber plyr_id
     }
     else if ( !subtile_revealed(slab_subtile(slb_x, 0) , slab_subtile(slb_y, 0), plyr_idx) )          //    if (map_block_revealed(mapblk, plyr_idx))
     {
-        if (game.conf.rules[plyr_idx].game.allies_share_vision)
+        if (game.conf.rules[plyr_idx].gameplay.allies_share_vision)
         {
             for (PlayerNumber i = 0; i < PLAYERS_COUNT; i++)
             {

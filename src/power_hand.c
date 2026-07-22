@@ -25,6 +25,7 @@
 #include "bflib_planar.h"
 #include "bflib_vidraw.h"
 #include "bflib_sound.h"
+#include "config_sounds.h"
 #include "custom_sprites.h"
 #include "magic_powers.h"
 #include "power_specials.h"
@@ -40,6 +41,7 @@
 #include "thing_stats.h"
 #include "thing_navigate.h"
 #include "creature_graphics.h"
+#include "creature_instances.h"
 #include "creature_states.h"
 #include "creature_states_mood.h"
 #include "creature_states_combt.h"
@@ -218,6 +220,9 @@ TbBool armageddon_blocks_creature_pickup(const struct Thing *thing, PlayerNumber
 
 long can_thing_be_picked_up_by_player(const struct Thing *thing, PlayerNumber plyr_idx)
 {
+    if (thing_is_creature(thing) && flag_is_set(get_creature_model_flags(thing), CMF_CannotPickUp)) {
+        return false;
+    }
     if (thing_is_creature(thing) && thing_pickup_is_blocked_by_hand_rule(thing, plyr_idx)) {
         return false;
     }
@@ -245,7 +250,6 @@ TbBool can_thing_be_picked_up2_by_player(const struct Thing *thing, PlayerNumber
     {
         return (thing_is_object(thing) && object_is_pickable_by_hand_for_use(thing, plyr_idx));
     }
-
     if ( (game.armageddon_cast_turn > 0) && ( (game.conf.rules[game.armageddon_caster_idx].magic.armageddon_count_down + game.armageddon_cast_turn) <= get_gameturn()) )
     {
         return false;
@@ -275,7 +279,7 @@ TbBool can_thing_be_picked_up2_by_player(const struct Thing *thing, PlayerNumber
     }
 }
 
-struct Thing *process_object_being_picked_up(struct Thing *thing, long plyr_idx)
+struct Thing *process_object_being_picked_up(struct Thing *thing, PlayerNumber plyr_idx)
 {
     struct Thing *picktng = INVALID_THING;
     struct Coord3d pos;
@@ -309,7 +313,7 @@ struct Thing *process_object_being_picked_up(struct Thing *thing, long plyr_idx)
     {
         picktng = create_gold_for_hand_grab(thing, plyr_idx);
     }
-    else if (object_is_pickable_by_hand_to_hold_by_player(thing, plyr_idx))
+    else if (object_is_pickable_by_hand_to_hold(thing))
     {
             picktng = thing;
     }
@@ -330,7 +334,7 @@ void set_power_hand_graphic(unsigned char plyr_idx, long HandAnimationID)
     }
     if (player->hand_busy_until_turn < get_gameturn())
     {
-        if (player->hand_animationId != HandAnimationID)
+        if ((player->hand_animationId != HandAnimationID) || (HandAnimationID == HndA_Pickup))
         {
             player->hand_animationId = HandAnimationID;
             struct Thing *thing = thing_get(player->hand_thing_idx);
@@ -359,7 +363,7 @@ TbBool power_hand_is_full(const struct PlayerInfo *player)
 {
     const struct Dungeon *dungeon;
   dungeon = get_dungeon(player->id_number);
-  return (dungeon->num_things_in_hand >= game.conf.rules[player->id_number].game.max_things_in_hand);
+  return (dungeon->num_things_in_hand >= game.conf.rules[player->id_number].gameplay.max_things_in_hand);
 }
 
 struct Thing *get_first_thing_in_power_hand(struct PlayerInfo *player)
@@ -382,8 +386,8 @@ TbBool remove_first_thing_from_power_hand_list(PlayerNumber plyr_idx)
   long num_in_hand;
   dungeon = get_dungeon(plyr_idx);
   num_in_hand = dungeon->num_things_in_hand;
-  if (num_in_hand > game.conf.rules[plyr_idx].game.max_things_in_hand)
-      num_in_hand = game.conf.rules[plyr_idx].game.max_things_in_hand;
+  if (num_in_hand > game.conf.rules[plyr_idx].gameplay.max_things_in_hand)
+      num_in_hand = game.conf.rules[plyr_idx].gameplay.max_things_in_hand;
   if (num_in_hand > 0)
   {
       for (i = 0; i < num_in_hand-1; i++)
@@ -411,8 +415,8 @@ TbBool remove_thing_from_power_hand_list(struct Thing *thing, PlayerNumber plyr_
     long num_in_hand;
     dungeon = get_dungeon(plyr_idx);
     num_in_hand = dungeon->num_things_in_hand;
-    if (num_in_hand > game.conf.rules[plyr_idx].game.max_things_in_hand)
-        num_in_hand = game.conf.rules[plyr_idx].game.max_things_in_hand;
+    if (num_in_hand > game.conf.rules[plyr_idx].gameplay.max_things_in_hand)
+        num_in_hand = game.conf.rules[plyr_idx].gameplay.max_things_in_hand;
     for (i = 0; i < num_in_hand; i++)
     {
         if (dungeon->things_in_hand[i] == thing->index)
@@ -442,10 +446,10 @@ TbBool insert_thing_into_power_hand_list(struct Thing *thing, PlayerNumber plyr_
     long i;
     struct PowerConfigStats *powerst;
     dungeon = get_dungeon(plyr_idx);
-    if (dungeon->num_things_in_hand >= game.conf.rules[plyr_idx].game.max_things_in_hand)
+    if (dungeon->num_things_in_hand >= game.conf.rules[plyr_idx].gameplay.max_things_in_hand)
       return false;
     // Move all things in list up, to free position 0
-    for (i = game.conf.rules[plyr_idx].game.max_things_in_hand-1; i > 0; i--)
+    for (i = game.conf.rules[plyr_idx].gameplay.max_things_in_hand-1; i > 0; i--)
     {
       dungeon->things_in_hand[i] = dungeon->things_in_hand[i-1];
     }
@@ -604,9 +608,8 @@ void draw_power_hand(void)
     if (player->work_state != PSt_HoldInHand)
     {
       TbBool draw_hand = (local_thing_under_hand > 0);
-      if ((player->work_state == PSt_CtrlDungeon) && !power_hand_is_empty(player))
-      {
-        draw_hand = (player->secondary_cursor_state == CSt_PowerHand) || ((player->secondary_cursor_state == CSt_DefaultArrow) && (player->primary_cursor_state == CSt_PowerHand));
+      if ((player->work_state == PSt_CtrlDungeon) && !power_hand_is_empty(player)) {
+        draw_hand = (player->primary_cursor_state != CSt_DoorKey) && (player->secondary_cursor_state != CSt_DoorKey);
       }
       if ((player->work_state != PSt_CtrlDungeon) || !draw_hand)
       {
@@ -646,12 +649,12 @@ void draw_power_hand(void)
                 if (crconf->transparency_flags == TRF_Transpar_8)
                 {
                     lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR8;
-                    lbDisplay.DrawFlags &= ~Lb_TEXT_UNDERLNSHADOW;
+                    lbDisplay.DrawFlags &= ~Lb_SPRITE_REMAP;
                 }
                 else if (crconf->transparency_flags == TRF_Transpar_4)
                 {
                     lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-                    lbDisplay.DrawFlags &= ~Lb_TEXT_UNDERLNSHADOW;
+                    lbDisplay.DrawFlags &= ~Lb_SPRITE_REMAP;
                 }
                 else if(crconf->transparency_flags == TRF_Transpar_Alpha)
                 {
@@ -717,10 +720,17 @@ void draw_power_hand(void)
     }
 }
 
-TbBool object_is_slappable(const struct Thing *thing, long plyr_idx)
+TbBool object_is_slappable(const struct Thing* thing)
 {
-    if (thing->owner == plyr_idx) {
-        return (object_is_mature_food(thing));
+    struct ObjectConfigStats* objst = get_object_model_stats(thing->model);
+    return ((objst->model_flags & OMF_Slappable) != 0);
+}
+
+TbBool object_is_slappable_by_player(const struct Thing *thing, PlayerNumber plyr_idx)
+{
+    if (thing->owner == plyr_idx) 
+    {
+        return object_is_slappable(thing);
     }
     return false;
 }
@@ -784,18 +794,18 @@ long near_map_block_thing_filter_ready_for_hand_or_slap(const struct Thing *thin
     return -1;
 }
 
-TbBool thing_slappable(const struct Thing *thing, long plyr_idx)
+TbBool thing_slappable(const struct Thing *thing, PlayerNumber plyr_idx)
 {
     switch (thing->class_id)
     {
     case TCls_Object:
-        return object_is_slappable(thing, plyr_idx);
+        return object_is_slappable_by_player(thing, plyr_idx);
     case TCls_Shot:
-        return shot_is_slappable(thing, plyr_idx);
+        return shot_is_slappable_by_player(thing, plyr_idx);
     case TCls_Creature:
         return creature_is_slappable(thing, plyr_idx);
     case TCls_Trap:
-        return trap_is_slappable(thing, plyr_idx);
+        return trap_is_slappable_by_player(thing, plyr_idx);
     default:
         return false;
     }
@@ -881,15 +891,15 @@ long gold_being_dropped_on_creature(long plyr_idx, struct Thing *goldtng, struct
     drop_gold_coins(&pos, 0, plyr_idx);
     if (tribute >= salary)
     {
-        thing_play_sample(creatng, 34, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+        thing_play_sample(creatng, snd_salary_full, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
     }
     else if ((tribute * 2) >= salary)
     {
-        thing_play_sample(creatng, 33, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+        thing_play_sample(creatng, snd_salary_partial, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
     }
     else
     {
-        thing_play_sample(creatng, 32, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS/2);
+        thing_play_sample(creatng, snd_salary_tiny, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS/2);
     }
     if ( !taking_salary )
     {
@@ -901,7 +911,7 @@ long gold_being_dropped_on_creature(long plyr_idx, struct Thing *goldtng, struct
     struct CreatureModelConfig *crconf;
     crconf = creature_stats_get_from_thing(creatng);
     anger_apply_anger_to_creature_all_types(creatng, (crconf->annoy_got_wage * tribute / salary * 2));
-    if (game.conf.rules[plyr_idx].game.classic_bugs_flags & ClscBug_FullyHappyWithGold)
+    if (game.conf.rules[plyr_idx].gameplay.classic_bugs_flags & ClscBug_FullyHappyWithGold)
     {
         anger_set_creature_anger_all_types(creatng, 0);
     }
@@ -944,6 +954,9 @@ void drop_held_thing_on_ground(struct Dungeon *dungeon, struct Thing *droptng, c
     remove_thing_from_limbo(droptng);
     if (thing_is_creature(droptng))
     {
+        if (game.conf.rules[droptng->owner].creature.instance_delay_on_drop > 0) {
+            delay_instances_on_drop(droptng);
+        }
         initialise_thing_state(droptng, CrSt_CreatureBeingDropped);
         stop_creature_sound(droptng, 5);
         if (is_my_player_number(dungeon->owner)) {
@@ -983,11 +996,11 @@ short dump_first_held_thing_on_map(PlayerNumber plyr_idx, MapSubtlCoord stl_x, M
     }
     // Check if drop position is allowed
     struct Thing *droptng = thing_get(dungeon->things_in_hand[0]);
-    if (!can_drop_thing_here(stl_x, stl_y, plyr_idx, thing_is_creature_digger(droptng))) {
+    if (!can_drop_thing_here(stl_x, stl_y, plyr_idx, is_creature_droppable_on_path(droptng))) {
         // Make a rejection sound
         if (is_my_player_number(plyr_idx))
         {
-            play_non_3d_sample(119);
+            play_non_3d_sample(snd_refusal);
         }
         return 0;
     }
@@ -1009,7 +1022,7 @@ short dump_first_held_thing_on_map(PlayerNumber plyr_idx, MapSubtlCoord stl_x, M
         {
             drop_gold_coins(&pos, droptng->valuable.gold_stored, plyr_idx);
             if (is_my_player_number(plyr_idx)) {
-                play_non_3d_sample(88);
+                play_non_3d_sample(snd_coin_drop);
             }
         }
         destroy_object(droptng);
@@ -1077,7 +1090,7 @@ void clear_things_in_hand(struct PlayerInfo *player)
   struct Dungeon *dungeon;
   long i;
   dungeon = get_dungeon(player->id_number);
-  for (i=0; i < game.conf.rules[player->id_number].game.max_things_in_hand; i++)
+  for (i=0; i < game.conf.rules[player->id_number].gameplay.max_things_in_hand; i++)
     dungeon->things_in_hand[i] = 0;
 }
 
@@ -1165,8 +1178,8 @@ void draw_mini_things_in_hand(long x, long y)
     expshift_x = scale_ui_value(abs(i)) / 2;
     for (i = dungeon->num_things_in_hand-1; i >= 0; i--)
     {
-        unsigned char ratio = (game.conf.rules[my_player_number].game.max_things_in_hand / 2);
-        if (game.conf.rules[my_player_number].game.max_things_in_hand % 2)
+        unsigned char ratio = (game.conf.rules[my_player_number].gameplay.max_things_in_hand / 2);
+        if (game.conf.rules[my_player_number].gameplay.max_things_in_hand % 2)
         {
             ratio ++;
         }
@@ -1340,7 +1353,7 @@ long prepare_thing_for_power_hand(unsigned short tng_idx, PlayerNumber plyr_idx)
     if (player->hand_thing_idx == 0) {
         create_power_hand(plyr_idx);
     }
-    if (dungeon->num_things_in_hand >= game.conf.rules[plyr_idx].game.max_things_in_hand) {
+    if (dungeon->num_things_in_hand >= game.conf.rules[plyr_idx].gameplay.max_things_in_hand) {
       return 0;
     }
     struct Thing *thing;
@@ -1464,8 +1477,7 @@ TbResult use_power_hand(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoor
     }
     if (!can_thing_be_picked_up_by_player(thing, plyr_idx))
     {
-        ERRORLOG("The %s owned by player %d is not pickable by player %d",thing_model_name(thing),(int)thing->owner,(int)plyr_idx);
-        return Lb_OK;
+        return Lb_FAIL;
     }
     if (thing_is_special_box(thing))
     {
@@ -1518,10 +1530,12 @@ void stop_creatures_around_hand(PlayerNumber plyr_idx, MapSubtlCoord stl_x,  Map
     }
 }
 
+#define HAND_TO_OBJECT_SLAP_DAMAGE 10
 TbBool slap_object(struct Thing *thing)
 {
-  if (object_is_mature_food(thing)) {
-      destroy_object(thing);
+  if (object_is_slappable(thing))
+  {
+      apply_damage_to_thing(thing, HAND_TO_OBJECT_SLAP_DAMAGE, thing->owner);
       return true;
   }
   return false;
@@ -1550,7 +1564,7 @@ TbBool can_drop_thing_here(MapSubtlCoord stl_x, MapSubtlCoord stl_y, PlayerNumbe
         return false;
     struct SlabMap *slb;
     slb = get_slabmap_for_subtile(stl_x, stl_y);
-    if (game.conf.rules[plyr_idx].game.allies_share_drop)
+    if (game.conf.rules[plyr_idx].gameplay.allies_share_drop)
     {
         for (PlayerNumber i = 0; i < PLAYERS_COUNT; i++)
         {
@@ -1576,10 +1590,11 @@ TbBool can_drop_thing_here(MapSubtlCoord stl_x, MapSubtlCoord stl_y, PlayerNumbe
 short can_place_thing_here(struct Thing *thing, long stl_x, long stl_y, long dngn_idx)
 {
     struct Coord3d pos;
-    TbBool is_digger;
-    is_digger = thing_is_creature_digger(thing);
-    if (!can_drop_thing_here(stl_x, stl_y, dngn_idx, is_digger))
+    TbBool allow_unclaimed_path;
+    allow_unclaimed_path = is_creature_droppable_on_path(thing);
+    if (!can_drop_thing_here(stl_x, stl_y, dngn_idx, allow_unclaimed_path)) {
       return false;
+    }
     pos.x.val = subtile_coord_center(stl_x);
     pos.y.val = subtile_coord_center(stl_y);
     pos.z.val = get_thing_height_at(thing, &pos);

@@ -18,12 +18,16 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "net_checksums.h"
+#include "bflib_dernc.h"
+#include "config.h"
 #include "game_legacy.h"
+#include "game_merge.h"
 #include "net_game.h"
 #include "packets.h"
 #include "player_data.h"
 #include "thing_data.h"
 #include "room_list.h"
+#include "slab_data.h"
 #include "creature_control.h"
 #include "thing_creature.h"
 #include "thing_list.h"
@@ -111,13 +115,14 @@ static TbBigChecksum compute_player_checksum(struct PlayerInfo *player) {
     if ((player->allocflags & PlaF_CompCtrl) != 0 || camera == NULL) {
         return 0;
     }
-    struct Coord3d* mappos = &(camera->mappos);
     TbBigChecksum checksum = 0;
     CHECKSUM_ADD(checksum, player->instance_remain_turns);
     CHECKSUM_ADD(checksum, player->instance_num);
-    CHECKSUM_ADD(checksum, mappos->x.val);
-    CHECKSUM_ADD(checksum, mappos->y.val);
-    CHECKSUM_ADD(checksum, mappos->z.val);
+    if (player->victory_state == VicS_Undecided) {
+        CHECKSUM_ADD(checksum, camera->mappos.x.val);
+        CHECKSUM_ADD(checksum, camera->mappos.y.val);
+        CHECKSUM_ADD(checksum, camera->mappos.z.val);
+    }
     return checksum;
 }
 
@@ -190,7 +195,8 @@ static struct ChecksumSnapshot* find_snapshot(GameTurn turn) {
     return NULL;
 }
 
-short checksums_different(void) {
+short checksums_different(void)
+{
     int host_player_id = get_host_player_id();
     struct Packet* host_packet = get_packet(host_player_id);
     TbBigChecksum host_checksum = host_packet->checksum;
@@ -198,7 +204,16 @@ short checksums_different(void) {
 
     for (int i = 0; i < PLAYERS_COUNT; i++) {
         struct PlayerInfo* player = get_player(i);
-        if (i == host_player_id || !player_exists(player) || ((player->allocflags & PlaF_CompCtrl) != 0)) {
+        if (i == host_player_id) {
+            continue;
+        }
+        if (!player_exists(player)) {
+            continue;
+        }
+        if ((player->allocflags & PlaF_CompCtrl) != 0) {
+            continue;
+        }
+        if (!network_player_active(player->packet_num)) {
             continue;
         }
         struct Packet* packet = get_packet_direct(player->packet_num);
@@ -217,15 +232,30 @@ short checksums_different(void) {
     return mismatch;
 }
 
-TbBigChecksum calculate_network_startup_map_checksum(void) {
-    TbBigChecksum checksum_mem = 0;
-    for (int i = 1; i < THINGS_COUNT; i++) {
-        struct Thing* thing = thing_get(i);
-        if (thing_exists(thing)) {
-            checksum_mem += thing->mappos.z.val + thing->mappos.y.val + thing->mappos.x.val;
-        }
+TbBigChecksum calculate_file_checksum(const char *fname)
+{
+    int32_t file_size = (int32_t)LbFileLengthRnc(fname);
+    TbBigChecksum checksum = 0;
+    CHECKSUM_ADD(checksum, file_size);
+    if (file_size <= 0) {
+        return checksum;
     }
-    return checksum_mem + game.action_random_seed;
+    unsigned char *file_buf = malloc(file_size);
+    if (file_buf != NULL && LbFileLoadAt(fname, file_buf) == file_size) {
+        CHECKSUM_ADD(checksum, rnc_crc(file_buf, file_size));
+    }
+    free(file_buf);
+    return checksum;
+}
+
+void calculate_network_startup_map_checksums(TbBigChecksum checksums[NETWORK_STARTUP_MAP_FILE_COUNT])
+{
+    LevelNumber lvnum = get_loaded_level_number();
+    short fgroup = get_level_fgroup(lvnum);
+    for (int i = 0; i < NETWORK_STARTUP_MAP_FILE_COUNT; i++) {
+        char* fname = prepare_file_fmtpath(fgroup, "map%05u.%s", lvnum, network_startup_compare_files[i]);
+        checksums[i] = calculate_file_checksum(fname);
+    }
 }
 
 void update_turn_checksums(void) {
@@ -298,7 +328,11 @@ void update_turn_checksums(void) {
             player_snapshot->id = i;
             player_snapshot->instance_num = player->instance_num;
             player_snapshot->instance_remain_turns = player->instance_remain_turns;
-            player_snapshot->mappos = camera->mappos;
+            if (player->victory_state == VicS_Undecided) {
+                player_snapshot->mappos = camera->mappos;
+            } else {
+                memset(&player_snapshot->mappos, 0, sizeof(player_snapshot->mappos));
+            }
             player_snapshot->checksum = compute_player_checksum(player);
         }
         for (struct Room* room = start_rooms; room < end_rooms; room++) {

@@ -70,6 +70,8 @@ void frontnet_messages_down_maintain(struct GuiButton *gbtn)
 
 void frontnet_start_game_maintain(struct GuiButton *gbtn)
 {
+    TbBool enabled = net_number_of_enum_players > 1;
+    gbtn->flags ^= (gbtn->flags ^ LbBtnF_Enabled * enabled) & LbBtnF_Enabled;
 }
 
 TbBool frontnet_start_input(void)
@@ -222,10 +224,6 @@ void frontnet_draw_service_button(struct GuiButton *gbtn)
 }
 
 void frontnet_service_select(struct GuiButton *gbtn)
-{
-}
-
-void frontnet_draw_start_game_button(struct GuiButton *gbtn)
 {
 }
 

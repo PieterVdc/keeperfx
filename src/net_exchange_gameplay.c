@@ -77,11 +77,10 @@ static int64_t get_current_turn_position_ns(void)
     if (turns_per_second <= 0) {
         return 0;
     }
-    uint64_t turns_per_second_u = (uint64_t)turns_per_second;
-    uint64_t nanoseconds_per_turn = (1000000000ULL + turns_per_second_u / 2) / turns_per_second_u;
+    int64_t nanoseconds_per_turn = (1000000000ULL + turns_per_second / 2) / turns_per_second;
     int64_t position_ns = (int64_t)get_gameturn() * (int64_t)nanoseconds_per_turn;
     if (is_feature_on(Ft_DeltaTime) == true && game.process_turn_time > 0) {
-        uint64_t turn_phase_ns = (uint64_t)(game.process_turn_time * nanoseconds_per_turn + 0.5);
+        int64_t turn_phase_ns = (int64_t)((game.process_turn_time - 1) * nanoseconds_per_turn + 0.5);
         if (turn_phase_ns >= nanoseconds_per_turn) {
             turn_phase_ns = nanoseconds_per_turn - 1;
         }
@@ -94,7 +93,7 @@ static void update_turn_speed_adjustment(void)
 {
     TbClockMSec sync_age_ms = LbTimerClock() - server_turn_received_at;
     multiplayer_speed_adjustment_ns = 0;
-    if (netstate.my_id == SERVER_ID || server_turn_received_at == 0 || turns_per_second <= 0
+    if (game.frame_skip > 0 || netstate.my_id == SERVER_ID || server_turn_received_at == 0 || turns_per_second <= 0
         || sync_age_ms > TURN_SYNC_INTERVAL_MS * 3) {
         return;
     }
@@ -207,6 +206,19 @@ const struct Packet *get_history_packet(PlayerNumber player, GameTurn turn)
     return packet;
 }
 
+const struct Packet *get_latest_history_packet(PlayerNumber player)
+{
+    const struct Packet *latest = NULL;
+    const struct PacketHistory *history = &packet_history[player];
+    for (int32_t i = 0; i < PACKET_HISTORY_SIZE; i += 1) {
+        const struct Packet *packet = &history->entries[i];
+        if (!is_packet_empty(packet) && (latest == NULL || (GameTurnDelta)(packet->turn - latest->turn) > 0)) {
+            latest = packet;
+        }
+    }
+    return latest;
+}
+
 TbBool read_repair_packet_history(NetUserId source, const char *buffer, size_t buffer_size)
 {
     size_t header_size = sizeof(struct PacketHistoryHeader);
@@ -270,14 +282,25 @@ void initialize_packet_history(void)
     multiplayer_speed_adjustment_ns = 0;
     last_repair_history_send = 0;
     last_turn_sync_send = 0;
+    input_lag_reset();
+}
+
+static TbBool player_has_required_turn_packets(PlayerNumber player)
+{
+    GameTurn expected_turn = get_gameturn() - game.input_lag_turns;
+    if (get_history_packet(player, expected_turn) == NULL) {
+        return false;
+    }
+    if (!input_lag_needs_lookahead()) {
+        return true;
+    }
+    return get_history_packet(player, expected_turn + 1) != NULL;
 }
 
 static TbBool have_all_turn_packets(PlayerNumber local_packet_player)
 {
-    GameTurn expected_turn = get_gameturn() - game.input_lag_turns;
     for (PlayerNumber player = 0; player < MAX_NET_USERS; player += 1) {
-        const struct Packet *packet = get_history_packet(player, expected_turn);
-        if (player != local_packet_player && network_player_active(player) && packet == NULL) {
+        if (player != local_packet_player && network_player_active(player) && !player_has_required_turn_packets(player)) {
             return false;
         }
     }
@@ -301,22 +324,12 @@ static void send_player_repair_history(PlayerNumber player)
     }
     struct RedundantPacketBundle packet_bundle;
     packet_bundle.valid_count = 0;
-    const struct PacketHistory *history = &packet_history[player];
-    GameTurn latest_turn = 0;
-    TbBool have_turn = false;
-    for (int i = 0; i < PACKET_HISTORY_SIZE; i += 1) {
-        const struct Packet *packet = &history->entries[i];
-        if (is_packet_empty(packet)) {
-            continue;
-        }
-        if (!have_turn || (GameTurnDelta)(packet->turn - latest_turn) > 0) {
-            latest_turn = packet->turn;
-            have_turn = true;
-        }
-    }
-    if (!have_turn) {
+    const struct Packet *latest = get_latest_history_packet(player);
+    if (latest == NULL) {
         return;
     }
+    const struct PacketHistory *history = &packet_history[player];
+    GameTurn latest_turn = latest->turn;
     for (GameTurnDelta offset = 0; offset < PACKET_HISTORY_SIZE; offset += 1) {
         if ((GameTurn)offset > latest_turn) {
             break;
@@ -384,6 +397,7 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Pla
     TbClockMSec wait_start_time = LbTimerClock();
     TbBool turn_complete = false;
     TbBool wait_timed_out = false;
+    input_lag_note_packet_wait();
     MULTIPLAYER_LOG("LbNetwork_ExchangeGameplay: Missing packets for turn=%lu, collecting...", (unsigned long)expected_turn);
     while (!turn_complete) {
         send_turn_sync_if_due();
@@ -394,11 +408,10 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Pla
         }
         turn_complete = have_all_turn_packets(local_packet_player);
         for (NetUserId peer_id = 0; peer_id < netstate.max_players && !turn_complete; peer_id += 1) {
-            const struct Packet *packet = get_history_packet(peer_id, expected_turn);
             if (!can_send_to_peer(peer_id)) {
                 continue;
             }
-            if (netstate.my_id == SERVER_ID && packet != NULL) {
+            if (netstate.my_id == SERVER_ID && player_has_required_turn_packets(peer_id)) {
                 continue;
             }
             process_peer_msgs(peer_id, server_buf, frame_size);
@@ -434,6 +447,19 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Pla
     return Lb_OK;
 }
 
+void network_update(void *server_buf, size_t frame_size)
+{
+    if (netstate.sp == NULL) {
+        return;
+    }
+    netstate.sp->update(OnNewUser);
+    for (NetUserId peer_id = 0; peer_id < netstate.max_players; peer_id += 1) {
+        if (can_send_to_peer(peer_id)) {
+            process_peer_msgs(peer_id, server_buf, frame_size);
+        }
+    }
+}
+
 TbError LbNetwork_ExchangeGameplay(void *send_buf, void *server_buf, size_t frame_size)
 {
     if (exchange_frame_message(send_buf, server_buf, frame_size, NETMSG_GAMEPLAY_UNSEQUENCED) != Lb_OK) {
@@ -441,11 +467,7 @@ TbError LbNetwork_ExchangeGameplay(void *send_buf, void *server_buf, size_t fram
     }
     send_turn_sync_if_due();
     send_repair_history_if_due();
-    for (NetUserId peer_id = 0; peer_id < netstate.max_players; peer_id += 1) {
-        if (can_send_to_peer(peer_id)) {
-            process_peer_msgs(peer_id, server_buf, frame_size);
-        }
-    }
+    network_update(server_buf, frame_size);
     update_turn_speed_adjustment();
     if (game.skip_initial_input_turns <= 0) {
         struct PlayerInfo *my_player = get_my_player();

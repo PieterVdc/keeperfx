@@ -19,6 +19,7 @@
 #include "bflib_math.h"
 #include "bflib_sound.h"
 
+#include "ariadne_update.h"
 #include "config_compp.h"
 #include "config_settings.h"
 #include "creature_states_combt.h"
@@ -36,6 +37,7 @@
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
 #include "kjm_input.h"
+#include "config_sounds.h"
 #include "lvl_filesdk1.h"
 #include "lua_base.h"
 #include "lua_triggers.h"
@@ -156,6 +158,9 @@ static void init_level(void)
     recheck_all_mod_exist();
 
     luascript_loaded = open_lua_script(get_selected_level_number());
+    // Restore campaign-layer sounds before creature configs load, so creature cfg custom
+    // sounds are added to the already-restored bank (not wiped afterwards).
+    sound_restore_to_campaign_snapshot();
     // Load configs which may have per-campaign part, and can even be modified within a level
     init_custom_sprites(get_selected_level_number());
     load_stats_files();
@@ -219,6 +224,7 @@ static void init_level(void)
     game.armageddon_cast_turn = 0;
     game.armageddon_over_turn = 0;
     clear_messages();
+    show_ignored_fxdata_zip_messages();
     game.creatures_tend_imprison = 0;
     game.creatures_tend_flee = 0;
     memset(game.pay_day_progress, 0, sizeof(game.pay_day_progress));
@@ -451,9 +457,9 @@ void clear_complete_game(void)
     else
         set_selected_level_number(first_singleplayer_level());
     turns_per_second = start_params.num_fps;
-    turns_per_second_draw_current = 0;
-    turns_per_second_draw_main = start_params.num_fps_draw_main;
-    turns_per_second_draw_secondary = start_params.num_fps_draw_secondary;
+    fps_limit_current = 0;
+    fps_limit_main = start_params.num_fps_draw_main;
+    fps_limit_secondary = start_params.num_fps_draw_secondary;
     game.mode_flags = start_params.mode_flags;
     game.easter_eggs_enabled = start_params.easter_egg;
     set_flag_value(game.system_flags, GSF_AllowOnePlayer, start_params.one_player);

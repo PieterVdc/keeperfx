@@ -24,6 +24,7 @@
 
 #include "bflib_math.h"
 #include "bflib_planar.h"
+#include "ariadne_update.h"
 #include "cursor_tag.h"
 #include "thing_objects.h"
 #include "thing_list.h"
@@ -31,12 +32,11 @@
 #include "thing_effects.h"
 #include "config_terrain.h"
 #include "creature_senses.h"
-#include "ariadne.h"
-#include "ariadne_wallhug.h"
 #include "map_blocks.h"
 #include "map_ceiling.h"
 #include "map_utils.h"
 #include "sounds.h"
+#include "config_sounds.h"
 #include "gui_topmsg.h"
 #include "game_legacy.h"
 #include "frontmenu_ingame_map.h"
@@ -218,7 +218,6 @@ TbBool add_key_on_door(struct Thing *thing)
 void unlock_door(struct Thing *thing)
 {
     thing->door.is_locked = false;
-    game.map_changed_for_navigation = 1;
     update_navigation_triangulation(thing->mappos.x.stl.num-1, thing->mappos.y.stl.num-1,
       thing->mappos.x.stl.num+1, thing->mappos.y.stl.num+1);
     panel_map_update(thing->mappos.x.stl.num-1, thing->mappos.y.stl.num-1, STL_PER_SLB, STL_PER_SLB);
@@ -235,7 +234,6 @@ void lock_door(struct Thing *doortng)
     doortng->active_state = DorSt_Closed;
     doortng->door.closing_counter = 0;
     doortng->door.is_locked = 1;
-    game.map_changed_for_navigation = 1;
     place_animating_slab_type_on_map(doorst->slbkind[doortng->door.orientation], 0, stl_x, stl_y, doortng->owner);
     update_navigation_triangulation(stl_x-1,  stl_y-1, stl_x+1,stl_y+1);
     panel_map_update(stl_x-1, stl_y-1, STL_PER_SLB, STL_PER_SLB);
@@ -268,7 +266,7 @@ long destroy_door(struct Thing *doortng)
     }
     struct Thing* efftng = create_effect(&pos, TngEff_Dummy, plyr_idx);
     if (!thing_is_invalid(efftng)) {
-        thing_play_sample(efftng, 72 + SOUND_RANDOM(3), NORMAL_PITCH, 0, 3, 0, 3, FULL_LOUDNESS);
+        thing_play_sample(efftng, snd_door_place + SOUND_RANDOM(snd_door_place_count), NORMAL_PITCH, 0, 3, 0, 3, FULL_LOUDNESS);
     }
     if (plyr_idx != game.neutral_player_num)
     {
@@ -501,7 +499,7 @@ long process_door_open(struct Thing *thing)
         return 0;
     }
     thing->active_state = DorSt_Closing;
-    thing_play_sample(thing, 92, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+    thing_play_sample(thing, snd_door_open, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
     return 1;
 }
 
@@ -510,7 +508,7 @@ long process_door_closed(struct Thing *thing)
     if ( !check_door_should_open(thing) )
       return 0;
     thing->active_state = DorSt_Opening;
-    thing_play_sample(thing, 91, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+    thing_play_sample(thing, snd_door_close, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
     return 1;
 }
 
@@ -544,7 +542,7 @@ long process_door_closing(struct Thing *thing)
     if ( check_door_should_open(thing) )
     {
         thing->active_state = DorSt_Opening;
-        thing_play_sample(thing, 91, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+        thing_play_sample(thing, snd_door_close, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
     }
     if (thing->door.closing_counter > delta_h)
     {
@@ -854,6 +852,5 @@ void update_navigation_around_all_doors()
             break;
         }
     }
-    game.map_changed_for_navigation = 1;
 }
 /******************************************************************************/

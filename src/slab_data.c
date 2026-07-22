@@ -20,12 +20,11 @@
 #include "slab_data.h"
 #include "globals.h"
 
+#include "ariadne_update.h"
 #include "player_instances.h"
 #include "config_terrain.h"
 #include "map_blocks.h"
 #include "map_ceiling.h"
-#include "ariadne.h"
-#include "ariadne_wallhug.h"
 #include "map_utils.h"
 #include "frontmenu_ingame_map.h"
 #include "game_legacy.h"
@@ -611,7 +610,7 @@ void update_map_collide(SlabKind slbkind, MapSubtlCoord stl_x, MapSubtlCoord stl
     mapblk->flags |= nflags;
 }
 
-void do_slab_efficiency_alteration(MapSlabCoord slb_x, MapSlabCoord slb_y)
+void collect_rooms_around_slab(MapSlabCoord slb_x, MapSlabCoord slb_y, struct Room** room_list, int room_list_len)
 {
     for (long n = 0; n < SMALL_AROUND_SLAB_LENGTH; n++)
     {
@@ -625,9 +624,39 @@ void do_slab_efficiency_alteration(MapSlabCoord slb_x, MapSlabCoord slb_y)
         if (slabst->category == SlbAtCtg_RoomInterior)
         {
             struct Room* room = slab_room_get(sslb_x, sslb_y);
-            do_room_recalculation(room);
+            for (int i = 0; i < room_list_len; i++)
+            {
+                if (room_list[i] == room) {
+                    break;
+                }
+                else if (room_list[i] == NULL) {
+                    room_list[i] = room;
+                    break;
+                }
+            }
         }
     }
+}
+
+void recalculate_rooms_in_list(struct Room** room_list, int room_list_len)
+{
+    for (int i = 0; i < room_list_len; i++)
+    {
+        struct Room* room = room_list[i];
+        if (room == NULL) {
+            break;
+        }
+        do_room_recalculation(room);
+    }
+}
+
+void do_slab_efficiency_alteration(MapSlabCoord slb_x, MapSlabCoord slb_y)
+{
+    struct Room* room_list[SMALL_AROUND_SLAB_LENGTH + 1];
+    memset(room_list, 0, sizeof(room_list));
+    collect_rooms_around_slab(slb_x, slb_y, room_list, sizeof(room_list)/sizeof(room_list[0]));
+
+    recalculate_rooms_in_list(room_list, sizeof(room_list)/sizeof(room_list[0]));
 }
 
 SlabKind choose_rock_type(PlayerNumber plyr_idx, MapSlabCoord slb_x, MapSlabCoord slb_y)
@@ -850,7 +879,11 @@ TbBool player_can_claim_slab(PlayerNumber plyr_idx, MapSlabCoord slb_x, MapSlabC
 void set_player_texture(PlayerNumber plyr_idx, long texture_id)
 {
     struct Dungeon* dungeon = get_dungeon(plyr_idx);
-    dungeon->texture_pack = texture_id;
+    TbBool reset = (texture_id < 0);
+    if (reset)
+        dungeon->texture_pack = 0;
+    else
+        dungeon->texture_pack = texture_id;
 
     for (MapSlabCoord slb_y=0; slb_y < game.map_tiles_y; slb_y++)
     {
@@ -859,7 +892,7 @@ void set_player_texture(PlayerNumber plyr_idx, long texture_id)
             struct SlabMap* slb = get_slabmap_block(slb_x,slb_y);
             if (slabmap_owner(slb) == plyr_idx)
             {
-                if (texture_id == 0)
+                if (reset)
                 {
                     game.slab_ext_data[get_slab_number(slb_x,slb_y)] = game.slab_ext_data_initial[get_slab_number(slb_x,slb_y)];
                 }

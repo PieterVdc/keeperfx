@@ -76,6 +76,7 @@
 #include "power_hand.h"
 #include "magic_powers.h"
 #include "player_instances.h"
+#include "local_camera.h"
 #include "player_utils.h"
 #include "config_players.h"
 #include "gui_frontmenu.h"
@@ -96,8 +97,6 @@
 extern "C" {
 #endif
 
-extern long double last_draw_completed_time;
-long double get_time_tick_ns();
 /******************************************************************************/
 TbClockMSec gui_message_timeout = 0;
 char gui_message_text[TEXT_BUFFER_LENGTH];
@@ -416,6 +415,7 @@ short old_menu_mouse_y;
 unsigned char menu_ids[3];
 unsigned char new_objective;
 int frontend_menu_state;
+int skip_high_score_screen;
 int load_game_scroll_offset;
 unsigned char video_gamma_correction;
 
@@ -427,7 +427,7 @@ struct TbSpriteSheet * winfont = NULL;
 unsigned long playing_bad_descriptive_speech;
 unsigned long playing_good_descriptive_speech;
 long scrolling_index;
-long scrolling_offset;
+float scrolling_offset;
 long packet_left_button_double_clicked[6];
 long packet_left_button_click_space_count[6];
 char frontend_alliances;
@@ -545,15 +545,17 @@ short game_is_busy_doing_gui(void)
 
 TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
 {
+    if (input_button == NULL)
+    {
+        if (LbIsTextInputActive())
+            LbStopTextInput();
+        return false;
+    }
+
     char *str;
     TbKeyCode key;
-    unsigned short outchar;
-    TbLocChar vischar[4];
-    strcpy(vischar," ");
     str = gbtn->content.str;
     key = lbInkey;
-    outchar = key_to_ascii(key, key_modifiers);
-    vischar[0] = outchar;
     if (key == KC_RETURN)
     {
         if ((str[0] != '\0') || (modifiers == -3))
@@ -561,6 +563,7 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
             gbtn->button_state_left_pressed = 0;
             (gbtn->click_event)(gbtn);
             input_button = 0;
+            LbStopTextInput();
             if ((gbtn->flags & LbBtnF_Clickable) != 0)
             {
                 struct GuiMenu *gmnu;
@@ -575,6 +578,7 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
         snprintf(str, gbtn->maxval, "%s", backup_input_field);
         input_button = 0;
         input_field_pos = 0;
+        LbStopTextInput();
     } else
     if (key == KC_BACK)
     { // Delete the last char
@@ -603,28 +607,21 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
             input_field_pos--;
     } else
     if (key == KC_RIGHT)
-    { // move one char left
+    { // move one char right
         if (input_field_pos < LbLocTextStringLength(str))
             input_field_pos++;
     } else
     if (LbLocTextStringSize(str) < abs(gbtn->maxval))
     {
-        // Check if we have printable character
-        if (modifiers == -1)
+        char insert_text[64] = "";
+        if (add_input_text_to_message(insert_text, sizeof(insert_text), winfont, gbtn->width * pixel_size))
         {
-            if (!isprint(vischar[0])) {
-                clear_key_pressed(key);
-                return false;
+            if (insert_text[0] != '\0')
+            {
+                if (LbLocTextStringInsert(str, insert_text, input_field_pos, gbtn->maxval) != NULL) {
+                    input_field_pos += LbLocTextStringLength(insert_text);
+                }
             }
-        } else
-        {
-            if (!isgraph(vischar[0]) && (vischar[0] != ' ')) {
-                clear_key_pressed(key);
-                return false;
-            }
-        }
-        if (LbLocTextStringInsert(str, vischar, input_field_pos, gbtn->maxval) != NULL) {
-            input_field_pos++;
         }
     }
     clear_key_pressed(key);
@@ -641,12 +638,10 @@ void maintain_loadsave(struct GuiButton *gbtn)
 
 void maintain_zoom_to_event(struct GuiButton *gbtn)
 {
-    struct Dungeon *dungeon;
     struct Event *event;
-    dungeon = get_players_num_dungeon(my_player_number);
-    if (dungeon->visible_event_idx)
+    if (my_visible_event_idx)
     {
-      event = &(game.event[dungeon->visible_event_idx]);
+      event = &(game.event[my_visible_event_idx]);
       if ((event->mappos_x != 0) || (event->mappos_y != 0))
       {
         gbtn->flags |= LbBtnF_Enabled;
@@ -1393,7 +1388,7 @@ void draw_scrolling_button_string(struct GuiButton *gbtn, const char *text)
   scrollwnd->window_height = area_height;
   text_height = scrollwnd->text_height;
   int tx_units_per_px;
-  if (dbc_language > 0)
+  if (dbc_initialized && dbc_enabled)
   {
       tx_units_per_px = scale_value_by_horizontal_resolution((MyScreenWidth >= 640) ? 16 : 32);
   }
@@ -1475,23 +1470,15 @@ void gui_area_scroll_window(struct GuiButton *gbtn)
 
 void gui_go_to_event(struct GuiButton *gbtn)
 {
-    struct PlayerInfo *player;
-    struct Dungeon *dungeon;
-    player = get_my_player();
-    dungeon = get_players_dungeon(player);
-    if (dungeon->visible_event_idx) {
-        set_players_packet_action(player, PckA_ZoomToEvent, dungeon->visible_event_idx, 0, 0, 0);
+    if (my_visible_event_idx) {
+        struct Event *event = &game.event[my_visible_event_idx];
+        move_local_camera_to_position(event->mappos_x, event->mappos_y);
     }
 }
 
 void gui_close_objective(struct GuiButton *gbtn)
 {
-    struct PlayerInfo *player = get_my_player();
-    set_players_packet_action(player, PckA_EventBoxClose, 0, 0, 0, 0);
-    // The final effect of this packet should be 3 menus disabled
-    /*turn_off_menu(GMnu_TEXT_INFO);
-    turn_off_menu(GMnu_BATTLE);
-    turn_off_menu(GMnu_DUNGEON_SPECIAL);*/
+    turn_off_event_box_if_necessary(my_player_number, my_visible_event_idx);
 }
 
 void gui_scroll_text_up(struct GuiButton *gbtn)
@@ -1863,6 +1850,7 @@ void do_button_release_actions(struct GuiButton *gbtn, unsigned char *s, Gf_Btn_
             break;
       }
       input_button = gbtn;
+      LbStartTextInput();
       setup_input_field(input_button, get_string(GUIStr_MnuUnused));
       break;
   default:
@@ -2576,6 +2564,7 @@ void frontend_shutdown_state(FrontendMenuState pstate)
         turn_off_menu(GMnu_FENET_SESSION);
         break;
     case FeSt_NET_START:
+        LbStopTextInput();
         turn_off_menu(GMnu_FENET_START);
         break;
     case FeSt_STORY_POEM:
@@ -2583,7 +2572,7 @@ void frontend_shutdown_state(FrontendMenuState pstate)
         frontstory_unload();
         break;
     case FeSt_CREDITS:
-        stop_music();
+        stop_music(true);
         break;
     case FeSt_LEVEL_STATS:
         stop_streamed_samples();
@@ -2608,7 +2597,7 @@ void frontend_shutdown_state(FrontendMenuState pstate)
         break;
     case FeSt_FEOPTIONS:
         turn_off_menu(GMnu_FEOPTION);
-        stop_music();
+        stop_music(true);
         break;
     case FeSt_LEVEL_SELECT:
         turn_off_menu(GMnu_FELEVEL_SELECT);
@@ -2661,7 +2650,7 @@ FrontendMenuState frontend_setup_state(FrontendMenuState nstate)
           set_pointer_graphic_none();
           break;
       case FeSt_MAIN_MENU:
-          stop_music();
+          stop_music(true);
           continue_game_option_available = continue_game_available();
           if (!continue_game_option_available)
           {
@@ -2674,6 +2663,7 @@ FrontendMenuState frontend_setup_state(FrontendMenuState nstate)
           time_last_played_demo = LbTimerClock();
           fe_high_score_table_from_main_menu = true;
           clear_flag(game.system_flags, GSF_NetworkActive);
+          skip_high_score_screen = 0;
           set_pointer_graphic_menu();
           break;
       case FeSt_FELOAD_GAME:
@@ -3375,7 +3365,6 @@ short frontend_draw(void)
     draw_debug_messages();
     perform_any_screen_capturing();
     LbScreenUnlock();
-    last_draw_completed_time = get_time_tick_ns();
     return result;
 }
 
@@ -3642,8 +3631,9 @@ FrontendMenuState get_menu_state_when_back_from_substate(FrontendMenuState subst
     case FeSt_DRAG:
         return FeSt_TORTURE;
     case FeSt_LEVEL_STATS:
-        if (network_is_active())
+        if (network_is_active() || skip_high_score_screen) {
             return FeSt_NET_SESSION;
+        }
         lvnum = get_loaded_level_number();
         if (is_multiplayer_level(lvnum))
             return get_menu_state_based_on_last_level(lvnum);

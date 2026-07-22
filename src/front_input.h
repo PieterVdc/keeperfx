@@ -152,6 +152,24 @@ struct GamekeySettings {
 
 extern const struct GamekeySettings game_key_settings[GAME_KEYS_COUNT];
 
+enum ZoomToMouseOptions
+{
+    ZoomToMouse_Never = 1,
+    ZoomToMouse_Wheel = 2,
+    ZoomToMouse_Always = 3
+};
+extern enum ZoomToMouseOptions zoom_to_mouse_option;
+
+enum RotateAroundMouseOptions
+{
+    RotateAroundMouse_Never = 1,
+    RotateAroundMouse_NotCtrl = 2,
+    RotateAroundMouse_OnlyCtrl = 3,
+    RotateAroundMouse_Always = 4
+};
+extern enum RotateAroundMouseOptions rotate_around_mouse_option;
+extern TbBool rotate_follow_mouse_option;
+
 #pragma pack()
 /******************************************************************************/
 extern long old_mx;

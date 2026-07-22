@@ -157,7 +157,7 @@ enum TbPacketAction {
         PckA_PlyrToggleAlly,
         PckA_SaveViewType,
         PckA_LoadViewType,//120
-        PckA_PlyrMsgChar    =  121,
+        PckA_UnusedSlot121    =  121,
         PckA_PlyrMsgClear,
         PckA_PlyrMsgLast,
         PckA_PlyrMsgCmdAutoCompletion,
@@ -193,7 +193,7 @@ enum TbPacketAction {
         PckA_PlyrQueryCreature,
         PckA_CheatGiveDoorTrap,
         PckA_RoomspaceHighlightToggle,
-        PckA_UnusedSlot157,
+        PckA_ApplyRoomspaceDigTag,
 		PckA_CheatWinLevel,
 		PckA_CheatLoseLevel,
 		PckA_CheatLevelUp,
@@ -226,6 +226,8 @@ enum TbPacketControl {
         PCtr_ViewTiltReset  = 0x40000,
         PCtr_Ascend         = 0x80000,
         PCtr_Descend        = 0x100000,
+        PCtr_ViewZoomPos    = 0x200000,
+        PCtr_ViewRotatePos  = 0x400000
 };
 
 /**
@@ -278,15 +280,16 @@ extern float camera_movement_y;
 struct Packet {
     GameTurn turn;
     TbBigChecksum checksum; //! Checksum of the entire game state of the previous turn, used solely for desync detection
-    unsigned char action; //! Action kind performed by the player which owns this packet
+    int8_t input_lag_turns;
+    uint8_t action; //! Action kind performed by the player which owns this packet
     int32_t actn_par1; //! Players action parameter #1
     int32_t actn_par2; //! Players action parameter #2
     int32_t pos_x; //! Mouse Cursor Position X
     int32_t pos_y; //! Mouse Cursor Position Y
     uint32_t control_flags;
-    unsigned char additional_packet_values; // uses the flags and values from TbPacketAddValues
-    int32_t actn_par3; //! Players action parameter #3
-    int32_t actn_par4; //! Players action parameter #4
+    uint8_t additional_packet_values; // uses the flags and values from TbPacketAddValues
+    int16_t actn_par3; //! Players action parameter #3
+    int16_t actn_par4; //! Players action parameter #4
 };
 
 struct PacketSaveHead {
@@ -339,10 +342,10 @@ void process_players_creature_passenger_packet_action(long idx);
 void process_players_creature_control_packet_action(long idx);
 void process_map_packet_clicks(long idx);
 void process_pause_packet(long a1, long a2);
-void message_text_key_add(char *message, TbKeyCode key, TbKeyMods kmodif);
 void process_camera_controls(struct Camera* cam, struct Packet* pckt, struct PlayerInfo* player, TbBool is_local_camera);
 void process_first_person_look(struct Thing *thing, struct Packet *pckt, long current_horizontal, long current_vertical, long *out_horizontal, long *out_vertical, long *out_roll);
 TbBool can_process_creature_input(struct Thing *thing);
+void exchange_packets(void);
 void process_packets(void);
 void set_local_packet_turn(void);
 void clear_packets(void);

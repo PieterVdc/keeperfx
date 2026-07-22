@@ -18,14 +18,17 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "custom_sprites.h"
+#include "custom_zip.h"
 #include "creature_graphics.h"
 #include "front_simple.h"
 #include "engine_render.h"
 #include "bflib_fileio.h"
 #include "gui_draw.h"
+#include "gui_msgs.h"
+#include "config_strings.h"
 #include "frontend.h"
 #include "bflib_dernc.h"
-#include "bflib_datetm.h"
+#include "net_checksums.h"
 #include "sprites.h"
 #include "config_spritecolors.h"
 #include <spng.h>
@@ -37,8 +40,8 @@
 // Performance tests
 // #define OUTER
 // #define INNER
-#ifndef PATH_MAX
-#define PATH_MAX 4096
+#if defined(OUTER) || defined(INNER)
+#include <SDL2/SDL.h>
 #endif
 
 // Each part of RGB tuple of palette file is 1-63 actually
@@ -92,11 +95,7 @@ static int num_added_lens_mists = 0;
 
 unsigned char base_pal[PALETTE_SIZE];
 
-int total_sprite_zip_count = 0;
-uint32_t sprite_zip_combined_checksum = 0;
-
-// Used to cheaply detect mismatched custom sprites between players; makes file order matter when combining checksums, without this XOR alone gives the same result regardless of order.
-#define ROL32_5(x) (((uint32_t)(x) << 5) | ((uint32_t)(x) >> 27))
+TbBigChecksum required_sprite_zip_checksums[REQUIRED_SPRITE_ZIP_COUNT];
 
 // Indicates what custom assets to load
 enum CustomLoadFlags {
@@ -163,74 +162,6 @@ static unsigned char bad_icon_data[] = // 16x16
 const struct TbSprite bad_icon = { bad_icon_data, 16, 16 };
 short bad_icon_id = INT16_MAX;
 
-/*
- * Speedup zip stuff
- * We postulate only one zip file loaded at once
- */
-static VALUE zip_cache_v;
-static VALUE *zip_cache = &zip_cache_v;
-
-static int fastUnzLocateFile(unzFile zip, const char *szFileName, int iCaseSensitivity)
-{
-    //return unzLocateFile(file, szFileName, iCaseSensitivity);
-    char seek_for[PATH_MAX];
-    strncpy(seek_for, szFileName, PATH_MAX - 1);
-    make_lowercase(seek_for);
-    VALUE *rec = value_dict_get(zip_cache, seek_for);
-    if (rec == NULL)
-        return UNZ_END_OF_LIST_OF_FILE;
-    unz64_file_pos file_pos = {
-            .pos_in_zip_directory = value_int64(value_array_get(rec, 0)),
-            .num_of_file = value_int64(value_array_get(rec, 1))
-    };
-    return unzGoToFilePos64(zip, &file_pos);
-}
-
-/*
- * Construct a cache for files.
- * Also if there is no indexFile just return instead
- * */
-static int fastUnzConstructCache(unzFile zip)
-{
-    char szCurrentFileName[PATH_MAX];
-    if (value_type(zip_cache) != VALUE_NULL)
-    {
-        ERRORLOG("Zip cache is not clear!");
-    }
-    value_init_dict(zip_cache);
-
-    for (int err = unzGoToFirstFile(zip);
-         err == UNZ_OK;
-         err = unzGoToNextFile(zip))
-    {
-        if (UNZ_OK != unzGetCurrentFileInfo64(zip, NULL,
-                                              szCurrentFileName, sizeof(szCurrentFileName) - 1,
-                                              NULL, 0, NULL, 0)
-                )
-        {
-            continue;
-        }
-        make_lowercase(szCurrentFileName);
-
-        unz64_file_pos file_pos;
-        unzGetFilePos64(zip, &file_pos);
-
-        VALUE *rec = value_dict_add(zip_cache, szCurrentFileName);
-        value_init_array(rec);
-        value_init_int64(value_array_append(rec), file_pos.pos_in_zip_directory);
-        value_init_int64(value_array_append(rec), file_pos.num_of_file);
-    }
-    return UNZ_OK;
-}
-
-static int fastUnzClearCache()
-{
-    value_fini(zip_cache);
-    return 0;
-}
-
-/* end of zip stuff */
-
 static int cmp_named_command(const void *a, const void *b)
 {
 
@@ -239,31 +170,6 @@ static int cmp_named_command(const void *a, const void *b)
     return strcasecmp(val_a->name, val_b->name);
 }
 
-
-static uint32_t compute_zip_checksum(const char *path)
-{
-    long file_length = LbFileLength(path);
-    if (file_length <= 0) {
-        return 0;
-    }
-    TbFileHandle handle = LbFileOpen(path, Lb_FILE_MODE_READ_ONLY);
-    if (handle == NULL) {
-        return 0;
-    }
-    unsigned char *buffer = malloc(file_length);
-    if (buffer == NULL) {
-        LbFileClose(handle);
-        return 0;
-    }
-    LbFileRead(handle, buffer, file_length);
-    LbFileClose(handle);
-    uint32_t checksum = 0;
-    for (long i = 0; i < file_length; i++) {
-        checksum = ROL32_5(checksum) ^ buffer[i];
-    }
-    free(buffer);
-    return checksum;
-}
 
 static int load_file_sprites(const char *path, const char *file_desc)
 {
@@ -327,37 +233,69 @@ static int load_file_sprites(const char *path, const char *file_desc)
         }
     }
 
-    sprite_zip_combined_checksum = ROL32_5(sprite_zip_combined_checksum) ^ compute_zip_checksum(path);
-    total_sprite_zip_count++;
-
     return add_flag;
 }
 
 static void load_dir_sprites(const char *dir_path, const char *dir_desc)
 {
     SYNCDBG(8, "Starting");
-    if (dir_path == NULL || dir_path[0] == 0)
+    if (dir_path == NULL || dir_path[0] == 0) {
         return;
+    }
     char full_path[1024] = {0};
     sprintf(full_path, "%s/%s", dir_path, "*.zip");
     struct TbFileEntry fe;
-    struct TbFileFind * ff = LbFileFindFirst(full_path, &fe);
+    struct TbFileFind *ff = LbFileFindFirst(full_path, &fe);
     int cnt_zip = 0, cnt_sprite = 0, cnt_icon = 0;
     if (ff) {
         do {
             sprintf(full_path, "%s/%s", dir_path, fe.Filename);
             int add_flag = load_file_sprites(full_path, NULL);
-            if (add_flag & CLF_Sprites)
+            if (add_flag & CLF_Sprites) {
                 cnt_sprite++;
-            if (add_flag & CLF_Icons)
+            }
+            if (add_flag & CLF_Icons) {
                 cnt_icon++;
+            }
             cnt_zip++;
         } while (LbFileFindNext(ff, &fe) >= 0);
         LbFileFindEnd(ff);
 
-        if (dir_desc != NULL)
+        if (dir_desc != NULL) {
             LbJustLog("Found %d sprite zip file(s) from %s, loaded %d with animations and %d with icons. Used %d/%d sprite slots.\n", cnt_zip, dir_desc, cnt_sprite, cnt_icon, next_free_sprite, KEEPERSPRITE_ADD_NUM);
+        }
     }
+}
+
+void show_ignored_fxdata_zip_messages(void)
+{
+    char *dname = prepare_file_path(FGrp_FxData, NULL);
+    if (dname == NULL || dname[0] == 0) {
+        return;
+    }
+    char full_path[1024] = {0};
+    sprintf(full_path, "%s/%s", dname, "*.zip");
+    struct TbFileEntry fe;
+    struct TbFileFind *ff = LbFileFindFirst(full_path, &fe);
+    if (ff == NULL) {
+        return;
+    }
+    do {
+        int zip_is_required = 0;
+        for (int i = 0; i < REQUIRED_SPRITE_ZIP_COUNT; i++) {
+            if (strcasecmp(fe.Filename, required_sprite_zips[i]) == 0) {
+                zip_is_required = 1;
+                break;
+            }
+        }
+        if (zip_is_required != 0) {
+            continue;
+        }
+        WARNLOG("/fxdata/%s was not loaded. Please install it as a mod inside the /mods/ folder.", fe.Filename);
+        message_add(MsgType_Blank, 0, get_string(GUIStr_FxdataZipInstallAsMod));
+        message_add_fmt(MsgType_Blank, 0, get_string(GUIStr_FxdataZipNotLoaded), fe.Filename);
+    } while (LbFileFindNext(ff, &fe) >= 0);
+    LbFileFindEnd(ff);
 }
 
 /* @comment
@@ -423,8 +361,7 @@ void init_custom_sprites(LevelNumber lvnum)
     SYNCDBG(8, "Starting");
     free_spritesheet(&custom_sprites);
     custom_sprites = create_spritesheet();
-    total_sprite_zip_count = 0;
-    sprite_zip_combined_checksum = 0;
+    memset(required_sprite_zip_checksums, 0, sizeof(required_sprite_zip_checksums));
     // This is a workaround because get_selected_level_number is zeroed on res change
     if (lvnum == SPRITE_LAST_LEVEL)
     {
@@ -481,7 +418,35 @@ void init_custom_sprites(LevelNumber lvnum)
 
 
     char *dname = prepare_file_path(FGrp_FxData, NULL);
-    load_dir_sprites(dname, "Main FxData dir");
+    if (dname == NULL || dname[0] == 0) {
+        ERRORLOG("Required Main FxData dir is missing");
+    } else {
+        char full_path[1024] = {0};
+        char loaded_zip_names[1024] = {0};
+        int loaded_zip_names_len = 0;
+        const char *loaded_zip_name_sep = "";
+        int cnt_sprite = 0, cnt_icon = 0;
+        for (int i = 0; i < REQUIRED_SPRITE_ZIP_COUNT; i++) {
+            sprintf(full_path, "%s/%s", dname, required_sprite_zips[i]);
+            if (!LbFileExists(full_path)) {
+                ERRORLOG("Required /fxdata/%s is missing", required_sprite_zips[i]);
+                continue;
+            }
+            required_sprite_zip_checksums[i] = calculate_file_checksum(full_path);
+            int add_flag = load_file_sprites(full_path, NULL);
+            if (add_flag & CLF_Sprites) {
+                cnt_sprite++;
+            }
+            if (add_flag & CLF_Icons) {
+                cnt_icon++;
+            }
+            if (loaded_zip_names_len < (int)sizeof(loaded_zip_names)) {
+                loaded_zip_names_len += snprintf(&loaded_zip_names[loaded_zip_names_len], sizeof(loaded_zip_names) - loaded_zip_names_len, "%s%s", loaded_zip_name_sep, required_sprite_zips[i]);
+            }
+            loaded_zip_name_sep = ", ";
+        }
+        LbJustLog("Loaded /fxdata/ sprite zips: %s, sprite slots: %d/%d, animations: %d, icons: %d.\n", loaded_zip_names, next_free_sprite, KEEPERSPRITE_ADD_NUM, cnt_sprite, cnt_icon);
+    }
 
     if (mods_conf.after_base_cnt > 0)
     {
@@ -1557,7 +1522,6 @@ static unsigned char* decode_png_to_indexed_internal(unzFile zip, const char *fi
 
 
     // Convert RGBA to palette indices using rgb_to_pal_table
-    int transparent_count = 0, opaque_count = 0;
     for (size_t i = 0; i < indexed_size; i++)
     {
         unsigned char red = rgba_buffer[i * 4 + 0];
@@ -1571,17 +1535,14 @@ static unsigned char* decode_png_to_indexed_internal(unzFile zip, const char *fi
             if (alpha < 128) {
                 // Transparent pixel - use palette index 255 as transparency marker
                 indexed_data[i] = 255;
-                transparent_count++;
             } else if (rgb_to_pal_table != NULL) {
                 // Use lookup table for color conversion
                 indexed_data[i] = rgb_to_pal_table[
                     ((red >> 2) << 12) | ((green >> 2) << 6) | (blue >> 2)
                 ];
-                opaque_count++;
             } else {
                 // Fallback: simple grayscale conversion
                 indexed_data[i] = (red + green + blue) / 3;
-                opaque_count++;
             }
         }
         else
@@ -2111,11 +2072,10 @@ short get_anim_id(const char *name, struct ObjectConfigStats *objst)
     if (0 == strcmp(name, "0"))
         return 0;
 
-    char *P = strrchr(name, ':');
-    if (P != NULL)
+    if (strrchr(name, ':') != NULL)
     {
         char *name2 = strdup(name);
-        P = strchr(name2, ':');
+        char *P = strchr(name2, ':');
         *P = 0; // removing :
         P++;
         key.name = name2;

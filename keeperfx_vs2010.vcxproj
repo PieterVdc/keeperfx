@@ -21,6 +21,7 @@
     <ClCompile Include="src\ariadne_points.c" />
     <ClCompile Include="src\ariadne_regions.c" />
     <ClCompile Include="src\ariadne_tringls.c" />
+    <ClCompile Include="src\ariadne_update.c" />
     <ClCompile Include="src\ariadne_wallhug.c" />
     <ClCompile Include="src\bflib_basics.c" />
     <ClCompile Include="src\bflib_coroutine.c" />
@@ -47,6 +48,7 @@
     <ClCompile Include="src\bflib_netsession.c" />
     <ClCompile Include="src\bflib_netsp.cpp" />
     <ClCompile Include="src\bflib_netsp_tcp.cpp" />
+    <ClCompile Include="src\config_sounds.c" />
     <ClCompile Include="src\lua_api_lens.c" />
     <ClCompile Include="src\lua_api_room.c" />
     <ClCompile Include="src\bflib_planar.c" />
@@ -114,6 +116,7 @@
     <ClCompile Include="src\creature_states_wrshp.c" />
     <ClCompile Include="src\cursor_tag.c" />
     <ClCompile Include="src\custom_sprites.c" />
+    <ClCompile Include="src\custom_zip.c" />
     <ClCompile Include="src\dungeon_data.c" />
     <ClCompile Include="src\dungeon_stats.c" />
     <ClCompile Include="src\engine_arrays.c" />
@@ -186,6 +189,7 @@
     <ClCompile Include="src\lua_api_camera.c" />
     <ClCompile Include="src\lua_api_player.c" />
     <ClCompile Include="src\lua_api_slabs.c" />
+    <ClCompile Include="src\lua_api_sound.c" />
     <ClCompile Include="src\lua_api_things.c" />
     <ClCompile Include="src\lua_api_map.c" />
     <ClCompile Include="src\lua_base.c" />
@@ -256,6 +260,7 @@
     <ClCompile Include="src\scrcapt.c" />
     <ClCompile Include="src\slab_data.c" />
     <ClCompile Include="src\sounds.c" />
+    <ClCompile Include="src\sound_manager.cpp" />
     <ClCompile Include="src\spdigger_stack.c" />
     <ClCompile Include="src\spritesheet.cpp" />
     <ClCompile Include="src\steam_api.cpp" />
@@ -314,7 +319,9 @@
     <ClInclude Include="src\bflib_netsession.h" />
     <ClInclude Include="src\bflib_netsp.hpp" />
     <ClInclude Include="src\bflib_netsp_tcp.hpp" />
+    <ClInclude Include="src\config_sounds.h" />
     <ClInclude Include="src\lua_api_lens.h" />
+    <ClInclude Include="src\lua_api_sound.h" />
     <ClInclude Include="src\net_exchange_common.h" />
     <ClInclude Include="src\net_exchange_gameplay.h" />
     <ClInclude Include="src\bflib_planar.h" />
@@ -376,6 +383,7 @@
     <ClInclude Include="src\creature_states_wrshp.h" />
     <ClInclude Include="src\cursor_tag.h" />
     <ClInclude Include="src\custom_sprites.h" />
+    <ClInclude Include="src\custom_zip.h" />
     <ClInclude Include="src\dungeon_data.h" />
     <ClInclude Include="src\dungeon_stats.h" />
     <ClInclude Include="src\engine_arrays.h" />
@@ -493,6 +501,7 @@
     <ClInclude Include="src\scrcapt.h" />
     <ClInclude Include="src\slab_data.h" />
     <ClInclude Include="src\sounds.h" />
+    <ClInclude Include="src\sound_manager.h" />
     <ClInclude Include="src\spdigger_stack.h" />
     <ClInclude Include="src\sprites.h" />
     <ClInclude Include="src\steam_api.hpp" />

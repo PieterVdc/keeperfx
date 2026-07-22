@@ -34,7 +34,6 @@
 #include "config_creature.h"
 #include "creature_senses.h"
 #include "player_utils.h"
-#include "ariadne_wallhug.h"
 #include "spdigger_stack.h"
 #include "frontmenu_ingame_map.h"
 #include "game_legacy.h"
@@ -622,7 +621,12 @@ static void delete_attached_things_on_slab(long slb_x, long slb_y)
                     {
                         char class_id = thing->class_id;
                         if (class_id == TCls_Object || class_id == TCls_EffectGen)
-                            destroy_thing(thing);
+                        {
+                            if (thing_is_dungeon_heart(thing))
+                                thing->health = 0;
+                            else
+                                destroy_thing(thing);
+                        }
                     }
                     thing = next_thing;
                     k++;
@@ -966,6 +970,15 @@ void place_slab_object(SlabCodedCoords slb_num, MapSubtlCoord stl_x,MapSubtlCoor
                         if (dungeon->backup_heart_idx == 0)
                         {
                             dungeon->backup_heart_idx = objtng->index;
+                        }
+                        else
+                        {
+                            struct Thing* backup = thing_get(dungeon->backup_heart_idx);
+                            if (!thing_is_dungeon_heart(backup))
+                            {
+                                ERRORLOG("%s had invalid backup heart %s", player_code_name(plyr_idx), thing_model_name(backup));
+                                dungeon->backup_heart_idx = objtng->index;
+                            }
                         }
                     }
                 } else
@@ -1433,7 +1446,11 @@ static void shuffle_unattached_things_on_slab(MapSlabCoord slb_x, MapSlabCoord s
                     }
                     if (delete_thing)
                     {
-                        destroy_thing(thing);
+                        // Hearts are normally attached, but you never know what a mapmaker does.
+                        if (thing_is_dungeon_heart(thing))
+                            thing->health = 0;
+                        else
+                            destroy_thing(thing);
                     }
                 }
                 thing = next_thing;

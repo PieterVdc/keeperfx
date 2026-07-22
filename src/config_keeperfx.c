@@ -13,6 +13,7 @@
  *     (at your option) any later version.
  */
 /******************************************************************************/
+#include "kfx_memory.h"
 #include "pre_inc.h"
 #include "config_keeperfx.h"
 
@@ -27,10 +28,13 @@
 #include "bflib_datetm.h"
 #include "bflib_mouse.h"
 #include "bflib_sound.h"
+#include "bflib_fmvids.h"
+#include "bflib_sprfnt.h"
 #include "config_campaigns.h"
 #include "engine_render.h"
 #include "frontend.h"
 #include "front_simple.h"
+#include "front_input.h"
 #include "gui_draw.h"
 #include "scrcapt.h"
 #include "sounds.h"
@@ -154,6 +158,8 @@ const struct NamedCommand conf_commands[] = {
   {"FRAMES_PER_SECOND"             , 39},
   {"TAG_MODE_TOGGLING"             , 40},
   {"DEFAULT_TAG_MODE"              , 41},
+  {"ZOOM_TO_MOUSE"                 , 42},
+  {"ROTATE_AROUND_MOUSE"           , 43},
   {NULL,                   0},
   };
 
@@ -184,7 +190,22 @@ const struct NamedCommand conf_commands[] = {
   {NULL,       0},
   };
 
-unsigned int vid_scale_flags = 0;
+  const struct NamedCommand zoom_to_mouse_options[] = {
+  {"NEVER",    ZoomToMouse_Never},
+  {"WHEEL",    ZoomToMouse_Wheel},
+  {"ALWAYS",   ZoomToMouse_Always},
+  {NULL,       0},
+  };
+
+  const struct NamedCommand rotate_around_mouse_options[] = {
+  {"NEVER",         RotateAroundMouse_Never},
+  {"NOT_CTRL",      RotateAroundMouse_NotCtrl},
+  {"ONLY_CTRL",     RotateAroundMouse_OnlyCtrl},
+  {"ALWAYS",        RotateAroundMouse_Always},
+  {NULL,            0},
+  };
+
+unsigned int vid_scale_flags = SMK_FullscreenFit;
 
 
 /******************************************************************************/
@@ -304,15 +325,26 @@ TbBool prepare_diskpath(char *buf,long buflen)
         i = buflen - 1;
     if (i < 0)
         return false;
+    // Strip trailing path separators and whitespace.
     while (i > 0)
     {
         if ((buf[i] != '\\') && (buf[i] != '/') &&
             ((unsigned char)(buf[i]) > 32))
             break;
         i--;
-  }
-  buf[i+1]='\0';
-  return true;
+    }
+    // Also strip trailing "/." and "\." (current-directory components).
+    // This normalises paths like "ux0:data/keeperfx/./" -> "ux0:data/keeperfx"
+    // which result from resolving a relative INSTALL_PATH such as "./".
+    while (i >= 1 && buf[i] == '.' && (buf[i-1] == '/' || buf[i-1] == '\\'))
+    {
+        i -= 2; // drop the "/."
+        // strip any additional trailing separators left behind
+        while (i > 0 && (buf[i] == '/' || buf[i] == '\\'))
+            i--;
+    }
+    buf[i+1]='\0';
+    return true;
 }
 
 static void load_file_configuration(const char *fname, const char *sname, const char *config_textname, unsigned short flags)
@@ -329,7 +361,7 @@ static void load_file_configuration(const char *fname, const char *sname, const 
     WARNMSG("%s file \"%s\" is too large.",config_textname,sname);
     return;
   }
-  char* buf = (char*)calloc(len + 256, 1);
+  char* buf = (char*)KfxCalloc(len + 256, 1);
   if (buf == NULL)
     return;
   // Loading file data
@@ -345,7 +377,7 @@ static void load_file_configuration(const char *fname, const char *sname, const 
     while (pos<len)
     {
       // Finding command number in this line
-      int i = 0, n = 0;
+      int i = 0;
       int cmd_num = recognize_conf_command(buf, &pos, len, conf_commands);
       // Now store the config item in correct place
       int k;
@@ -361,6 +393,15 @@ static void load_file_configuration(const char *fname, const char *sname, const 
             break;
           }
           prepare_diskpath(install_info.inst_path,sizeof(install_info.inst_path));
+          // If the path is relative, resolve it against keeper_runtime_directory.
+          // This makes INSTALL_PATH=./ work on platforms where CWD != data dir.
+          if (install_info.inst_path[0] != '/' && strchr(install_info.inst_path, ':') == NULL) {
+              char resolved[304];
+              snprintf(resolved, sizeof(resolved), "%s/%s", keeper_runtime_directory, install_info.inst_path);
+              prepare_diskpath(resolved, sizeof(resolved));
+              strncpy(install_info.inst_path, resolved, sizeof(install_info.inst_path)-1);
+              install_info.inst_path[sizeof(install_info.inst_path)-1] = '\0';
+          }
           break;
       case 2: // INSTALL_TYPE
           // This command is just skipped...
@@ -454,7 +495,7 @@ static void load_file_configuration(const char *fname, const char *sname, const 
           {
             i = atoi(word_buf);
           }
-          if ((i >= 0) && (i <= 1000)) {
+          if ((i >= 0) && (i <= 10000)) {
               base_mouse_sensitivity = i*256/100;
           } else {
               CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
@@ -648,23 +689,18 @@ static void load_file_configuration(const char *fname, const char *sname, const 
             {
               case 1: // LEGAL
                 set_flag(start_params.startup_flags, SFlg_Legal);
-                n++;
                 break;
               case 2: // FX
                 set_flag(start_params.startup_flags, SFlg_FX);
-                n++;
                 break;
               case 3: // BULLFROG
                 set_flag(start_params.startup_flags, SFlg_Bullfrog);
-                n++;
                 break;
               case 4: // EA
                 set_flag(start_params.startup_flags, SFlg_EA);
-                n++;
                 break;
               case 5: // INTRO
                 set_flag(start_params.startup_flags, SFlg_Intro);
-                n++;
                 break;
               default:
                 CONFWRNLOG("Incorrect value of \"%s\" parameter \"%s\" in %s file.",
@@ -892,6 +928,43 @@ static void load_file_configuration(const char *fname, const char *sname, const 
             default_tag_mode = i;
           }
           break;
+      case 42: // ZOOM_TO_MOUSE
+          i = recognize_conf_parameter(buf,&pos,len,zoom_to_mouse_options);
+          if (i <= 0)
+          {
+            CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",COMMAND_TEXT(cmd_num),config_textname);
+          }
+          else
+          {
+            zoom_to_mouse_option = i;
+          }
+          break;
+      case 43: // ROTATE_AROUND_MOUSE
+          i = recognize_conf_parameter(buf,&pos,len,rotate_around_mouse_options);
+          if (i <= 0)
+          {
+            CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.", COMMAND_TEXT(cmd_num), config_textname);
+          }
+          else
+          {
+            rotate_around_mouse_option = i;
+          }
+          if (get_conf_parameter_single(buf,&pos,len,word_buf,sizeof(word_buf)) > 0)
+          {
+              if (strcasecmp(word_buf, "FOLLOW") == 0)
+              {
+                  rotate_follow_mouse_option = true;
+              }
+              if (strcasecmp(word_buf, "NO_FOLLOW") == 0)
+              {
+                  rotate_follow_mouse_option = false;
+              }
+              else
+              {
+                  CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.", COMMAND_TEXT(cmd_num), config_textname);
+              }
+          }
+          break;
       case ccr_comment:
           break;
       case ccr_endOfFile:
@@ -906,7 +979,7 @@ static void load_file_configuration(const char *fname, const char *sname, const 
   }
   SYNCDBG(7,"%s loaded", config_textname);
   // Freeing
-  free(buf);
+  KfxFree(buf);
 
 }
 
@@ -916,7 +989,7 @@ static void load_configuration_for_mod(const struct ModConfigItem *mod_item)
     sprintf(mod_dir, "%s/%s", MODS_DIR_NAME, mod_item->name);
     sprintf(config_textname, "Mod config '%s'", mod_item->name);
 
-    char *fname = prepare_file_fmtpath_mod(mod_dir, FGrp_Main, "%s", keeper_config_file);
+    char *fname = get_mod_file_path_fmt(mod_dir, FGrp_Main, "%s", keeper_config_file);
     load_file_configuration(fname, keeper_config_file, config_textname, CnfLd_IgnoreErrors);
 }
 
@@ -1011,37 +1084,6 @@ short load_configuration(void)
   load_file_configuration(fname, sname, config_textname, 0);
 
   load_configuration_for_mod_all();
-
-  // Updating game according to loaded settings
-  switch (install_info.lang_id)
-  {
-  case 1:
-      LbKeyboardSetLanguage(1);
-      break;
-  case 2:
-      LbKeyboardSetLanguage(2);
-      break;
-  case 3:
-      LbKeyboardSetLanguage(3);
-      break;
-  case 4:
-      LbKeyboardSetLanguage(4);
-      break;
-  case 5:
-      LbKeyboardSetLanguage(5);
-      break;
-  case 6:
-      LbKeyboardSetLanguage(6);
-      break;
-  case 7:
-      LbKeyboardSetLanguage(7);
-      break;
-  case 8:
-      LbKeyboardSetLanguage(8);
-      break;
-  default:
-      break;
-  }
 
   // Returning if the setting are valid
   if ((install_info.lang_id > 0) && (install_info.inst_path[0] != '\0'))

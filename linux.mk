@@ -20,6 +20,7 @@ src/ariadne_navitree.c \
 src/ariadne_points.c \
 src/ariadne_regions.c \
 src/ariadne_tringls.c \
+src/ariadne_update.c \
 src/ariadne_wallhug.c \
 src/bflib_basics.c \
 src/bflib_dialog.c \
@@ -56,6 +57,7 @@ src/bflib_sndlib.cpp \
 src/bflib_sound.c \
 src/bflib_sprfnt.c \
 src/bflib_string.c \
+src/bflib_text.c \
 src/bflib_video.c \
 src/bflib_vidraw.c \
 src/bflib_vidraw_spr_norm.c \
@@ -76,16 +78,19 @@ src/config_objects.c \
 src/config_players.c \
 src/config_powerhands.c \
 src/config_rules.c \
+src/config_sounds.c \
 src/config_settings.c \
 src/config_slabsets.c \
 src/config_strings.c \
 src/config_terrain.c \
 src/config_cubes.c \
 src/config_textures.c \
+src/config_translation.c \
 src/config_trapdoor.c \
 src/config_spritecolors.c \
 src/console_cmd.c \
 src/custom_sprites.c \
+src/custom_zip.c \
 src/creature_battle.c \
 src/creature_control.c \
 src/creature_graphics.c \
@@ -170,6 +175,7 @@ src/highscores.c \
 src/kjm_input.c \
 src/lens_api.c \
 src/config_effects.c \
+src/kfx_memory.c \
 src/kfx/lense/DisplacementEffect.cpp \
 src/kfx/lense/FlyeyeEffect.cpp \
 src/kfx/lense/LensEffect.cpp \
@@ -187,6 +193,7 @@ src/lua_api_player.c \
 src/lua_api_room.c \
 src/lua_api_things.c \
 src/lua_api_slabs.c \
+src/lua_api_sound.c \
 src/lua_base.c \
 src/lua_api_camera.c \
 src/lua_cfg_funcs.c \
@@ -254,6 +261,7 @@ src/roomspace_prediction.c \
 src/scrcapt.c \
 src/slab_data.c \
 src/sounds.c \
+src/sound_manager.cpp \
 src/spdigger_stack.c \
 src/spritesheet.cpp \
 src/tasks_list.c \
@@ -287,7 +295,8 @@ KFX_INCLUDES = \
 	-Ideps/astronomy/include \
 	-Ideps/enet6/include \
 	-Ideps/libcurl/include \
-	$(shell pkg-config --cflags-only-I luajit)
+	$(shell pkg-config --cflags-only-I luajit) \
+	$(shell pkg-config --cflags-only-I libavformat)
 
 KFX_CFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=x86-64 $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-absolute-value -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare
 KFX_CXXFLAGS += -g -DDEBUG -DBFDEBUG_LEVEL=0 -O3 -march=x86-64 $(KFX_INCLUDES) -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare
@@ -334,6 +343,16 @@ KFX_LDFLAGS += -flto=auto
 TOML_CFLAGS += -flto
 endif
 
+# All downloaded dependencies must be unpacked before any object is compiled.
+# Otherwise a parallel build (make -jN) can start compiling a source that
+# includes a not-yet-extracted dependency header (e.g. <enet6/enet.h>) and fail
+# on the first run. Used as an order-only prerequisite of every object below.
+DEPS_EXTRACTED = \
+	deps/centijson/include/json.h \
+	deps/astronomy/include/astronomy.h \
+	deps/enet6/include/enet6/enet.h \
+	deps/libcurl/lib/libcurl.a
+
 all: bin/keeperfx
 
 clean:
@@ -345,15 +364,15 @@ clean:
 bin/keeperfx: $(KFX_OBJECTS) $(TOML_OBJECTS) deps/libcurl/lib/libcurl.a | bin
 	$(CXX) -o $@ $(KFX_OBJECTS) $(TOML_OBJECTS) $(KFX_LDFLAGS)
 
-$(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h | obj
+$(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h | obj $(DEPS_EXTRACTED)
 	$(MKDIR) $(dir $@)
 	$(CC) $(KFX_CFLAGS) -c $< -o $@
 
-$(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h | obj
+$(KFX_CXX_OBJECTS): obj/%.o: src/%.cpp src/ver_defs.h | obj $(DEPS_EXTRACTED)
 	$(MKDIR) $(dir $@)
 	$(CXX) $(KFX_CXXFLAGS) -c $< -o $@
 
-$(TOML_OBJECTS): obj/centitoml/%.o: deps/centitoml/%.c | obj/centitoml
+$(TOML_OBJECTS): obj/centitoml/%.o: deps/centitoml/%.c | obj/centitoml $(DEPS_EXTRACTED)
 	$(CC) $(TOML_CFLAGS) -c $< -o $@
 
 bin obj deps/astronomy deps/centijson deps/enet6 deps/libcurl obj/centitoml:

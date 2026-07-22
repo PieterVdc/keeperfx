@@ -69,6 +69,7 @@ static void finalize_high_score_entry(TbBool restore_default_name)
     }
     highscore_scroll_offset = high_score_entry_input_active - (VISIBLE_HIGH_SCORES_COUNT-1);
     high_score_entry_input_active = -1;
+    LbStopTextInput();
     save_high_score_table();
 }
 
@@ -153,7 +154,7 @@ void frontend_draw_high_score_table(struct GuiButton *gbtn)
     {
         draw_high_score_entry(k, pos_x, pos_y, col1_width, col2_width, col3_width, col4_width, tx_units_per_px);
         pos_y += LbTextLineHeight() * tx_units_per_px / 16;
-        if (dbc_language > 0)
+        if (dbc_initialized && dbc_enabled)
         {
             pos_y += scale_value_menu(4);
         }
@@ -188,18 +189,27 @@ TbBool frontend_high_score_table_input(void)
     if (high_score_entry_input_active >= campaign.hiscore_count)
         high_score_entry_input_active = -1;
     if (high_score_entry_input_active < 0)
+    {
+        if (LbIsTextInputActive())
+            LbStopTextInput();
         return false;
+    }
+    if (!LbIsTextInputActive())
+        LbStartTextInput();
     if (lbInkey == KC_BACK)
     {
         // Delete previous character
         if (high_score_entry_index > 0)
         {
-            i = high_score_entry_index-1;
-            while (high_score_entry[i] != '\0') {
-                high_score_entry[i] = high_score_entry[i+1];
-                i++;
+            // Step back over UTF-8 continuation bytes to the start of the previous character
+            unsigned long start = high_score_entry_index - 1;
+            while ((start > 0) && ((high_score_entry[start] & 0xc0) == 0x80)) {
+                start--;
             }
-            high_score_entry_index--;
+            unsigned long clen = high_score_entry_index - start;
+            unsigned long slen = strlen(high_score_entry);
+            memmove(&high_score_entry[start], &high_score_entry[start+clen], slen - (start+clen) + 1);
+            high_score_entry_index = start;
         }
         clear_key_pressed(KC_BACK);
         return true;
@@ -208,9 +218,14 @@ TbBool frontend_high_score_table_input(void)
     {
         // Delete next character
         i = high_score_entry_index;
-        while (high_score_entry[i] != '\0') {
-            high_score_entry[i] = high_score_entry[i+1];
-            i++;
+        if (high_score_entry[i] != '\0')
+        {
+            unsigned long clen = 1;
+            while ((high_score_entry[i+clen] & 0xc0) == 0x80) {
+                clen++;
+            }
+            unsigned long slen = strlen(high_score_entry);
+            memmove(&high_score_entry[i], &high_score_entry[i+clen], slen - (i+clen) + 1);
         }
         clear_key_pressed(KC_DELETE);
         return true;
@@ -220,6 +235,9 @@ TbBool frontend_high_score_table_input(void)
         // Move cursor left
         if (high_score_entry_index > 0) {
             high_score_entry_index--;
+            while ((high_score_entry_index > 0) && ((high_score_entry[high_score_entry_index] & 0xc0) == 0x80)) {
+                high_score_entry_index--;
+            }
         }
         clear_key_pressed(KC_LEFT);
         return true;
@@ -230,6 +248,9 @@ TbBool frontend_high_score_table_input(void)
         i = high_score_entry_index;
         if (high_score_entry[i] != '\0') {
             high_score_entry_index++;
+            while ((high_score_entry[high_score_entry_index] & 0xc0) == 0x80) {
+                high_score_entry_index++;
+            }
         }
         clear_key_pressed(KC_RIGHT);
         return true;
@@ -253,37 +274,34 @@ TbBool frontend_high_score_table_input(void)
     {
         finalize_high_score_entry(lbInkey == KC_ESCAPE);
         clear_key_pressed(lbInkey);
+        LbStopTextInput();
         return true;
     }
-    char chr = key_to_ascii(lbInkey, key_modifiers);
-    if (chr != 0)
+
+    char insert_text[HISCORE_NAME_LENGTH] = "";
+    if (add_input_text_to_message(insert_text, sizeof(insert_text), frontend_font[1], 260))
     {
-        LbTextSetFont(frontend_font[1]);
-        int tx_units_per_px;
-        if (dbc_language > 0)
+        if (insert_text[0] != '\0')
         {
-            tx_units_per_px = scale_value_menu(24);
-        }
-        else
-        {
-            tx_units_per_px = scale_value_menu(16);
-        }
-        i = LbTextCharWidthM(chr, tx_units_per_px);
-        size_t entry_len = strlen(high_score_entry);
-        if ((entry_len < (HISCORE_NAME_LENGTH - 1)) &&
-            ((i > 0) && (i + LbTextStringWidth(high_score_entry) < 260)))
-        {
-            i = entry_len;
-            high_score_entry[i+1] = '\0';
-            while (i > high_score_entry_index) {
-                high_score_entry[i] = high_score_entry[i-1];
-                i--;
+            size_t insert_len = strlen(insert_text);
+            size_t entry_len = strlen(high_score_entry);
+            if (entry_len + insert_len < (HISCORE_NAME_LENGTH - 1))
+            {
+                char candidate[HISCORE_NAME_LENGTH];
+                size_t prefix_len = high_score_entry_index;
+                memcpy(candidate, high_score_entry, prefix_len);
+                memcpy(candidate + prefix_len, insert_text, insert_len);
+                memcpy(candidate + prefix_len + insert_len,
+                       high_score_entry + prefix_len,
+                       entry_len - prefix_len + 1);
+                if (LbTextStringWidth(candidate) < 260)
+                {
+                    memcpy(high_score_entry, candidate, entry_len + insert_len + 1);
+                    high_score_entry_index += insert_len;
+                }
             }
-            high_score_entry[i] = chr;
-            high_score_entry_index = i + 1;
-            clear_key_pressed(lbInkey);
-            return true;
         }
+        return true;
     }
     // No input, but return true to make sure other input functions are skipped
     return true;
@@ -457,7 +475,7 @@ void frontend_draw_high_scores_mappack(struct GuiButton *gbtn)
     LbTextSetFont(frontend_font[2]);
     int tx_units_per_px = gbtn->height * 16 / LbTextLineHeight();
     LbTextSetWindow(gbtn->scr_pos_x, gbtn->scr_pos_y, gbtn->width, gbtn->height);
-    LbTextDrawResized((dbc_language > 0) ? -30 : 0, 0, tx_units_per_px, text);
+    LbTextDrawResized((dbc_initialized && dbc_enabled) ? -30 : 0, 0, tx_units_per_px, text);
 }
 
 unsigned long count_high_scores()

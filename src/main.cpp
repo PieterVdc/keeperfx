@@ -31,6 +31,7 @@
 #include "bflib_vidraw.h"
 #include "bflib_guibtns.h"
 #include "bflib_sound.h"
+#include "config_sounds.h"
 #include "bflib_mouse.h"
 #include "bflib_mshandler.hpp"
 #include "bflib_filelst.h"
@@ -39,6 +40,7 @@
 #include "net_resync.h"
 #include "bflib_planar.h"
 
+#include "ariadne_update.h"
 #include "api.h"
 #include "custom_sprites.h"
 #include "version.h"
@@ -119,7 +121,6 @@
 #include "gui_frontbtns.h"
 #include "frontmenu_ingame_tabs.h"
 #include "frontmenu_ingame_evnt.h"
-#include "ariadne.h"
 #include "sounds.h"
 #include "vidfade.h"
 #include "config_settings.h"
@@ -131,7 +132,7 @@
 #include "net_input_lag.h"
 #include "moonphase.h"
 #include "frontmenu_ingame_map.h"
-#include <stdint.h>
+#include <cstdint>
 
 #ifdef FUNCTESTING
   #include "ftests/ftest.h"
@@ -153,12 +154,6 @@ struct StartupParameters start_params;
 char autostart_multiplayer_campaign[80] = "";
 int autostart_multiplayer_level = 0;
 int32_t turns_per_second;
-
-int32_t turns_per_second_draw_current = 0;
-int32_t turns_per_second_draw_main = 0; // -1 if auto
-int32_t turns_per_second_draw_secondary = 0;
-
-
 unsigned char *blue_palette;
 unsigned char *red_palette;
 unsigned char *dog_palette;
@@ -221,13 +216,22 @@ extern void startup_network_game(CoroutineLoop *context, TbBool local);
 /******************************************************************************/
 
 TbClockMSec timerstarttime = 0;
-long double last_draw_completed_time = 0;
 struct TimerTime Timer;
 TbBool TimerGame = false;
 TbBool TimerNoReset = false;
 TbBool TimerFreeze = false;
 /******************************************************************************/
 
+int32_t fps_limit_current = 0;
+int32_t fps_limit_main = 0; // -1 if auto
+int32_t fps_limit_secondary = 0;
+static long double process_frame_time = 0;
+static long double time_since_last_draw = 0;
+static long double average_frame_draw_time = 1;
+static long double multiplayer_clock_adjust = 1;
+long double host_packet_received = 1;
+float interpolate_time = 0;
+/******************************************************************************/
 
 TbPixel get_player_path_colour(unsigned short owner)
 {
@@ -249,6 +253,7 @@ TbBool should_use_delta_time_on_menu()
         case FeSt_NET_SERVICE: /**< Network service selection, where player can select Serial/Modem/IPX/TCP IP/1 player. */
         case FeSt_NET_SESSION: /**< Network session selection screen, where list of games is displayed, with possibility to join or create own game. */
         case FeSt_NET_START: /**< Network game start screen (the menu with chat), when created new session or joined existing session. */
+        case FeSt_LEVEL_STATS:
         case FeSt_HIGH_SCORES:
         case FeSt_FEDEFINE_KEYS:
         case FeSt_FEOPTIONS:
@@ -475,7 +480,7 @@ long apply_wallhug_force_to_boulder(struct Thing *thing)
     {
       if ( (thing->model != ShM_SolidBoulder) && (collide == 0) )
       {
-        thing->health -= game.conf.rules[thing->owner].game.boulder_reduce_health_wall;
+        thing->health -= game.conf.rules[thing->owner].gameplay.boulder_reduce_health_wall;
       }
       slide_thing_against_wall_at(thing, &pos, blocked_flags);
       if ( blocked_flags & SlbBloF_WalledX )
@@ -562,7 +567,7 @@ long process_boulder_collision(struct Thing *boulder, struct Coord3d *pos, int d
             }
             if (boulder->model != ShM_SolidBoulder) // Solid Boulder (shot20) takes no damage when destroying guardposts
             {
-                boulder->health -= game.conf.rules[boulder->owner].game.boulder_reduce_health_room; // decrease boulder health
+                boulder->health -= game.conf.rules[boulder->owner].gameplay.boulder_reduce_health_room; // decrease boulder health
             }
             return 1; // guardpost destroyed
         }
@@ -1202,15 +1207,35 @@ short setup_game(void)
  */
 TbBool players_cursor_is_at_top_of_view(struct PlayerInfo *player)
 {
-    int i;
-    i = player->work_state;
-    if ( (i == PSt_BuildRoom) || (i == PSt_PlaceDoor) || (i == PSt_PlaceTrap) || (i == PSt_SightOfEvil) || (i == PSt_Sell) || (i == PSt_PlaceTerrain) || (i == PSt_MkDigger)
-        || (i == PSt_MkGoodCreatr) || (i == PSt_MkBadCreatr) )
+    switch (player->work_state)
+    {
+    case PSt_BuildRoom:
+    case PSt_PlaceDoor:
+    case PSt_PlaceTrap:
+    case PSt_SightOfEvil:
+    case PSt_Sell:
+    case PSt_PlaceTerrain:
+    case PSt_MkDigger:
         return true;
-    if ( (i == PSt_OrderCreatr) && (player->controlled_thing_idx > 0) )
-        return true;
-    if ( (i == PSt_CtrlDungeon) && (player->primary_cursor_state != CSt_DefaultArrow) && (player->thing_under_hand == 0) )
-        return true;
+
+    case PSt_OrderCreatr:
+        return (player->controlled_thing_idx > 0);
+
+    case PSt_CtrlDungeon:
+        switch (player->primary_cursor_state)
+        {
+            case CSt_DefaultArrow:
+                return false;
+
+            case CSt_PickAxe:
+            case CSt_DoorKey:
+                return true;
+
+            case CSt_PowerHand:
+                return (player->thing_under_hand == 0)
+                    || (! power_hand_is_empty(player));
+        }
+    }
     return false;
 }
 
@@ -2042,52 +2067,62 @@ short complete_level(struct PlayerInfo *player)
     return true;
 }
 
-void interp_fix_mouse_light_off_map(struct PlayerInfo *player)
+static void set_mouse_light(struct PlayerInfo *player, TbBool valid, struct Coord3d pos)
 {
-    // This fixes the interpolation issue of moving the mouse off map in one position then back onto the map far elsewhere.
-    struct Light* light = &game.lish.lights[player->cursor_light_idx];
+    const int idx = player->cursor_light_idx;
+    if (idx == 0)
+        return;
 
-    if (player->mouse_on_map == false) {
-        light->disable_interp_for_turns = 2;
+    if (valid)
+    {
+        pos.z.val = get_floor_height_at(&pos);
+        light_turn_light_on(idx);
+        light_set_light_position(idx, &pos);
+
+        if (is_my_player(player))
+            game.mouse_light_pos = pos;
     }
-    if (light->disable_interp_for_turns > 0) {
-        light->disable_interp_for_turns -= 1;
-        light->last_turn_drawn = 0;
+    else
+    {
+        light_turn_light_off(idx);
     }
 }
 
-void set_mouse_light(struct PlayerInfo *player)
+void update_local_mouse_light(void)
 {
     SYNCDBG(6,"Starting");
-    struct Packet *pckt;
-    if (is_my_player(player)) {
-        pckt = (struct Packet *)get_history_packet(player->packet_num, get_gameturn());
-        if (pckt == NULL) {
-            pckt = get_packet_direct(player->packet_num);
-        }
-    } else {
-        pckt = get_packet_direct(player->packet_num);
-    }
+    struct PlayerInfo *player = get_my_player();
+
+    // Avoid glitching during level intro or possess animation, or when
+    // watching a replay.
+    if (player->instance_num != PI_Unset || game.packet_load_enable)
+        return;
+
+    struct Camera *cam = get_local_camera(get_player_active_camera(player));
+    struct Coord3d pos;
+    const TbBool valid = screen_to_map(cam, GetMouseX(), GetMouseY(), &pos);
+
+    set_mouse_light(player, valid, pos);
+
     if (player->cursor_light_idx != 0)
-    {
-        if ((pckt->control_flags & PCtr_MapCoordsValid) != 0)
-        {
-            struct Coord3d pos;
-            pos.x.val = pckt->pos_x;
-            pos.y.val = pckt->pos_y;
-            pos.z.val = get_floor_height_at(&pos);
-            if (is_my_player(player)) {
-                game.mouse_light_pos = pos;
-            }
-            light_turn_light_on(player->cursor_light_idx);
-            light_set_light_position(player->cursor_light_idx, &pos);
-        }
-        else
-        {
-            light_turn_light_off(player->cursor_light_idx);
-        }
-        interp_fix_mouse_light_off_map(player);
-    }
+        light_reset_interpolation(player->cursor_light_idx);
+}
+
+void update_mouse_light(struct PlayerInfo *player)
+{
+    SYNCDBG(6,"Starting");
+    const struct Packet *pckt = nullptr;
+
+    if (is_my_player(player))
+        pckt = get_history_packet(player->packet_num, get_gameturn());
+    if (pckt == nullptr)
+        pckt = get_packet_direct(player->packet_num);
+
+    const TbBool valid = (pckt->control_flags & PCtr_MapCoordsValid) != 0;
+    struct Coord3d pos;
+    pos.x.val = pckt->pos_x;
+    pos.y.val = pckt->pos_y;
+    set_mouse_light(player, valid, pos);
 }
 
 void check_players_won(void)
@@ -2297,7 +2332,7 @@ void process_payday(void)
     PlayerNumber plyr_idx;
     for (plyr_idx=0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
     {
-        game.pay_day_progress[plyr_idx] = game.pay_day_progress[plyr_idx] + (game.conf.rules[plyr_idx].game.pay_day_speed / 100);
+        game.pay_day_progress[plyr_idx] = game.pay_day_progress[plyr_idx] + (game.conf.rules[plyr_idx].gameplay.pay_day_speed / 100);
         if (player_is_roaming(plyr_idx) || (plyr_idx == game.neutral_player_num)) {
             continue;
         }
@@ -2312,7 +2347,7 @@ void process_payday(void)
     int player_paid_creatures_count;
     for (plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
     {
-        if (game.conf.rules[plyr_idx].game.pay_day_gap <= game.pay_day_progress[plyr_idx])
+        if (game.conf.rules[plyr_idx].gameplay.pay_day_gap <= game.pay_day_progress[plyr_idx])
         {
             if (is_my_player_number(plyr_idx))
                 output_message(SMsg_Payday, 0);
@@ -2373,7 +2408,7 @@ void update_near_creatures_for_footsteps(int32_t *near_creatures, const struct C
         {
             struct CreatureSound *crsound;
             crsound = get_creature_sound(thing, CrSnd_Foot);
-            if (crsound->index > 0)
+            if (crsound->index != 0)
             {
                 struct CreatureControl *cctrl;
                 cctrl = creature_control_get_from_thing(thing);
@@ -2430,8 +2465,8 @@ long stop_playing_flight_sample_in_all_flying_creatures(void)
         // Per-thing code
         if ((get_creature_model_flags(thing) & CMF_IsDiptera) && ((thing->state_flags & TF1_DoFootsteps) == 0))
         {
-            if ( S3DEmitterIsPlayingSample(thing->snd_emitter_id, 25, 0) ) {
-                S3DDeleteSampleFromEmitter(thing->snd_emitter_id, 25, 0);
+            if ( S3DEmitterIsPlayingSample(thing->snd_emitter_id, 25) ) {
+                S3DDeleteSampleFromEmitter(thing->snd_emitter_id, 25);
             }
         }
         // Per-thing code ends
@@ -2641,27 +2676,31 @@ long update_cave_in(struct Thing *thing)
 }
 
 /**
+ * rules can change by dkscript/lua.
  * Checks if a gamerule for lighting has changed and updates the lights if they are.
  * This function also refreshes the light status of the map.
 */
 void update_global_lighting()
 {
+    if (!game.lish.light_auto_sync)
+        return;
+
     // Check if any values have changed
     if (
-        game.conf.rules[0].game.global_ambient_light != game.lish.global_ambient_light ||
-        game.conf.rules[0].game.light_enabled != game.lish.light_enabled
+        game.conf.rules[0].gameplay.global_ambient_light != game.lish.global_ambient_light ||
+        game.conf.rules[0].gameplay.light_enabled != game.lish.light_enabled
     ){
 
         // GlobalAmbientLight
-        if (game.conf.rules[0].game.global_ambient_light != game.lish.global_ambient_light)
+        if (game.conf.rules[0].gameplay.global_ambient_light != game.lish.global_ambient_light)
         {
-            game.lish.global_ambient_light = game.conf.rules[0].game.global_ambient_light;
+            game.lish.global_ambient_light = game.conf.rules[0].gameplay.global_ambient_light;
         }
 
         // LightEnabled
-        if (game.conf.rules[0].game.light_enabled != game.lish.light_enabled)
+        if (game.conf.rules[0].gameplay.light_enabled != game.lish.light_enabled)
         {
-            game.lish.light_enabled = game.conf.rules[0].game.light_enabled;
+            game.lish.light_enabled = game.conf.rules[0].gameplay.light_enabled;
         }
 
         // Refresh the lights
@@ -2674,6 +2713,7 @@ void update(void)
     struct PlayerInfo *player;
     SYNCDBG(4,"Starting for turn %ld",(long)get_gameturn());
 
+    update_local_cameras_pre();
     process_packets();
     api_update_server();
 
@@ -2728,33 +2768,17 @@ void update(void)
         creature_stats_debug_dump();
 #endif
         game.play_gameturn++;
+        if (game.turns_packetoff == game.play_gameturn)
+            exit_keeper = 1;
     }
 
     message_update();
     update_all_players_cameras();
+    update_local_cameras_post();
     update_player_sounds();
     SYNCDBG(6,"Finished");
 }
 
-void intentional_desync() {
-    if (get_gameturn() != 50 || !is_my_player_number(0)) {
-        return;
-    }
-    for (struct Room* room = start_rooms; room < end_rooms; room += 1) {
-        if (room_exists(room)) {
-            room->slabs_count += 1;
-            break;
-        }
-    }
-    int i = game.thing_lists[TngList_Creatures].index;
-    if (i != 0) {
-        struct Thing* thing = thing_get(i);
-        if (!thing_is_invalid(thing)) {
-            thing->health += 1;
-        }
-    }
-    get_player(0)->instance_remain_turns += 1;
-}
 
 long near_map_block_thing_filter_queryable_object(const struct Thing *thing, MaxTngFilterParam param, long maximizer)
 {
@@ -3067,7 +3091,7 @@ void update_block_pointed(int i,long x, long x_frac, long y, long y_frac)
           colmn = get_column(k);
           if (colmn->solidmask >= 8)
           {
-            if ( (!visible) || (((get_navigation_map(x,y) & 0x80) == 0) && ((mapblk->flags & SlbAtFlg_IsRoom) == 0)) )
+            if ( (!visible) || (((mapblk->flags & SlbAtFlg_IsRoom) == 0)) )
               smask &= 3;
           }
         }
@@ -3174,6 +3198,7 @@ void engine(struct PlayerInfo *player, struct Camera *cam)
     lens = cam->horizontal_fov * scale_value_by_horizontal_resolution(4) / pixel_size;
     if (lens_mode == 0)
         update_blocks_pointed();
+    update_local_mouse_light();
     LbScreenStoreGraphicsWindow(&grwnd);
     store_engine_window(&ewnd,pixel_size);
     view_height_over_2 = ewnd.height/2;
@@ -3232,7 +3257,7 @@ short display_should_be_updated_this_turn(void)
     if ( (game.turns_fastforward == 0) && (!game.packet_loading_in_progress) )
     {
       find_frame_rate();
-      if ( (game.frame_skip == 0) || ((get_gameturn() % game.frame_skip) == 0))
+      if ( (game.frame_skip == 0) || ((get_gameturn() % game.frame_skip) == 0) )
         return true;
     } else
     if ( ((get_gameturn() & 0x3F)==0) ||
@@ -3317,40 +3342,13 @@ TbBool keeper_wait_for_next_turn(void)
     return false;
 }
 
-
-TbBool keeper_wait_for_next_draw(void)
-{
-    // fps.draw is currently unable to work properly with frame_skip
-    if (turns_per_second_draw_current > 0 && is_feature_on(Ft_DeltaTime) == true && game.frame_skip == 0)
-    {
-        const long double tick_ns_one_sec = 1000000000.0;
-        const long double tick_ns_one_frame = tick_ns_one_sec/turns_per_second_draw_current;
-
-        static long double tick_ns_last_draw = 0;
-        long double tick_ns_cur = get_time_tick_ns();
-        long double tick_ns_used = tick_ns_cur - tick_ns_last_draw;
-        long double tick_ns_delay = tick_ns_one_frame - tick_ns_used;
-
-        long double tick_ns_end = tick_ns_cur;
-        // tick_ns_used: every level, initialized_time_point will be reset, so tick_ns_used may be less than 0 when enter level for the non-first time, Skip it directly to solve the problem.
-        if (tick_ns_delay > 0 && tick_ns_used >= 0) {
-            tick_ns_end = tick_ns_cur + tick_ns_delay;
-            LbSleepUntilExt(tick_ns_end);
-        }
-        tick_ns_last_draw = tick_ns_end;
-
-        return true;
-    }
-    return false;
-}
-
 void redetect_screen_refresh_rate_for_draw()
 {
-    turns_per_second_draw_current = 0;
+    fps_limit_current = 0;
 
-    if (turns_per_second_draw_main == -1) {
-        if (turns_per_second_draw_secondary > 0)
-            turns_per_second_draw_current = turns_per_second_draw_secondary;
+    if (fps_limit_main == -1) {
+        if (fps_limit_secondary > 0)
+            fps_limit_current = fps_limit_secondary;
 
 #if !defined(PLATFORM_WII)
         if (lbWindow != NULL) {
@@ -3358,18 +3356,64 @@ void redetect_screen_refresh_rate_for_draw()
             if (display_index >= 0) {
                 SDL_DisplayMode mode;
                 if (SDL_GetCurrentDisplayMode(display_index, &mode) == 0 && mode.refresh_rate > 0) {
-                    turns_per_second_draw_current = mode.refresh_rate;
+                    fps_limit_current = mode.refresh_rate;
                 }
             }
         }
 #endif
 
-    } else if (turns_per_second_draw_main > 0) {
-        turns_per_second_draw_current = turns_per_second_draw_main;
+    } else if (fps_limit_main > 0) {
+        fps_limit_current = fps_limit_main;
     }
 }
 
-TbBool keeper_wait_for_screen_focus(void)
+static bool use_delta_time()
+{
+    // Always enable interpolation in multiplayer games.
+    return is_feature_on(Ft_DeltaTime) || network_is_active();
+}
+
+static void update_frontend_delta_time()
+{
+    static int64_t prev = 0;
+    const int64_t now = get_time_tick_ns();
+    const int64_t ns = now - prev;
+    prev = now;
+    const long double dt = ns / 1e9L * turns_per_second;
+    game.delta_time = min(max(dt, 0.L), 1.L);
+}
+
+static void update_gameplay_delta_time()
+{
+    if (use_delta_time()) {
+        static int64_t prev = 0;
+        const int64_t now = get_time_tick_ns();
+        const int64_t ns = now - prev;
+        prev = now;
+
+        const long double seconds = max(ns / 1e9L, 0.L);
+        const long double turns = seconds * turns_per_second;
+        const long double frames = seconds * fps_limit_current;
+
+        game.process_turn_time += turns * multiplayer_clock_adjust * max(game.frame_skip, 1);
+
+        // This sets game.delta_time, which is used to pace locally-displayed
+        // things (eg. tooltip scroll speed).  It should not be affected by
+        // multiplayer clock adjustment or frameskip.
+        time_since_last_draw += turns;
+
+        // Like process_turn_time, but for the video frame rate.
+        process_frame_time += frames;
+    } else {
+        // Set to 1 so that these variables don't affect anything. (if something is multiplied by 1 it doesn't change)
+        time_since_last_draw = 1;
+        game.delta_time = 1;
+        game.process_turn_time = 1;
+        process_frame_time = 1;
+    }
+}
+
+static bool keeper_wait_for_screen_focus()
 {
     do {
         if ( !poll_inputs() )
@@ -3384,11 +3428,80 @@ TbBool keeper_wait_for_screen_focus(void)
         if (!freeze_game_on_focus_lost())
           return true;
         LbSleepFor(50);
+        update_gameplay_delta_time();
+        game.process_turn_time = 1.0;
+        time_since_last_draw = 1.0;
     } while ((!exit_keeper) && (!quit_game));
     return false;
 }
 
-void gameplay_loop_logic()
+static void gameplay_loop_draw()
+{
+    if (use_delta_time())
+        do_draw = true;
+
+    update_gameplay_delta_time();
+
+    if (game.process_turn_time > 1.0 && time_since_last_draw < 1.0)
+        do_draw = false;
+
+    // Frame rate limiter
+    if (fps_limit_current > 0)
+    {
+        frametime_start_measurement(Frametime_Sleep);
+        if (process_frame_time < 1.0)
+        {
+            if (game.process_turn_time < 1.0)
+                SDL_Delay(1);
+            do_draw = false;
+        }
+        else
+        {
+            process_frame_time = min(1.L, process_frame_time - 1.L);
+        }
+        frametime_end_measurement(Frametime_Sleep);
+    }
+
+    // Floats are used a lot in the drawing related functions. But keep in mind integers are typically preferred for logic related functions.
+    frametime_start_measurement(Frametime_Draw);
+
+    // Update lights
+    update_light_render_area();
+
+    if (quit_game || exit_keeper) {
+        do_draw = false;
+    }
+    if ( do_draw ) {
+        if (frametime_enabled())
+            framerate_measurement_capture(Framerate_Draw);
+        game.delta_time = min(time_since_last_draw, 1.L);
+        time_since_last_draw = 0;
+        interpolate_time = min(max(game.process_turn_time, 0.L), 1.L);
+        keeper_screen_redraw();
+    }
+    keeper_wait_for_screen_focus();
+    // Direct information/error messages
+    if (LbScreenLock() == Lb_SUCCESS) {
+        if ( do_draw ) {
+            perform_any_screen_capturing();
+        }
+        draw_onscreen_direct_messages();
+        LbScreenUnlock();
+    }
+    // Move the graphics window to center of screen buffer and swap screen
+    if ( do_draw ) {
+        keeper_screen_swap();
+    }
+    frametime_end_measurement(Frametime_Draw);
+
+    if ( do_draw ) {
+        update_gameplay_delta_time();
+        const long double delta = time_since_last_draw - average_frame_draw_time;
+        average_frame_draw_time += delta * max(average_frame_draw_time, .05L) / 20;
+    }
+}
+
+static void gameplay_loop_logic()
 {
     if(flag_is_set(start_params.debug_flags, DFlg_PauseAtGameTurn))
     {
@@ -3410,11 +3523,24 @@ void gameplay_loop_logic()
         previous_gameturn = get_gameturn();
     }
 
-    if (is_feature_on(Ft_DeltaTime) == true) {
-        if (game.process_turn_time < 1.0) {
-            return;
+    if (use_delta_time())
+    {
+        update_gameplay_delta_time();
+        if (game.input_lag_turns == 0 && network_is_active())
+        {
+            // Aim to exchange network packets before the turn ends.  If drawing
+            // another frame could miss this deadline, skip it.
+            // In a 3-4 player game, clients must be 2 frames early.
+            const int frames = 1 + (netstate.my_id != SERVER_ID && game.active_players_count > 2);
+            const long double offset = frames * average_frame_draw_time * multiplayer_clock_adjust * max(game.frame_skip, 1);
+            if (game.process_turn_time + offset < 1.0)
+                return;
         }
-        game.process_turn_time -= 1.0;
+        else
+        {
+            if (game.process_turn_time < 1.0)
+                return;
+        }
     }
 
     frametime_start_measurement(Frametime_Logic);
@@ -3437,7 +3563,44 @@ void gameplay_loop_logic()
     poll_inputs();
     input_eastegg();
     input();
+    exchange_packets();
+
+    update_gameplay_delta_time();
+    if (game.process_turn_time > turns_per_second + 1)
+        game.process_turn_time = turns_per_second + 1;
+
+    // Adjust client time scaling
+    if (netstate.my_id != SERVER_ID && network_is_active())
+    {
+        if (game.input_lag_turns == 0)
+        {
+            // Adjust the clock rate so that the host packet is received at
+            // process_turn_time == 1.0 (on average).  If it is received later,
+            // reduce the scaling factor (< 1.0) so that the next turn takes a
+            // little longer in real time.  Vice-versa if it is early.
+
+            multiplayer_clock_adjust = 1 + (1 - host_packet_received) / 20;
+        }
+        else
+        {
+            const long double tick_ns_one_turn = 1e9L / turns_per_second;
+            const long double tick_ns_adjusted_turn = tick_ns_one_turn + multiplayer_speed_adjustment_ns;
+            assert (tick_ns_adjusted_turn > 0);
+            multiplayer_clock_adjust = tick_ns_one_turn / tick_ns_adjusted_turn;
+        }
+    }
+    else multiplayer_clock_adjust = 1.0;
+    host_packet_received = 1.0;
+
+    while (game.process_turn_time < 1.0)
+    {
+        gameplay_loop_draw();
+        update_gameplay_delta_time();
+    }
+    game.process_turn_time -= 1.0;
+
     update();
+
     frametime_end_measurement(Frametime_Logic);
 
     if(game.frame_step)
@@ -3447,73 +3610,39 @@ void gameplay_loop_logic()
     }
 }
 
-void gameplay_loop_draw()
+static void gameplay_loop_network()
 {
-    // Floats are used a lot in the drawing related functions. But keep in mind integers are typically preferred for logic related functions.
-    frametime_start_measurement(Frametime_Draw);
+    if (! network_is_active())
+        return;
 
-    // Update lights
-    if ((game.operation_flags & GOF_Paused) == 0) {
-        update_light_render_area();
-    }
-
-    if (quit_game || exit_keeper) {
-        do_draw = false;
-    }
-    if ( do_draw ) {
-        if (frametime_enabled())
-            framerate_measurement_capture(Framerate_Draw);
-        keeper_screen_redraw();
-    }
-    keeper_wait_for_screen_focus();
-    // Direct information/error messages
-    if (LbScreenLock() == Lb_SUCCESS) {
-        if ( do_draw ) {
-            perform_any_screen_capturing();
-        }
-        draw_onscreen_direct_messages();
-        LbScreenUnlock();
-    }
-    // Move the graphics window to center of screen buffer and swap screen
-    if ( do_draw ) {
-        keeper_screen_swap();
-    }
-    frametime_end_measurement(Frametime_Draw);
-    last_draw_completed_time = get_time_tick_ns();
+    network_update(game.packets, sizeof(struct Packet));
 }
 
-static void update_gameplay_delta_time()
+static void gameplay_loop_timestep()
 {
-    game.delta_time = get_delta_time();
-    float process_delta_time = game.delta_time;
-    if (multiplayer_speed_adjustment_ns != 0 && turns_per_second > 0) {
-        double tick_ns_one_turn = 1000000000.0 / turns_per_second;
-        double tick_ns_adjusted_turn = tick_ns_one_turn + multiplayer_speed_adjustment_ns;
-        if (tick_ns_adjusted_turn > 0) {
-            process_delta_time = (float)(process_delta_time * tick_ns_one_turn / tick_ns_adjusted_turn);
+    if (! use_delta_time()) {
+        frametime_start_measurement(Frametime_Sleep);
+        // Make delay if the machine is too fast
+        if ( (!game.packet_load_enable) || (game.turns_fastforward == 0) ) {
+            keeper_wait_for_next_turn();
         }
+        frametime_end_measurement(Frametime_Sleep);
     }
-    game.process_turn_time += process_delta_time;
 }
 
 extern "C" void network_yield_draw_gameplay()
 {
-    update_gameplay_delta_time();
     gameplay_loop_draw();
 }
 
-void gameplay_loop_timestep();
-
 extern "C" void network_yield_waiting_gameplay_packets()
 {
-    frametime_end_measurement(Frametime_Logic);
-    do_draw = true;
     poll_inputs();
     gameplay_loop_draw();
-    gameplay_loop_timestep();
-    frametime_start_measurement(Frametime_Logic);
-    if (frametime_enabled())
-        framerate_measurement_capture(Framerate_Logic);
+    update_gameplay_delta_time();
+    // Reduce game speed during lag spikes.
+    if (game.process_turn_time > 2.0)
+        game.process_turn_time = 2.0;
 }
 
 extern "C" void update_velocity(void);
@@ -3522,7 +3651,7 @@ extern "C" void fronttorture_update(void);
 
 extern "C" void network_yield_draw_frontend()
 {
-    game.delta_time = get_delta_time();
+    update_frontend_delta_time();
     if (frontend_menu_state == FeSt_NETLAND_VIEW) {
         check_mouse_scroll();
         update_velocity();
@@ -3536,36 +3665,6 @@ extern "C" void network_yield_draw_frontend()
     }
     frontend_draw();
     LbScreenSwap();
-}
-
-void gameplay_loop_timestep()
-{
-    frametime_start_measurement(Frametime_Sleep);
-    if (is_feature_on(Ft_DeltaTime) == true) {
-        update_gameplay_delta_time();
-    } else {
-        // Set to 1 so that these variables don't affect anything. (if something is multiplied by 1 it doesn't change)
-        game.delta_time = 1;
-        game.process_turn_time = 1;
-        // Make delay if the machine is too fast
-        if ( (!game.packet_load_enable) || (game.turns_fastforward == 0) ) {
-            keeper_wait_for_next_turn();
-        }
-    }
-
-    if (game.turns_packetoff == get_gameturn()) {
-        exit_keeper = 1;
-    }
-
-    if (turns_per_second_draw_current > 0 && is_feature_on(Ft_DeltaTime) == true) {
-        keeper_wait_for_next_draw();
-
-        if (game.turns_packetoff == get_gameturn()) {
-            exit_keeper = 1;
-        }
-    }
-    
-    frametime_end_measurement(Frametime_Sleep);
 }
 
 void keeper_gameplay_loop(void)
@@ -3591,6 +3690,7 @@ void keeper_gameplay_loop(void)
             framerate_measurement_capture(Framerate_FullFrame);
         gameplay_loop_logic();
         gameplay_loop_draw();
+        gameplay_loop_network();
         gameplay_loop_timestep();
 
         frametime_end_measurement(Frametime_FullFrame);
@@ -3624,7 +3724,7 @@ long packet_place_door(MapSubtlCoord stl_x, MapSubtlCoord stl_y, PlayerNumber pl
 {
     if (!allowed) {
         if (is_my_player_number(plyr_idx))
-            play_non_3d_sample(119);
+            play_non_3d_sample(snd_refusal);
         return 0;
     }
     if (!player_place_door_at(stl_x, stl_y, plyr_idx, tngmodel)) {
@@ -3804,6 +3904,11 @@ static TbBool wait_at_frontend(void)
     memset(scratch, 0, PALETTE_SIZE);
     LbPaletteSet(scratch);
     frontend_set_state(get_startup_menu_state());
+
+    // Once the Mouse Sprite initialization is complete, the sprite's position needs to be reset because it defaults to (0, 0).
+    // Note that we cannot use LbMoveGameCursorToHostCursor for this, because the buffer position may remain unchanged.
+    LbMouseSetPositionInitial(lbDisplay.MMouseX, lbDisplay.MMouseY);
+
     try_restore_frontend_error_box();
 
     poll_inputs();
@@ -3859,7 +3964,7 @@ static TbBool wait_at_frontend(void)
         fade_palette_in = 0;
       } else {
         if (is_feature_on(Ft_DeltaTime) == true && should_use_delta_time_on_menu()) {
-          game.delta_time = get_delta_time();
+          update_frontend_delta_time();
         } else {
           int32_t frame_time;
           frame_time = max(1, 1000 / turns_per_second);
@@ -3902,6 +4007,7 @@ static TbBool wait_at_frontend(void)
           break;
     case FeSt_START_MPLEVEL:
           set_flag(game.system_flags, GSF_NetworkActive);
+          skip_high_score_screen = 1;
           game.game_kind = GKind_MultiGame;
           player = get_my_player();
           player->is_active = 1;
@@ -3939,10 +4045,9 @@ static TbBool wait_at_frontend(void)
 
 void game_loop(void)
 {
-    unsigned long total_play_turns;
-    unsigned long playtime;
-    playtime = 0;
-    total_play_turns = 0;
+#if (BFDEBUG_LEVEL > 0)
+    unsigned long playtime = 0;
+#endif
     SYNCDBG(0,"Entering gameplay loop.");
 
     while ( !exit_keeper )
@@ -3955,6 +4060,10 @@ void game_loop(void)
       }
       if ( exit_keeper )
         break;
+
+      int32_t mspos_x_bak = lbDisplay.MMouseX;
+      int32_t mspos_y_bak = lbDisplay.MMouseY;
+
       if (game.game_kind == GKind_LocalGame)
       {
         if (game.save_game_slot == -1)
@@ -3984,8 +4093,16 @@ void game_loop(void)
           }
       }
 
+      // Try to keep the mouse position unchanged when entering the level.
+      // The main considerations are:
+      // 1. SKIP_HEART_ZOOM: the mouse icon position will be reset to the top-left corner (0, 0), but the actual mouse position remains unchanged.
+      // 2. PI_HeartZoom: the mouse will be moved to the center of the screen.
+      LbMouseSetPosition(mspos_x_bak, mspos_y_bak);
+
       unsigned long starttime;
+#if (BFDEBUG_LEVEL > 0)
       unsigned long endtime;
+#endif
       struct Dungeon *dungeon;
       // get_my_dungeon() can't be used here because players are not initialized yet
       dungeon = get_dungeon(my_player_number);
@@ -4011,19 +4128,26 @@ void game_loop(void)
       set_pointer_graphic_none();
       LbScreenClear(0);
       LbScreenSwap();
-      stop_music();
+      stop_atmos_sounds();
+      stop_music(true);
       stop_streamed_samples();
       free_level_strings_data();
       turn_off_all_menus();
       delete_all_structures();
       clear_mapwho();
+      // Reset sounds back to the fxdata baseline so the main menu (and any
+      // subsequent campaign/freeplay selection) hears unmodified defaults.
+      sound_reset_to_fxdata_baseline();
+#if (BFDEBUG_LEVEL > 0)
       endtime = LbTimerClock();
+#endif
       quit_game = 0;
       if ((game.operation_flags & GOF_SingleLevel) != 0)
           exit_keeper=true;
+#if (BFDEBUG_LEVEL > 0)
       playtime += endtime-starttime;
+#endif
       SYNCDBG(0,"Play time is %lu seconds",playtime>>10);
-      total_play_turns += get_gameturn();
       reset_eye_lenses();
       close_packet_file();
       game.packet_load_enable = false;
@@ -4457,31 +4581,11 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
     }
     if (retval == 1)
     {
-      if ((install_info.lang_id == Lang_Japanese) ||
-          (install_info.lang_id == Lang_ChineseInt) ||
-          (install_info.lang_id == Lang_ChineseTra) ||
-          (install_info.lang_id == Lang_Korean))
-      {
-        switch (install_info.lang_id)
-        {
-        case Lang_Japanese:
-            dbc_set_language(1);
-            break;
-        case Lang_ChineseInt:
-            dbc_set_language(2);
-            break;
-        case Lang_ChineseTra:
-            dbc_set_language(3);
-            break;
-        case Lang_Korean:
-            dbc_set_language(4);
-            break;
+        if (is_dbc_language(install_info.lang_id))
+        {            
+            dbc_initialized = 1;
         }
-        if (dbc_initialize("fxdata"))
-        {
-          ERRORLOG("DBC fonts Initialization failed.");
-        }
-      }
+        load_unifont_files();
     }
     if ( retval == 1 )
     {

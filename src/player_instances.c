@@ -24,6 +24,7 @@
 #include "bflib_datetm.h"
 #include "bflib_math.h"
 #include "bflib_sound.h"
+#include "config_sounds.h"
 #include "bflib_planar.h"
 
 #include "creature_control.h"
@@ -160,11 +161,6 @@ long pinstfe_hand_grab(struct PlayerInfo *player, int32_t *n)
         WARNLOG("Cannot pick up %s index %d",thing_model_name(dsttng),(int)dsttng->index);
         return 0;
     }
-    struct Thing* handtng = thing_get(player->hand_thing_idx);
-    if (thing_exists(handtng))
-    {
-        set_power_hand_graphic(player->id_number, HndA_Pickup);
-    }
     return 0;
 }
 
@@ -252,7 +248,7 @@ long pinstfe_hand_whip(struct PlayerInfo *player, int32_t *n)
           }
           if (thing->model != ShM_SolidBoulder) // TODO CONFIG shot model dependency, make config option instead.
           {
-              thing->health -= game.conf.rules[thing->owner].game.boulder_reduce_health_slap;
+              thing->health -= game.conf.rules[thing->owner].gameplay.boulder_reduce_health_slap;
           }
       }
       else
@@ -281,7 +277,7 @@ long pinstfe_hand_whip(struct PlayerInfo *player, int32_t *n)
       case TCls_Object:
       {
           struct Thing* efftng;
-          if (object_is_slappable(thing, player->id_number))
+          if (object_is_slappable_by_player(thing, player->id_number))
           {
             efftng = create_effect(&thing->mappos, TngEff_Dummy, thing->owner);
             if (!thing_is_invalid(efftng))
@@ -507,7 +503,6 @@ long pinstfs_direct_leave_creature(struct PlayerInfo *player, int32_t *n)
   player->influenced_thing_idx = 0;
   player->influenced_thing_creation = 0;
   light_turn_light_on(player->cursor_light_idx);
-  play_non_3d_sample(177);
   return 0;
 }
 
@@ -549,7 +544,6 @@ long pinstfs_passenger_leave_creature(struct PlayerInfo *player, int32_t *n)
   player->influenced_thing_idx = 0;
   player->influenced_thing_creation = 0;
   light_turn_light_on(player->cursor_light_idx);
-  play_non_3d_sample(177);
   return 0;
 }
 
@@ -846,49 +840,16 @@ long pinstfs_zoom_to_position(struct PlayerInfo *player, int32_t *n)
     player->allocflags |= PlaF_MouseInputDisabled;
     player->allocflags |= PlaF_KeyboardInputDisabled;
     struct Camera* cam = get_player_active_camera(player);
-    int dt_x = (player->zoom_to_pos_x - (int)cam->mappos.x.val) / 8;
-    int dt_y = (player->zoom_to_pos_y - (int)cam->mappos.y.val) / 8;
-    if (dt_x < 0)
-    {
-      if (dt_x > -256)
-        dt_x = -256;
-    } else
-    {
-      if (dt_x < 256)
-        dt_x = 256;
-    }
-    player->zoom_to_movement_x = dt_x;
-    if (dt_y < 0)
-    {
-        if (dt_y > -256)
-          dt_y = -256;
-    } else
-    {
-        if (dt_y < 256)
-          dt_y = 256;
-    }
-    player->zoom_to_movement_y = dt_y;
+    view_set_camera_move_to_position(cam, player->zoom_to_pos_x, player->zoom_to_pos_y, &player->zoom_to_movement_x, &player->zoom_to_movement_y);
     return 0;
 }
 
 long pinstfm_zoom_to_position(struct PlayerInfo *player, int32_t *n)
 {
-    MapCoord x, y;
     struct Camera* cam = get_player_active_camera(player);
-    cam->inertia_x = 0;
-    cam->inertia_y = 0;
-    if (abs(cam->mappos.x.val - player->zoom_to_pos_x) >= abs(player->zoom_to_movement_x))
-      x = player->zoom_to_movement_x + cam->mappos.x.val;
-    else
-      x = player->zoom_to_pos_x;
-    if (abs(cam->mappos.y.val - player->zoom_to_pos_y) >= abs(player->zoom_to_movement_y))
-      y = player->zoom_to_movement_y + cam->mappos.y.val;
-    else
-      y = player->zoom_to_pos_y;
-    if ((player->zoom_to_pos_x == x) && (player->zoom_to_pos_y == y))
+    if (view_move_camera_to_position(cam, player->zoom_to_pos_x, player->zoom_to_pos_y, player->zoom_to_movement_x, player->zoom_to_movement_y)) {
         player->instance_remain_turns = 0;
-    cam->mappos.x.val = x;
-    cam->mappos.y.val = y;
+    }
     set_local_camera_destination(player);
     return 0;
 }
@@ -1169,7 +1130,7 @@ struct Room *player_build_room_at(MapSubtlCoord stl_x, MapSubtlCoord stl_y, Play
         // It shouldn't be possible to select unavailable room
         WARNLOG("Player %d tried to build %s which is unavailable at (%d,%d)",(int)plyr_idx,room_code_name(rkind),(int)stl_x,(int)stl_y);
         if (is_my_player(player))
-            play_non_3d_sample(119);
+            play_non_3d_sample(snd_refusal);
         return INVALID_ROOM;
     }
     if (!can_build_room_at_slab(plyr_idx, rkind, subtile_slab(stl_x), subtile_slab(stl_y))) {
@@ -1180,7 +1141,7 @@ struct Room *player_build_room_at(MapSubtlCoord stl_x, MapSubtlCoord stl_y, Play
         {
             if (!player->roomspace.is_active)
             {
-                play_non_3d_sample(119);
+                play_non_3d_sample(snd_refusal);
             }
         }
         return INVALID_ROOM;
@@ -1189,7 +1150,7 @@ struct Room *player_build_room_at(MapSubtlCoord stl_x, MapSubtlCoord stl_y, Play
     if (!i_can_allocate_free_room_structure())
     {
       if (is_my_player(player))
-        play_non_3d_sample(119);
+        play_non_3d_sample(snd_refusal);
       return INVALID_ROOM;
     }
     if (player->boxsize == 0)
@@ -1229,11 +1190,11 @@ struct Room *player_build_room_at(MapSubtlCoord stl_x, MapSubtlCoord stl_y, Play
         }
       if (is_my_player(player))
       {
-          play_non_3d_sample(77);
+          play_non_3d_sample(snd_tile_place);
           if (player->boxsize > 1)
           {
-              play_non_3d_sample(959);
-              play_non_3d_sample(856);
+              play_non_3d_sample(snd_larg_tile_down);
+              play_non_3d_sample(snd_larg_tile_up);
           }
       }
     }

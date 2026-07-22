@@ -17,11 +17,13 @@
 #include "pre_inc.h"
 #include "net_lobby.h"
 
+#include "game_legacy.h"
 #include "bflib_enet.h"
 #include "bflib_datetm.h"
 #include "net_exchange_common.h"
 #include "bflib_netsession.h"
 #include "bflib_sound.h"
+#include "config_sounds.h"
 #include "front_landview.h"
 #include "front_network.h"
 #include "frontend.h"
@@ -37,6 +39,8 @@
 
 static struct TbNetworkSessionNameEntry sessions[SESSION_COUNT];
 static int32_t server_port = 0;
+static TbClockMSec lobby_ping_last_sample;
+uint32_t network_lobby_ping;
 
 struct MatchmakingCreateTask {
     uint16_t ipv4_port;
@@ -118,7 +122,7 @@ TbError process_login_message(NetUserId source, char *read_pos)
     user->version = *user_version;
     NETMSG("User %s successfully logged in", user->name);
     user->progress = USER_LOGGEDIN;
-    play_non_3d_sample(76);
+    play_non_3d_sample(snd_spell_stars);
     char *reply_pos = begin_net_message(NETMSG_LOGIN);
     *reply_pos = source;
     reply_pos += 1;
@@ -138,7 +142,7 @@ TbError process_login_message(NetUserId source, char *read_pos)
     return Lb_OK;
 }
 
-TbError process_user_update_message(NetUserId source, char *read_pos)
+TbError process_user_update_message(NetUserId source, char *read_pos, const char *end_pos)
 {
     if (source != SERVER_ID) {
         WARNLOG("Unexpected USERUPDATE");
@@ -159,6 +163,9 @@ TbError process_user_update_message(NetUserId source, char *read_pos)
         abort();
     }
     strcpy(user->name, name);
+    if (read_pos + sizeof(user->version) <= end_pos) {
+        memcpy(&user->version, read_pos, sizeof(user->version));
+    }
     UpdateLocalPlayerInfo(user_id);
     return Lb_OK;
 }
@@ -218,7 +225,19 @@ TbError LbNetwork_ExchangeLogin(char *player_name)
 
 TbError LbNetwork_ExchangeFrontend(void *send_buf, void *server_buf, size_t frame_size)
 {
-    return exchange_frame_block(NETMSG_FRONTEND, send_buf, server_buf, frame_size);
+    if ((my_player_number == get_host_player_id()) && frontnet_service_selected(FrontendNetSvc_Online)) {
+        enet_matchmaking_host_update();
+    }
+    TbError result = exchange_frame_block(NETMSG_FRONTEND, send_buf, server_buf, frame_size);
+    TbClockMSec now = LbTimerClock();
+    if (network_lobby_ping == 0 || now - lobby_ping_last_sample >= 1000) {
+        unsigned long ping = GetPing(my_player_number);
+        if (ping > 0) {
+            network_lobby_ping = ping;
+        }
+        lobby_ping_last_sample = now;
+    }
+    return result;
 }
 
 TbError LbNetwork_Create(char *, char *plyr_name, uint32_t *plyr_num, void *optns)
@@ -316,6 +335,7 @@ TbError LbNetwork_Stop(void)
     if (netstate.sp) {
         netstate.sp->exit();
     }
+    clear_flag(game.system_flags, GSF_NetworkActive);
     memset(&netstate, 0, sizeof(netstate));
     netstate.my_id = INVALID_USER_ID;
     return Lb_OK;

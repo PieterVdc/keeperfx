@@ -174,11 +174,48 @@ end
 ---@param creature? Creature the unit that triggers the event
 ---@return table
 function RegisterLevelUpEvent(action, creature)
-    local trigData = {creature = creature}
+    local trigData = { creature = creature }
 
-    local trigger = CreateTrigger("LevelUp",action,trigData)
+    local trigger = CreateTrigger("LevelUp", action, trigData)
     if creature then
-        TriggerAddCondition(trigger, function(eventData,triggerData) return eventData.creature == triggerData.creature end)
+        TriggerAddCondition(trigger,
+            function(eventData, triggerData) return eventData.creature == triggerData.creature end)
+    end
+    return trigger
+end
+
+---Triggers when a thing is slapped
+---@param action function|string the function to call when the event happens
+---@param thing? Thing the thing that got slapped
+---@param player? Player the player doing the slap
+---@return Trigger
+function RegisterSlapEvent(action, thing, player)
+    local trigData = { Thing = thing, Player = player }
+    
+    local trigger = CreateTrigger("Slap",action,trigData)
+    if thing then
+        TriggerAddCondition(trigger, function(eventData, triggerData) return eventData.Thing == triggerData.Thing end)
+    end
+    if player then
+        TriggerAddCondition(trigger, function(eventData,triggerData) return eventData.Player == triggerData.Player end)
+    end
+    return trigger
+end
+
+---Triggers when a thing is picked up
+---@param action function|string the function to call when the event happens
+---@param thing? Thing the thing that got picked up
+---@param player? Player the player picking up
+---@return Trigger
+function RegisterPickUpEvent(action, thing, player)
+    local trigData = { Thing = thing, Player = player }
+    
+    local trigger = CreateTrigger("PickUp",action,trigData)
+    if thing then
+        TriggerAddCondition(trigger, function(eventData, triggerData) return eventData.Thing == triggerData.Thing end)
+    end
+    if player then
+        TriggerAddCondition(trigger, function(eventData,triggerData) return eventData.Player == triggerData.Player end)
     end
     return trigger
 end
@@ -263,6 +300,26 @@ function RegisterOnShotHitEvent(action, shooter_type, target_type, shot_type)
     end
     if shot_type then
         TriggerAddCondition(trigger, function(eventData, triggerData) return eventData.shot.model == triggerData.shot_type end)
+    end
+    return trigger
+end
+
+
+---Triggers when a chat message is received
+---eventData.Player contains the player who sent the message
+---eventData.Message contains the message text
+---@param action function|string the function to call when the event happens
+---@param player? Player filter on the player who sent the message (nil for any)
+---@param message? string filter on the message text (nil for any)
+---@return table
+function RegisterOnChatMsgEvent(action, player, message)
+    local trigData = {player = player, message = message}
+    local trigger = CreateTrigger("ChatMsg", action, trigData)
+    if player then
+        TriggerAddCondition(trigger, function(eventData, triggerData) return eventData.Player == triggerData.player end)
+    end
+    if message then
+        TriggerAddCondition(trigger, function(eventData, triggerData) return eventData.Message == triggerData.message end)
     end
     return trigger
 end

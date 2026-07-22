@@ -23,9 +23,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#if !defined(PLATFORM_WII)
-#include <SDL2/SDL.h>
-#endif
 
 #include "bflib_basics.h"
 #include "globals.h"
@@ -114,34 +111,11 @@ TbResult LbMouseSetPosition(long x, long y)
 {
   if (!lbMouseInstalled)
     return Lb_FAIL;
-#if defined(PLATFORM_WII)
   if (!pointerHandler.SetMousePosition(x, y))
+  {
     return Lb_FAIL;
-  return Lb_SUCCESS;
-#else
-  SDL_Window *window;
-  if (!lbMouseGrabbed)
-  {
-    window = SDL_GetKeyboardFocus();
-    if (IsMouseInsideWindow())
-    {
-      // in altinput mode
-      // first move the game cursor to the position of the HostOS cursor, and then move the HostOS cursor to the given x and y location.
-      // this keeps Host OS cursor and game cursor in sync (same position)
-      if (!LbMoveGameCursorToHostCursor())
-      {
-        return Lb_FAIL;
-      }
-    }
   }
-  else
-  {
-      if (!pointerHandler.SetMousePosition(x, y))
-      {
-        return Lb_FAIL;
-      }
-      window = lbWindow;
-  }
+  SDL_Window *window = lbWindow;
   SDL_WarpMouseInWindow(window, x, y);
   return Lb_SUCCESS;
 #endif
