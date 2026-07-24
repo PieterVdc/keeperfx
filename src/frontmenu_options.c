@@ -43,10 +43,6 @@
 #include "sounds.h"
 #include "post_inc.h"
 
-#if !defined(PLATFORM_WII)
-#include <SDL2/SDL_mixer.h>
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
