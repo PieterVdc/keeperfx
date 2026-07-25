@@ -1,24 +1,13 @@
 include version.mk
 
 BUILD_NUMBER ?= $(VER_BUILD)
-VER_SUFFIX ?= Prototype
+VER_SUFFIX ?= Wii_Prototype
 VER_STRING = $(VER_MAJOR).$(VER_MINOR).$(VER_RELEASE).$(BUILD_NUMBER) $(VER_SUFFIX)
 
-ifeq ($(strip $(DEVKITPRO)),)
-ifneq ($(wildcard D:/devkitPro),)
-DEVKITPRO := D:/devkitPro
-else ifneq ($(wildcard C:/devkitPro),)
-DEVKITPRO := C:/devkitPro
-endif
-endif
-
-ifeq ($(strip $(DEVKITPRO)),)
-$(error DEVKITPRO is not set. Install devkitPro and set DEVKITPRO, or install to D:/devkitPro)
-endif
-
-DEVKITPPC ?= $(DEVKITPRO)/devkitPPC
-ifeq ($(wildcard $(DEVKITPPC)/wii_rules),)
-$(error Missing $(DEVKITPPC)/wii_rules. Install devkitPPC + libogc (dkp-pacman -S wii-dev))
+.SUFFIXES:
+#---------------------------------------------------------------------------------
+ifeq ($(strip $(DEVKITPPC)),)
+$(error "Please set DEVKITPPC in your environment. export DEVKITPPC=<path to>devkitPPC")
 endif
 
 include $(DEVKITPPC)/wii_rules
