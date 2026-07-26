@@ -90,8 +90,7 @@ TOML_OBJECTS = $(patsubst deps/centitoml/%.c,obj/centitoml/%.o,$(TOML_SOURCES))
 
 KFX_INCLUDES = \
 	-Isrc \
-	-I$(DEVKITPRO)/libogc/include \
-	-I$(DEVKITPRO)/portlibs/wii/include \
+	-I$(LIBOGC_INC) \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
