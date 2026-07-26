@@ -19,8 +19,6 @@ extern "C" {
     extern char __Arena2Hi[];
     extern void* __malloc_sbrk_base;
 
-    void __real_KThreadInit(void);
-    void __real_KIrqInit(void);
 
     static void wii_init_arenas_early(void)
     {
@@ -88,23 +86,28 @@ extern "C" {
         return prev;
     }
 
+    void __real_KThreadInit(void);
     void __wrap_KThreadInit(void)
     {
         __real_KThreadInit();
     }
-    void __real_SYS_Init(void);
+    
+    void __real_KIrqInit(void);
     void __wrap_KIrqInit(void)
     {
         __real_KIrqInit();
     }
 
+    void __real_SYS_Init(void);
     void __wrap_SYS_Init(void)
     {
         wii_init_arenas_early();
     }
 
+    void __real_SYS_PreMain(void);
     void __wrap_SYS_PreMain(void)
     {
+        __real_SYS_PreMain();
     }
 }
 
