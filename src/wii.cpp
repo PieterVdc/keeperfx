@@ -8,6 +8,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <ogc/ios.h>
+
+#include <ogc/disc_io.h>
 
 extern "C" {
     void* __ppc_main_sp = (void*)0x817FFFE0;
@@ -91,7 +94,7 @@ extern "C" {
     {
         __real_KThreadInit();
     }
-    
+
     void __real_KIrqInit(void);
     void __wrap_KIrqInit(void)
     {
@@ -104,11 +107,7 @@ extern "C" {
         wii_init_arenas_early();
     }
 
-    void __real_SYS_PreMain(void);
-    void __wrap_SYS_PreMain(void)
-    {
-        __real_SYS_PreMain();
-    }
+
 }
 
 static void wii_bootstrap_banner(void)
@@ -153,9 +152,14 @@ static void wii_debug_list_dir(const char *path)
 
 static void wii_init_filesystem(void)
 {
+    __IOS_LoadStartupIOS();
+    
+    extern DISC_INTERFACE __io_wiisd;
+
+    SYS_Report("startup=%d\n", __io_wiisd.startup());
+    SYS_Report("isInserted=%d\n", __io_wiisd.isInserted());
+
     SYS_Report("WII_FS: wii_init_filesystem entered (build %s)\n", __DATE__ " " __TIME__);
-    // version check to detect stale binary
-    SYS_Report("WII_FS: VERSION_TAG=KEEPERFX_WII_2026_03_06\n");
 
     SYS_Report("WII_FS: calling fatInitDefault...\n");
     const int fat_ok = fatInitDefault();
@@ -189,7 +193,7 @@ static void wii_init_filesystem(void)
     wii_debug_list_dir(".");
 }
 
-extern "C" int wii_kfx_entry(int argc, char *argv[])
+extern "C" int main(int argc, char *argv[])
 {
     SYS_Report("WII_WRAP: wii_kfx_entry begin\n");
     (void)argc;

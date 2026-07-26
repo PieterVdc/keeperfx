@@ -405,7 +405,12 @@ struct Game {
 
 #pragma pack()
 /******************************************************************************/
-extern struct Game game;
+
+extern struct Game *game_ptr;
+#define game (*game_ptr)
+
+
+
 extern int32_t turns_per_second;
 
 extern int32_t fps_limit_current;
