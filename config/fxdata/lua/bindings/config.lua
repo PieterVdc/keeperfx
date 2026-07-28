@@ -7,8 +7,13 @@
 function SetGameRule(rulename,val1) end
 
 ---Creates a new creature type by loading in a creature config file with this name present in the creatures folder and adds it to the creature list. Creature name will not be recognized in DKscript.
+---@param creature creature_type Creature model to be copied.
+---@param creaturename string the name of the new creature type
+function CopyCreatureType(creature,creaturename) end
+
+---Creates a new creature type by copying an existing creature type and adds it to the creature list. Creature name will not be recognized in DKscript.
 ---@param creaturename string the name of the creature config file you want to load
-function NewCreatureType(name) end
+function NewCreatureType(creaturename) end
 
 ---Allows you to make changes to door values set in trapdoor.cfg. Look in that file for explanations on the numbers.
 ---@param doorname door_type The name of the door as defined in trapdoor.cfg
@@ -99,7 +104,7 @@ function SetCreatureMaxLevel(player,creature_type,max_level) end
 
 ---sets properties of a creature.
 ---@param creature_type creature_type The creature name, e.g. BILE_DEMON.
----@param property creature_propery The name of the creature property you want to set, e.g. NEVER_CHICKENS. See imp.cfg for options.
+---@param property creature_property The name of the creature property you want to set, e.g. NEVER_CHICKENS. See imp.cfg for options.
 ---@param enable boolean Set this to true to enable the property, or false to disable to property.
 function SetCreatureProperty(creature_type,property,enable) end
 

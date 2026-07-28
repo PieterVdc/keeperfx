@@ -45,8 +45,8 @@
 #include "config_spritecolors.h"
 #include "config_terrain.h"
 #include "map_blocks.h"
+#include "map_columns.h"
 #include "map_utils.h"
-#include "ariadne_wallhug.h"
 #include "game_saves.h"
 #include "game_legacy.h"
 #include "frontend.h"
@@ -166,7 +166,7 @@ void set_player_as_lost_level(struct PlayerInfo *player)
         turn_off_all_menus();
         clear_transfered_creatures();
     }
-    if ((game.conf.rules[player->id_number].game.classic_bugs_flags & ClscBug_NoHandPurgeOnDefeat) == 0) {
+    if ((game.conf.rules[player->id_number].gameplay.classic_bugs_flags & ClscBug_NoHandPurgeOnDefeat) == 0) {
         clear_things_in_hand(player);
         dungeon->num_things_in_hand = 0;
     }
@@ -852,7 +852,8 @@ void init_player(struct PlayerInfo *player, short no_explore)
     if (is_my_player(player)) {
         // new game, play one of the default tracks
         LevelNumber lvnum = get_loaded_level_number();
-        play_music_track(3 + ((lvnum - 1) % 4)); // tracks 3..6
+        long safe_lvnum = (lvnum > 0) ? lvnum : 1; // guard against (lvnum - 1) % 4 going negative
+        play_music_track(3 + (int)((safe_lvnum - 1) % 4)); // tracks 3..6
     }
 }
 
@@ -899,7 +900,7 @@ TbBool wp_check_map_pos_valid(struct Wander *wandr, SubtlCodedCoords stl_num)
         if ((player_is_roaming(wandr->plyr_idx)) || map_block_revealed(mapblk, wandr->plyr_idx))
         {
             slb = get_slabmap_for_subtile(stl_x, stl_y);
-            if (((mapblk->flags & SlbAtFlg_Blocking) == 0) && ((get_navigation_map(stl_x, stl_y) & NAVMAP_UNSAFE_SURFACE) == 0)
+            if (((mapblk->flags & SlbAtFlg_Blocking) == 0) && (!subtile_is_unsafe(stl_x, stl_y))
              && players_creatures_tolerate_each_other(wandr->plyr_idx,slabmap_owner(slb)))
             {
                 heartng = get_player_soul_container(wandr->plyr_idx);
@@ -922,7 +923,7 @@ TbBool wp_check_map_pos_valid(struct Wander *wandr, SubtlCodedCoords stl_num)
         // Add only tiles which are not revealed to the wandering player, unless it's heroes - for them, do nothing
         if (!player_is_roaming(wandr->plyr_idx) && !map_block_revealed(mapblk, wandr->plyr_idx))
         {
-            if (((mapblk->flags & SlbAtFlg_Blocking) == 0) && ((get_navigation_map(stl_x, stl_y) & NAVMAP_UNSAFE_SURFACE) == 0))
+            if (((mapblk->flags & SlbAtFlg_Blocking) == 0) && (!subtile_is_unsafe(stl_x, stl_y)))
             {
                 heartng = get_player_soul_container(wandr->plyr_idx);
                 if (thing_exists(heartng))
@@ -1235,7 +1236,7 @@ TbBool player_sell_door_at_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, M
     struct DoorConfigStats *doorst = get_door_model_stats(thing->model);
     struct Dungeon* dungeon = get_players_num_dungeon(thing->owner);
     dungeon->camera_deviate_jump = 192;
-    GoldAmount sell_value = compute_value_percentage(doorst->selling_value, game.conf.rules[plyr_idx].game.door_sale_percent);
+    GoldAmount sell_value = compute_value_percentage(doorst->selling_value, game.conf.rules[plyr_idx].gameplay.door_sale_percent);
     dungeon->doors_sold++;
     dungeon->manufacture_gold += sell_value;
     destroy_door(thing);

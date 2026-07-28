@@ -115,13 +115,14 @@ static TbBigChecksum compute_player_checksum(struct PlayerInfo *player) {
     if ((player->allocflags & PlaF_CompCtrl) != 0 || camera == NULL) {
         return 0;
     }
-    struct Coord3d* mappos = &(camera->mappos);
     TbBigChecksum checksum = 0;
     CHECKSUM_ADD(checksum, player->instance_remain_turns);
     CHECKSUM_ADD(checksum, player->instance_num);
-    CHECKSUM_ADD(checksum, mappos->x.val);
-    CHECKSUM_ADD(checksum, mappos->y.val);
-    CHECKSUM_ADD(checksum, mappos->z.val);
+    if (player->victory_state == VicS_Undecided) {
+        CHECKSUM_ADD(checksum, camera->mappos.x.val);
+        CHECKSUM_ADD(checksum, camera->mappos.y.val);
+        CHECKSUM_ADD(checksum, camera->mappos.z.val);
+    }
     return checksum;
 }
 
@@ -231,37 +232,30 @@ short checksums_different(void)
     return mismatch;
 }
 
-TbBigChecksum calculate_network_startup_map_checksum(void)
+TbBigChecksum calculate_file_checksum(const char *fname)
 {
-    TbBigChecksum checksum_mem = 0;
-    for (int i = 1; i < THINGS_COUNT; i++) {
-        struct Thing* thing = thing_get(i);
-        if (thing_exists(thing) && !is_non_synchronized_thing_class(thing->class_id)) {
-            CHECKSUM_ADD(checksum_mem, get_thing_checksum(thing));
-        }
+    int32_t file_size = (int32_t)LbFileLengthRnc(fname);
+    TbBigChecksum checksum = 0;
+    CHECKSUM_ADD(checksum, file_size);
+    if (file_size <= 0) {
+        return checksum;
     }
-    for (int32_t y = 0; y < game.map_tiles_y; y++) {
-        for (int32_t x = 0; x < game.map_tiles_x; x++) {
-            struct SlabMap* slb = get_slabmap_block(x, y);
-            CHECKSUM_ADD(checksum_mem, slb->kind);
-            CHECKSUM_ADD(checksum_mem, slb->owner);
-        }
+    unsigned char *file_buf = malloc(file_size);
+    if (file_buf != NULL && LbFileLoadAt(fname, file_buf) == file_size) {
+        CHECKSUM_ADD(checksum, rnc_crc(file_buf, file_size));
     }
+    free(file_buf);
+    return checksum;
+}
+
+void calculate_network_startup_map_checksums(TbBigChecksum checksums[NETWORK_STARTUP_MAP_FILE_COUNT])
+{
     LevelNumber lvnum = get_loaded_level_number();
     short fgroup = get_level_fgroup(lvnum);
-    const char* script_exts[] = {"txt", "lua"};
-    for (int i = 0; i < sizeof(script_exts) / sizeof(script_exts[0]); i++) {
-        char* fname = prepare_file_fmtpath(fgroup, "map%05u.%s", lvnum, script_exts[i]);
-        int32_t file_size = (int32_t)LbFileLengthRnc(fname);
-        if (file_size > 0) {
-            unsigned char *file_buf = malloc(file_size);
-            if (file_buf != NULL && LbFileLoadAt(fname, file_buf) == file_size) {
-                CHECKSUM_ADD(checksum_mem, rnc_crc(file_buf, file_size));
-            }
-            free(file_buf);
-        }
+    for (int i = 0; i < NETWORK_STARTUP_MAP_FILE_COUNT; i++) {
+        char* fname = prepare_file_fmtpath(fgroup, "map%05u.%s", lvnum, network_startup_compare_files[i]);
+        checksums[i] = calculate_file_checksum(fname);
     }
-    return checksum_mem;
 }
 
 void update_turn_checksums(void) {
@@ -334,7 +328,11 @@ void update_turn_checksums(void) {
             player_snapshot->id = i;
             player_snapshot->instance_num = player->instance_num;
             player_snapshot->instance_remain_turns = player->instance_remain_turns;
-            player_snapshot->mappos = camera->mappos;
+            if (player->victory_state == VicS_Undecided) {
+                player_snapshot->mappos = camera->mappos;
+            } else {
+                memset(&player_snapshot->mappos, 0, sizeof(player_snapshot->mappos));
+            }
             player_snapshot->checksum = compute_player_checksum(player);
         }
         for (struct Room* room = start_rooms; room < end_rooms; room++) {

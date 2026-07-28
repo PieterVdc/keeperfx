@@ -76,6 +76,7 @@
 #include "power_hand.h"
 #include "magic_powers.h"
 #include "player_instances.h"
+#include "local_camera.h"
 #include "player_utils.h"
 #include "config_players.h"
 #include "gui_frontmenu.h"
@@ -96,8 +97,6 @@
 extern "C" {
 #endif
 
-extern long double last_draw_completed_time;
-long double get_time_tick_ns();
 /******************************************************************************/
 TbClockMSec gui_message_timeout = 0;
 char gui_message_text[TEXT_BUFFER_LENGTH];
@@ -552,8 +551,6 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
             LbStopTextInput();
         return false;
     }
-    if (!LbIsTextInputActive())
-        LbStartTextInput();
 
     char *str;
     TbKeyCode key;
@@ -566,6 +563,7 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
             gbtn->button_state_left_pressed = 0;
             (gbtn->click_event)(gbtn);
             input_button = 0;
+            LbStopTextInput();
             if ((gbtn->flags & LbBtnF_Clickable) != 0)
             {
                 struct GuiMenu *gmnu;
@@ -580,6 +578,7 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
         snprintf(str, gbtn->maxval, "%s", backup_input_field);
         input_button = 0;
         input_field_pos = 0;
+        LbStopTextInput();
     } else
     if (key == KC_BACK)
     { // Delete the last char
@@ -620,7 +619,7 @@ TbBool get_button_area_input(struct GuiButton *gbtn, int modifiers)
             if (insert_text[0] != '\0')
             {
                 if (LbLocTextStringInsert(str, insert_text, input_field_pos, gbtn->maxval) != NULL) {
-                    input_field_pos += strlen(insert_text);
+                    input_field_pos += LbLocTextStringLength(insert_text);
                 }
             }
         }
@@ -639,12 +638,10 @@ void maintain_loadsave(struct GuiButton *gbtn)
 
 void maintain_zoom_to_event(struct GuiButton *gbtn)
 {
-    struct Dungeon *dungeon;
     struct Event *event;
-    dungeon = get_players_num_dungeon(my_player_number);
-    if (dungeon->visible_event_idx)
+    if (my_visible_event_idx)
     {
-      event = &(game.event[dungeon->visible_event_idx]);
+      event = &(game.event[my_visible_event_idx]);
       if ((event->mappos_x != 0) || (event->mappos_y != 0))
       {
         gbtn->flags |= LbBtnF_Enabled;
@@ -1391,7 +1388,7 @@ void draw_scrolling_button_string(struct GuiButton *gbtn, const char *text)
   scrollwnd->window_height = area_height;
   text_height = scrollwnd->text_height;
   int tx_units_per_px;
-  if (dbc_language > 0)
+  if (dbc_initialized && dbc_enabled)
   {
       tx_units_per_px = scale_value_by_horizontal_resolution((MyScreenWidth >= 640) ? 16 : 32);
   }
@@ -1473,23 +1470,15 @@ void gui_area_scroll_window(struct GuiButton *gbtn)
 
 void gui_go_to_event(struct GuiButton *gbtn)
 {
-    struct PlayerInfo *player;
-    struct Dungeon *dungeon;
-    player = get_my_player();
-    dungeon = get_players_dungeon(player);
-    if (dungeon->visible_event_idx) {
-        set_players_packet_action(player, PckA_ZoomToEvent, dungeon->visible_event_idx, 0, 0, 0);
+    if (my_visible_event_idx) {
+        struct Event *event = &game.event[my_visible_event_idx];
+        move_local_camera_to_position(event->mappos_x, event->mappos_y);
     }
 }
 
 void gui_close_objective(struct GuiButton *gbtn)
 {
-    struct PlayerInfo *player = get_my_player();
-    set_players_packet_action(player, PckA_EventBoxClose, 0, 0, 0, 0);
-    // The final effect of this packet should be 3 menus disabled
-    /*turn_off_menu(GMnu_TEXT_INFO);
-    turn_off_menu(GMnu_BATTLE);
-    turn_off_menu(GMnu_DUNGEON_SPECIAL);*/
+    turn_off_event_box_if_necessary(my_player_number, my_visible_event_idx);
 }
 
 void gui_scroll_text_up(struct GuiButton *gbtn)
@@ -1861,6 +1850,7 @@ void do_button_release_actions(struct GuiButton *gbtn, unsigned char *s, Gf_Btn_
             break;
       }
       input_button = gbtn;
+      LbStartTextInput();
       setup_input_field(input_button, get_string(GUIStr_MnuUnused));
       break;
   default:
@@ -2574,6 +2564,7 @@ void frontend_shutdown_state(FrontendMenuState pstate)
         turn_off_menu(GMnu_FENET_SESSION);
         break;
     case FeSt_NET_START:
+        LbStopTextInput();
         turn_off_menu(GMnu_FENET_START);
         break;
     case FeSt_STORY_POEM:
@@ -2581,7 +2572,7 @@ void frontend_shutdown_state(FrontendMenuState pstate)
         frontstory_unload();
         break;
     case FeSt_CREDITS:
-        stop_music();
+        stop_music(true);
         break;
     case FeSt_LEVEL_STATS:
         stop_streamed_samples();
@@ -2606,7 +2597,7 @@ void frontend_shutdown_state(FrontendMenuState pstate)
         break;
     case FeSt_FEOPTIONS:
         turn_off_menu(GMnu_FEOPTION);
-        stop_music();
+        stop_music(true);
         break;
     case FeSt_LEVEL_SELECT:
         turn_off_menu(GMnu_FELEVEL_SELECT);
@@ -2659,7 +2650,7 @@ FrontendMenuState frontend_setup_state(FrontendMenuState nstate)
           set_pointer_graphic_none();
           break;
       case FeSt_MAIN_MENU:
-          stop_music();
+          stop_music(true);
           continue_game_option_available = continue_game_available();
           if (!continue_game_option_available)
           {
@@ -3374,7 +3365,6 @@ short frontend_draw(void)
     draw_debug_messages();
     perform_any_screen_capturing();
     LbScreenUnlock();
-    last_draw_completed_time = get_time_tick_ns();
     return result;
 }
 

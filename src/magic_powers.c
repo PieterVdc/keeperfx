@@ -168,7 +168,7 @@ TbBool can_cast_spell_f(PlayerNumber plyr_idx, PowerKind pwkind, MapSubtlCoord s
                 cast_on_tng = false;
             }
         }
-        if ((powerst->can_cast_flags & PwCast_ThingOrMap) != 0)
+        if (flag_is_set(powerst->can_cast_flags,PwCast_ThingOrMap))
         {
             // Fail only if both functions have failed - one is enough
             if (!cast_at_xy && !cast_on_tng) {
@@ -303,12 +303,30 @@ TbBool can_cast_power_on_thing(PlayerNumber plyr_idx, const struct Thing *thing,
         if ((powerst->can_cast_flags & PwCast_OwnedObjects) != 0)
         {
             if (thing->owner == plyr_idx) {
+                return true;
+            }
+        }
+        if ((powerst->can_cast_flags & PwCast_NeutrlObjects) != 0)
+        {
+            if (is_neutral_thing(thing)) {
+                return true;
+            }
+        }
+        if ((powerst->can_cast_flags & PwCast_EnemyObjects) != 0)
+        {
+            if ((thing->owner != plyr_idx) && !is_neutral_thing(thing)) {
+                return true;
+            }
+        }
+        if ((powerst->can_cast_flags & PwCast_OwnedObjectsPickup) != 0)
+        {
+            if (thing->owner == plyr_idx) {
                 if (object_is_pickable_by_hand_to_hold(thing)) {
                     return true;
                 }
             }
         }
-        if ((powerst->can_cast_flags & PwCast_NeutrlObjects) != 0)
+        if ((powerst->can_cast_flags & PwCast_NeutrlObjectsPickup) != 0)
         {
             if (is_neutral_thing(thing)) {
                 if (object_is_pickable_by_hand_to_hold(thing)) {
@@ -316,10 +334,34 @@ TbBool can_cast_power_on_thing(PlayerNumber plyr_idx, const struct Thing *thing,
                 }
             }
         }
-        if ((powerst->can_cast_flags & PwCast_EnemyObjects) != 0)
+        if ((powerst->can_cast_flags & PwCast_EnemyObjectsPickup) != 0)
         {
             if ((thing->owner != plyr_idx) && !is_neutral_thing(thing)) {
                 if (object_is_pickable_by_hand_to_hold(thing)) {
+                    return true;
+                }
+            }
+        }
+        if ((powerst->can_cast_flags & PwCast_OwnedObjectsSlap) != 0)
+        {
+            if (thing->owner == plyr_idx) {
+                if (object_is_slappable(thing)) {
+                    return true;
+                }
+            }
+        }
+        if ((powerst->can_cast_flags & PwCast_NeutrlObjectsSlap) != 0)
+        {
+            if (is_neutral_thing(thing)) {
+                if (object_is_slappable(thing)) {
+                    return true;
+                }
+            }
+        }
+        if ((powerst->can_cast_flags & PwCast_EnemyObjectsSlap) != 0)
+        {
+            if ((thing->owner != plyr_idx) && !is_neutral_thing(thing)) {
+                if (object_is_slappable(thing)) {
                     return true;
                 }
             }
@@ -338,7 +380,7 @@ TbBool can_cast_power_on_thing(PlayerNumber plyr_idx, const struct Thing *thing,
         if ((powerst->can_cast_flags & PwCast_OwnedBoulders) != 0)
         {
             if (thing->owner == plyr_idx) {
-                if (shot_is_slappable(thing, plyr_idx))  {
+                if (shot_is_slappable_by_player(thing, plyr_idx))  {
                     return true;
                 }
             }
@@ -361,6 +403,11 @@ TbBool can_cast_power_on_thing(PlayerNumber plyr_idx, const struct Thing *thing,
     if (thing_is_creature(thing))
     {
         struct CreatureControl *cctrl = creature_control_get_from_thing(thing);
+        if (pwkind == PwrK_POSSESS) {
+            if (flag_is_set(get_creature_model_flags(thing), CMF_CannotPossess)) {
+                return false;
+            }
+        }
         if (creature_is_leaving_and_cannot_be_stopped(thing))
         {
             return false;
@@ -670,11 +717,6 @@ TbBool can_cast_power_at_xy(PlayerNumber plyr_idx, PowerKind pwkind, MapSubtlCoo
             }
         }
     }
-    if ((can_cast & PwCast_Anywhere) != 0)
-    {
-        // If allowed casting anywhere, we're done
-        return true;
-    }
     if ((can_cast & PwCast_NeedsDelay) != 0)
     {
         struct PlayerInfo *player;
@@ -682,6 +724,11 @@ TbBool can_cast_power_at_xy(PlayerNumber plyr_idx, PowerKind pwkind, MapSubtlCoo
         if (get_gameturn() <= player->power_of_cooldown_turn) {
             return false;
         }
+    }
+    if ((can_cast & PwCast_Anywhere) != 0)
+    {
+        // If allowed casting anywhere, we're done
+        return true;
     }
     PlayerNumber slb_owner;
     slb_owner = slabmap_owner(slb);
@@ -1160,9 +1207,11 @@ static TbResult magic_use_power_hand(PowerKind power_kind, PlayerNumber plyr_idx
 {
     if (power_hand_is_full(get_player(plyr_idx)))
         return Lb_FAIL;
-    else
-    if (place_thing_in_power_hand(thing, plyr_idx))
+    else if (place_thing_in_power_hand(thing, plyr_idx))
+    {
+        lua_on_pick_up(thing, plyr_idx);
         return Lb_SUCCESS;
+    }
     else
         return Lb_FAIL;
 }
@@ -1752,6 +1801,7 @@ static TbResult magic_use_power_slap_thing(PowerKind power_kind, PlayerNumber pl
 {
     struct PlayerInfo *player;
     struct Dungeon *dungeon;
+    lua_on_slap(thing, plyr_idx);
     if (!thing_exists(thing)) {
         return Lb_FAIL;
     }
@@ -1772,6 +1822,11 @@ static TbResult magic_use_power_possess_thing(PowerKind power_kind, PlayerNumber
     struct PlayerInfo *player;
     if (!thing_exists(thing)) {
         return Lb_FAIL;
+    }
+    if (thing_is_creature(thing)) {
+        if (flag_is_set(get_creature_model_flags(thing), CMF_CannotPossess)) {
+            return Lb_FAIL;
+        }
     }
     player = get_player(plyr_idx);
     player->influenced_thing_idx = thing->index;
@@ -1903,7 +1958,7 @@ void process_magic_power_call_to_arms(PlayerNumber plyr_idx)
     TbBool free = ((slabmap_owner(slb) == plyr_idx) || dungeon->cta_free);
     if (!free)
     {
-        if ((game.conf.rules[plyr_idx].game.allies_share_cta) && (players_are_mutual_allies(plyr_idx, slabmap_owner(slb))))
+        if ((game.conf.rules[plyr_idx].gameplay.allies_share_cta) && (players_are_mutual_allies(plyr_idx, slabmap_owner(slb))))
         {
             free = true;
         }
