@@ -105,15 +105,13 @@ TOML_CFLAGS += $(MACHDEP) -O2 -fsigned-char -Isrc -Ideps/centijson/include -Idep
 KFX_LDFLAGS += \
 	$(MACHDEP) \
 	-Wl,-Map,bin/keeperfx_wii.map \
-	-Wl,--wrap=KThreadInit \
-	-Wl,--wrap=KIrqInit \
-	-Wl,--wrap=SYS_Init \
-	-Wl,--wrap=_sbrk_r \
 	-L$(DEVKITPRO)/libogc/lib/wii \
 	-L$(DEVKITPRO)/portlibs/wii/lib \
 	-lfat \
 	-logc \
-	-lm
+	-lm \
+	-lwiiuse \
+	-lbte \
 
 ifeq ($(ENABLE_LTO), 1)
 KFX_CFLAGS += -flto
@@ -137,10 +135,6 @@ bin/keeperfx_wii.dol: bin/keeperfx_wii.elf | bin
 	$(ELF2DOL) $< $@
 
 $(KFX_C_OBJECTS): obj/%.o: src/%.c src/ver_defs.h | obj
-	$(MKDIR) $(dir $@)
-	$(CC) $(KFX_CFLAGS) -c $< -o $@
-
-$(KFX_ASM_OBJECTS): obj/%.o: src/%.S src/ver_defs.h | obj
 	$(MKDIR) $(dir $@)
 	$(CC) $(KFX_CFLAGS) -c $< -o $@
 
