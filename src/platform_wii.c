@@ -915,45 +915,6 @@ TbError LbNetwork_EnumerateSessions(TbNetworkCallbackFunc callback, void *ptr)
 	return Lb_OK;
 }
 
-TbControllerButtons controller_button_state = CBtn_NONE;
-
-float cbtn_axis_value(TbControllerButtons btn)
-{
-	(void)btn;
-	return 0.0f;
-}
-
-TbBool controller_connected(void)
-{
-	return false;
-}
-
-TbBool LbPollInputs(void)
-{
-	return true;
-}
-
-TbBool LbIsTextInputActive(void)
-{
-	return false;
-}
-
-void LbStartTextInput(void)
-{
-}
-
-void LbStopTextInput(void)
-{
-}
-
-int LbGetTextInput(char *dst, int maxChars)
-{
-	if (dst != NULL && maxChars > 0)
-	{
-		dst[0] = '\0';
-	}
-	return 0;
-}
 
 SoundSmplTblID get_speech_offset(void)
 {

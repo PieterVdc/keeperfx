@@ -39,7 +39,6 @@ KFX_SOURCES := $(filter-out \
 	src/steam_api.cpp \
 	src/bflib_enet.cpp \
 	src/bflib_fmvids.cpp \
-	src/bflib_input_joyst.cpp \
 	src/net_portforward.cpp \
 	src/api.c \
 	src/bflib_dialog.c \
@@ -97,7 +96,7 @@ KFX_INCLUDES = \
 	-Ideps/spng/include \
 	-Ideps/zlib/include
 
-KFX_COMMON_FLAGS = $(MACHDEP) -DGEKKO -DHW_RVL -DPLATFORM_WII -D__WII__ -DDEBUG -DBFDEBUG_LEVEL=10 -O0 -fsigned-char $(KFX_INCLUDES) -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -g
+KFX_COMMON_FLAGS = $(MACHDEP) -DGEKKO -DHW_RVL -DPLATFORM_WII -D__WII__ -DDEBUG -DBFDEBUG_LEVEL=10 -O0 -fsigned-char $(KFX_INCLUDES) -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -g -fno-omit-frame-pointer
 KFX_CFLAGS += $(KFX_COMMON_FLAGS)
 KFX_CXXFLAGS += $(KFX_COMMON_FLAGS)
 
@@ -115,7 +114,8 @@ KFX_LDFLAGS += \
 	-lfat \
 	-lbte \
 	-logc \
-	-lm
+	-lm \
+	-ldb
 	
 
 

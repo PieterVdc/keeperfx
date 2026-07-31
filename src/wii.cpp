@@ -9,8 +9,79 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <ogc/ios.h>
+#include <cstdlib>
 
 #include <ogc/disc_io.h>
+
+#include <tuxedo/ppc/exception.h>
+
+#include <ogc/system.h>
+
+/**************** */
+
+#include <unwind.h>
+#include <ogc/system.h>
+#include <stdint.h>
+
+struct BacktraceData
+{
+    int depth;
+};
+
+static _Unwind_Reason_Code trace_callback(
+    struct _Unwind_Context *context,
+    void *arg)
+{
+    BacktraceData *data = (BacktraceData *)arg;
+
+    uintptr_t ip = _Unwind_GetIP(context);
+
+    if (ip)
+    {
+        SYS_Report("#%-2d PC=%08x\n",
+            data->depth,
+            (unsigned int)ip);
+
+        data->depth++;
+    }
+
+    if (data->depth >= 32)
+        return _URC_END_OF_STACK;
+
+    return _URC_NO_REASON;
+}
+
+void dump_backtrace()
+{
+    BacktraceData data = {};
+    SYS_Report("Backtrace:\n");
+
+    _Unwind_Backtrace(trace_callback, &data);
+}
+
+static void my_panic_handler(unsigned exid, PPCContext* ctx)
+{
+    SYS_Report("\n=== KeeperFX exception ===\n");
+    SYS_Report("Exception: %u\n", exid);
+    SYS_Report("PC: %08x\n", ctx->pc);
+    SYS_Report("LR: %08x\n", ctx->lr);
+
+    dump_backtrace();
+
+    while (1)
+    {
+        // wait forever
+    }
+
+
+}
+
+void install_exception_handler(void)
+{
+    PPCExcptCurPanicFn = my_panic_handler;
+}
+
+/***********/
 
 static void wii_bootstrap_banner(void)
 {
@@ -82,8 +153,11 @@ extern "C" int main(int argc, char *argv[])
     char* safe_argv[] = { app_path_bin, NULL };
     int safe_argc = 1;
 
+    install_exception_handler();
     wii_init_filesystem();
     wii_bootstrap_banner();
+
     int result = kfxmain(safe_argc, safe_argv);
+    SYS_Report("WII_WRAP: end\n");
     return result;
 }

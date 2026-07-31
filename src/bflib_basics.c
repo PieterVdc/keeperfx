@@ -326,6 +326,14 @@ void write_log_to_array_for_live_viewing(const char* fmt_str, va_list args, cons
 
 int LbLog(struct TbLog *log, const char *fmt_str, va_list arg)
 {
+      {
+      char dolphin_line[MAX_TEXT_LENGTH + LOG_PREFIX_LEN];
+      va_list osr_args;
+      va_copy(osr_args, arg);
+      vsnprintf(dolphin_line, sizeof(dolphin_line), fmt_str, osr_args);
+      va_end(osr_args);
+      SYS_Report("%s%s", log->prefix, dolphin_line);
+    }
   enum Header {
         NONE   = 0,
         CREATE = 1,

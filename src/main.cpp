@@ -4552,12 +4552,14 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
     retval = true;
     retval &= (LbTimerInit() != Lb_FAIL);
     retval &= (LbScreenInitialize() != Lb_FAIL);
-#if defined(PLATFORM_WII)
-    SYS_Report("LbBullfrogMain: timer+screen init=%d\n", (int)retval);
-#endif
+    SYS_Report("LbBullfrogMain: yomama timer+screen init=%d\n", (int)retval);
+    SYS_Report("LbSetTitle\n");
     LbSetTitle(PROGRAM_NAME);
+    SYS_Report("LbSetIcon\n");
     LbSetIcon(1);
+    SYS_Report("LbScreenSetDoubleBuffering\n");
     LbScreenSetDoubleBuffering(true);
+    SYS_Report("srand\n");
     srand(LbTimerClock());
 
 #ifdef FUNCTESTING
@@ -4621,6 +4623,7 @@ int kfxmain(int argc, char *argv[])
   LbBullfrogMain(argc, argv);
   } catch (...)
   {
+    SYS_Report("Exception raised in kfxmain");
       error_dialog(__func__, 1, "Exception raised!");
       return 1;
   }

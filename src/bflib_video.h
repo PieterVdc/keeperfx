@@ -24,13 +24,9 @@
 
 #include "globals.h"
 
-#if !defined(PLATFORM_WII)
-#include <SDL2/SDL.h>
-#else
 #include <stdint.h>
 typedef uint32_t Uint32;
 typedef struct SDL_Window SDL_Window;
-#endif
 
 #ifdef __cplusplus
 extern "C" {
