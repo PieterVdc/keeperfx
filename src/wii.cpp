@@ -30,26 +30,6 @@ static void wii_bootstrap_banner(void)
         VIDEO_WaitVSync();
     }
 
-    for (int i = 0; i < 180; i++) {
-        VIDEO_WaitVSync();
-    }
-}
-
-static void wii_debug_list_dir(const char *path)
-{
-    DIR *dir = opendir(path);
-    if (dir == NULL) {
-        SYS_Report("WII_FS: opendir('%s') failed errno=%d\n", path, errno);
-        return;
-    }
-    SYS_Report("WII_FS: opendir('%s') ok:\n", path);
-    struct dirent *ent;
-    int n = 0;
-    while (n < 30 && (ent = readdir(dir)) != NULL) {
-        SYS_Report("WII_FS:   %s\n", ent->d_name);
-        n++;
-    }
-    closedir(dir);
 }
 
 static void wii_init_filesystem(void)
@@ -85,14 +65,12 @@ static void wii_init_filesystem(void)
         int rc = chdir(candidate);
         SYS_Report("WII_FS: chdir('%s') = %d (errno=%d)\n", candidate, rc, errno);
         if (rc == 0) {
-            wii_debug_list_dir(".");
             return;
         }
     }
 
     // Dump what we can see from current dir regardless
     SYS_Report("WII_FS: all chdir candidates failed, listing '.':\n");
-    wii_debug_list_dir(".");
 }
 
 extern "C" int main(int argc, char *argv[])

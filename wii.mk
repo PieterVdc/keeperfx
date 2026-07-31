@@ -89,6 +89,7 @@ TOML_OBJECTS = $(patsubst deps/centitoml/%.c,obj/centitoml/%.o,$(TOML_SOURCES))
 KFX_INCLUDES = \
 	-Isrc \
 	-I$(LIBOGC_INC) \
+	-I$(DEVKITPRO)/portlibs/wii/include \
 	-Ideps/centijson/include \
 	-Ideps/centitoml \
 	-Ideps/astronomy/include \
@@ -96,7 +97,7 @@ KFX_INCLUDES = \
 	-Ideps/spng/include \
 	-Ideps/zlib/include
 
-KFX_COMMON_FLAGS = $(MACHDEP) -DGEKKO -DHW_RVL -DPLATFORM_WII -D__WII__ -DDEBUG -DBFDEBUG_LEVEL=0 -O2 -fsigned-char $(KFX_INCLUDES) -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare
+KFX_COMMON_FLAGS = $(MACHDEP) -DGEKKO -DHW_RVL -DPLATFORM_WII -D__WII__ -DDEBUG -DBFDEBUG_LEVEL=10 -O0 -fsigned-char $(KFX_INCLUDES) -Wall -Wextra -Wno-unused-parameter -Wno-unknown-pragmas -Wno-format-truncation -Wno-sign-compare -g
 KFX_CFLAGS += $(KFX_COMMON_FLAGS)
 KFX_CXXFLAGS += $(KFX_COMMON_FLAGS)
 
@@ -107,11 +108,16 @@ KFX_LDFLAGS += \
 	-Wl,-Map,bin/keeperfx_wii.map \
 	-L$(DEVKITPRO)/libogc/lib/wii \
 	-L$(DEVKITPRO)/portlibs/wii/lib \
-	-lfat \
-	-logc \
-	-lm \
+	-lSDL2 \
+	-laesnd \
+	-lwiikeyboard \
 	-lwiiuse \
+	-lfat \
 	-lbte \
+	-logc \
+	-lm
+	
+
 
 ifeq ($(ENABLE_LTO), 1)
 KFX_CFLAGS += -flto
