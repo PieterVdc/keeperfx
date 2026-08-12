@@ -238,6 +238,7 @@ obj/game_loop.o \
 obj/game_lghtshdw.o \
 obj/game_merge.o \
 obj/game_saves.o \
+obj/game_update.o \
 obj/gui_boxmenu.o \
 obj/gui_draw.o \
 obj/gui_frontbtns.o \
@@ -301,6 +302,9 @@ obj/packets.o \
 obj/packets_cheats.o \
 obj/packets_input.o \
 obj/packets_misc.o \
+obj/kfx/platform/PlatformManager.o \
+obj/kfx/platform/PlatformWindows.o \
+obj/kfx/platform/WindowSystemSDL.o \
 obj/player_compchecks.o \
 obj/player_compevents.o \
 obj/player_complookup.o \
@@ -350,6 +354,7 @@ obj/thing_physics.o \
 obj/thing_shots.o \
 obj/thing_stats.o \
 obj/thing_traps.o \
+obj/timer.o \
 obj/value_util.o \
 obj/vidfade.o \
 obj/vidmode_data.o \
@@ -378,7 +383,7 @@ CU_OBJS = \
 
 # include and library directories
 LINKLIB = -mwindows \
-	-L"sdl/lib" -lSDL2 -lSDL2_mixer -lSDL2_net -lSDL2_image \
+	-L"sdl/lib" -lSDL3 -lSDL3_mixer -lSDL3_image \
 	-L"deps/ffmpeg/libavformat" -lavformat \
 	-L"deps/ffmpeg/libavcodec" -lavcodec \
 	-L"deps/ffmpeg/libswresample" -lswresample \
@@ -395,10 +400,10 @@ LINKLIB = -mwindows \
 	deps/luajit/lib/libluajit.a \
 	-lwinmm -lmingw32 -limagehlp -lws2_32 -ldbghelp -lbcrypt -lole32 -luuid
 INCS = \
+	-I"src" \
 	-I"deps/zlib/include" \
 	-I"deps/spng/include" \
 	-I"sdl/include" \
-	-I"sdl/include/SDL2" \
 	-I"deps/enet6/include" \
 	-I"deps/centijson/include" \
 	-I"deps/centitoml" \
@@ -517,6 +522,7 @@ obj/std/ftests \
 obj/std/ftests/tests \
 obj/tests obj/cu \
 obj/std/centitoml obj/hvlog/centitoml \
+obj/std/kfx/platform obj/hvlog/kfx/platform \
 sdl/for_final_package
 
 $(shell $(MKDIR) $(FOLDERS))
@@ -777,7 +783,6 @@ cppcheck:
 		-I deps/zlib/include \
 		-I deps/spng/include \
 		-I sdl/include \
-		-I sdl/include/SDL2 \
 		-I deps/enet6/include \
 		-I deps/centijson/include \
 		-I deps/centitoml \
