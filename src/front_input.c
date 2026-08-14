@@ -935,10 +935,6 @@ static TbBool get_level_lost_inputs(void)
           if (network_is_active()
             || (lbDisplay.PhysicalScreenWidth > 320))
           {
-                if (toggle_status_menu(0))
-                  set_flag(game.operation_flags, GOF_ShowPanel);
-                else
-                  clear_flag(game.operation_flags, GOF_ShowPanel);
                 set_players_packet_action(player, PckA_SaveViewType, PVT_MapScreen, 0,0,0);
           } else
           {
@@ -2176,8 +2172,10 @@ static short get_map_action_inputs(void)
 
 static void get_isometric_or_front_view_mouse_inputs(struct Packet *pckt,int rotate_pressed,TbBool mods_used)
 {
-    // Reserve the scroll wheel for the resurrect and transfer creature specials
-    if ((menu_is_active(GMnu_RESURRECT_CREATURE) || menu_is_active(GMnu_TRANSFER_CREATURE) || rotate_pressed || mods_used) == 0)
+    // Reserve the scroll wheel for the resurrect and transfer creature specials, and
+    // for the in-game Load/Save menus (there the wheel scrolls the savegame list).
+    if ((menu_is_active(GMnu_RESURRECT_CREATURE) || menu_is_active(GMnu_TRANSFER_CREATURE)
+        || menu_is_active(GMnu_LOAD) || menu_is_active(GMnu_SAVE) || rotate_pressed || mods_used) == 0)
     {
         // mouse scroll zoom unaffected by frameskip
         if ((pckt->control_flags & PCtr_MapCoordsValid) != 0)
@@ -2215,7 +2213,7 @@ static void get_isometric_or_front_view_mouse_inputs(struct Packet *pckt,int rot
     if (! move_camera_this_turn)
         return;
     // Camera Panning : mouse at window edge scrolling feature
-    if (!LbIsMouseActive())
+    if (!IsMouseInsideWindow())
     {
         return; // don't pan the camera if the mouse has left the window
     }

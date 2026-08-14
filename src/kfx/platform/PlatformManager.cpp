@@ -12,6 +12,11 @@
 #include "kfx/platform/IPlatform.h"
 #include "kfx/platform/PlatformWindows.h"
 #include "kfx/platform/PlatformLinux.h"
+#include "kfx/platform/FileFind.h"
+#include "platform.h"
+#include "bflib_fileio.h"
+#include "cdrom.h"
+#include "steam_api.hpp"
 #include "post_inc.h"
 
 /******************************************************************************/
@@ -27,6 +32,50 @@ IPlatform* GetPlatform()
 #endif
     return &s_platform;
 }
+
+/******************************************************************************/
+
+extern "C" const char * PlatformManager_GetOSVersion(void)   { return GetPlatform()->GetOSVersion(); }
+extern "C" const void * PlatformManager_GetImageBase(void)   { return GetPlatform()->GetImageBase(); }
+extern "C" const char * PlatformManager_GetWineVersion(void) { return GetPlatform()->GetWineVersion(); }
+extern "C" const char * PlatformManager_GetWineHost(void)    { return GetPlatform()->GetWineHost(); }
+
+/******************************************************************************/
+
+// The directory walk is per-OS; iterating and freeing the result is not.
+extern "C" struct TbFileFind * LbFileFindFirst(const char * filespec, struct TbFileEntry * fentry)
+{
+    return GetPlatform()->FileFindFirst(filespec, fentry);
+}
+
+extern "C" int LbFileFindNext(struct TbFileFind * ffind, struct TbFileEntry * fentry)
+{
+    if (!ffind) {
+        return -1;
+    }
+    ffind->index++;
+    if (ffind->index >= ffind->names.size()) {
+        return -1;
+    }
+    fentry->Filename = ffind->names[ffind->index].second.c_str();
+    return 1;
+}
+
+extern "C" void LbFileFindEnd(struct TbFileFind * ffind)
+{
+    delete ffind;
+}
+
+/******************************************************************************/
+
+extern "C" void   SetRedbookVolume(SoundVolume value) { GetPlatform()->SetRedbookVolume(value); }
+extern "C" TbBool PlayRedbookTrack(int track)         { return GetPlatform()->PlayRedbookTrack(track); }
+extern "C" void   PauseRedbookTrack(void)             { GetPlatform()->PauseRedbookTrack(); }
+extern "C" void   ResumeRedbookTrack(void)            { GetPlatform()->ResumeRedbookTrack(); }
+extern "C" void   StopRedbookTrack(void)              { GetPlatform()->StopRedbookTrack(); }
+
+extern "C" int  steam_api_init(void)     { return GetPlatform()->InitSteam(); }
+extern "C" void steam_api_shutdown(void) { GetPlatform()->ShutdownSteam(); }
 
 /******************************************************************************/
 
@@ -142,6 +191,12 @@ extern "C" void PlatformManager_WarpCursor(int x, int y)
 {
     IWindowSystem* ws = GetSDLWindowSystem();
     if (ws) ws->WarpCursor(x, y);
+}
+
+extern "C" int PlatformManager_IsCursorInWindow(void)
+{
+    IWindowSystem* ws = GetSDLWindowSystem();
+    return (ws && ws->IsCursorInWindow()) ? 1 : 0;
 }
 
 extern "C" int PlatformManager_RecreateWindowForSoftwareRenderer(void)

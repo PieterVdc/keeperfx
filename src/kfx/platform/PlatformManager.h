@@ -5,12 +5,11 @@
 extern "C" {
 #endif
 
-/** C-callable windowing wrappers — safe to include and call from C translation
- *  units. They delegate to the desktop window system (GetSDLWindowSystem()).
- *
- *  This is the windowing subset of the platform facade; filesystem/audio/console
- *  responsibilities are added by later PRs. Function names/signatures match the
- *  fork's develop branch so call sites stay merge-compatible. */
+// OS information — facade over IPlatform::Get*.
+const char * PlatformManager_GetOSVersion(void);
+const void * PlatformManager_GetImageBase(void);
+const char * PlatformManager_GetWineVersion(void);
+const char * PlatformManager_GetWineHost(void);
 
 int          PlatformManager_InitVideo(void);
 int          PlatformManager_HasWindow(void);
@@ -33,6 +32,7 @@ void         PlatformManager_SetWindowBordered(int bordered);
 void         PlatformManager_SetWindowPosition(int x, int y);
 int          PlatformManager_CreateWindow(const char* title, int x, int y, int w, int h, unsigned int flags);
 void         PlatformManager_WarpCursor(int x, int y);
+int          PlatformManager_IsCursorInWindow(void);
 int          PlatformManager_RecreateWindowForSoftwareRenderer(void);
 int          PlatformManager_GetDisplayRefreshRate(void);
 

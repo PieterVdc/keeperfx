@@ -323,14 +323,14 @@ short setup_game(void)
   {
       SYNCMSG("%s", &cpu_info.brand[0]);
   }
-  SYNCMSG("Build image base: %p", get_image_base());
-  SYNCMSG("Operating System: %s", get_os_version());
+  SYNCMSG("Build image base: %p", PlatformManager_GetImageBase());
+  SYNCMSG("Operating System: %s", PlatformManager_GetOSVersion());
 
-  const auto wine_version = get_wine_version();
+  const auto wine_version = PlatformManager_GetWineVersion();
   if (wine_version) {
         SYNCMSG("Running on Wine v%s", wine_version);
         is_running_under_wine = true;
-        const auto wine_host = get_wine_host();
+        const auto wine_host = PlatformManager_GetWineHost();
         SYNCMSG("Wine Host: %s", wine_host);
   }
 
@@ -1396,9 +1396,14 @@ void update_local_mouse_light(void)
     SYNCDBG(6,"Starting");
     struct PlayerInfo *player = get_my_player();
 
-    // Avoid glitching during level intro or possess animation, or when
-    // watching a replay.
-    if (player->instance_num != PI_Unset || game.packet_load_enable)
+    // Avoid glitching during level intro or possess animation
+    if (player->instance_num != PI_Unset)
+        return;
+    // ... or when watching a replay
+    if (game.packet_load_enable)
+        return;
+    // ... or during text input (save menu)
+    if (game_is_busy_doing_gui_string_input())
         return;
 
     struct Camera *cam = get_local_camera(get_player_active_camera(player));
