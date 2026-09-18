@@ -36,7 +36,7 @@ struct TbNetworkSessionNameEntry;
 struct PlayerInfo;
 
 /******************************************************************************/
-extern struct TbNetworkPlayerInfo net_player_info[MAX_NET_USERS];
+extern struct TbNetworkUserInfo net_user_info[MAX_NET_USERS];
 
 #pragma pack()
 /******************************************************************************/
@@ -48,13 +48,17 @@ void are_disconnect_victories_allowed(void);
 
 long network_session_join(void);
 
-TbBool network_player_active(int plyr_idx);
-const char *network_player_name(int plyr_idx);
+TbBool network_user_active(NetUserId);
+const char *network_user_name(NetUserId);
 TbBool network_human_contenders_remain(void);
+TbBool player_has_enemies_to_defeat(const struct PlayerInfo *player);
 void process_player_leave_game_packet(struct PlayerInfo *player);
 void process_disconnected_network_players(void);
+TbBool user_present(NetUserId user);
+void host_spoof_dropped_user_packets(void);
 void sync_initial_network_seed(void);
-unsigned long get_host_player_id(void);
+TbBool network_is_host(void);
+PlayerNumber get_net_user_player_number(NetUserId user);
 /******************************************************************************/
 #ifdef __cplusplus
 }

@@ -115,10 +115,11 @@ void set_player_as_won_level(struct PlayerInfo *player)
         {
             show_real_time_taken();
         }
-        struct GameTime GameT = get_game_time(dungeon->lvstats.hopes_dashed, turns_per_second);
+        struct GameTime GT;
+        get_game_time(&GT, dungeon->lvstats.hopes_dashed, turns_per_second);
         SYNCMSG("Won level %u. Total turns taken: %lu (%02u:%02u:%02u at %d fps). Real time elapsed: %02u:%02u:%02u:%03u.",
             game.loaded_level_number, dungeon->lvstats.hopes_dashed,
-            GameT.Hours, GameT.Minutes, GameT.Seconds, turns_per_second,
+            GT.Hours, GT.Minutes, GT.Seconds, turns_per_second,
             Timer.Hours, Timer.Minutes, Timer.Seconds, Timer.MSeconds);
       }
   }
@@ -133,7 +134,7 @@ void set_player_as_won_level(struct PlayerInfo *player)
     if (lord_of_the_land_in_prison_or_tortured())
     {
         SYNCLOG("Lord Of The Land kept captive. Torture tower unlocked.");
-        player->additional_flags |= PlaAF_UnlockedLordTorture;
+        get_user_state(player->user_id)->additional_flags |= UsrAF_UnlockedLordTorture;
     }
     output_message(SMsg_LevelWon, 0);
   }
@@ -757,8 +758,28 @@ void init_keeper_map_exploration_by_creatures(struct PlayerInfo *player)
     do_to_players_all_creatures_of_model(player->id_number, CREATURE_ANY, check_map_explored_at_current_pos);
 }
 
-void init_player_as_single_keeper(struct PlayerInfo *player)
+void turn_user_cursor_light(NetUserId user, TbBool turn_on)
 {
+    const int idx = get_user_state(user)->cursor_light_idx;
+    if (idx == 0)
+        return;
+    if (turn_on)
+        light_turn_light_on(idx);
+    else
+        light_turn_light_off(idx);
+}
+
+void init_user_state(NetUserId user)
+{
+    struct UserState* ustate = get_user_state(user);
+    if (user_state_invalid(ustate))
+    {
+        ERRORLOG("Cannot init state of user %d", (int)user);
+        return;
+    }
+    memset(ustate, 0, sizeof(*ustate));
+    ustate->teleport_destination = 19;
+    ustate->battleid = 1;
     struct InitLight ilght;
     memset(&ilght, 0, sizeof(struct InitLight));
     ilght.radius = 2560;
@@ -766,28 +787,30 @@ void init_player_as_single_keeper(struct PlayerInfo *player)
     ilght.flags = 5;
     ilght.is_dynamic = 1;
     unsigned short idx = light_create_light(&ilght);
-    player->cursor_light_idx = idx;
+    ustate->cursor_light_idx = idx;
     if (idx != 0) {
         light_set_light_never_cache(idx);
     } else {
-        WARNLOG("Cannot allocate light to player %d.",(int)player->id_number);
+        WARNLOG("Cannot allocate cursor light to user %d.",(int)user);
     }
 }
 
 void init_player(struct PlayerInfo *player, short no_explore)
 {
     SYNCDBG(5,"Starting");
-    player->minimap_pos_x = 11;
-    player->minimap_pos_y = 11;
-    player->minimap_zoom = settings.minimap_zoom;
-    setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
+    if (is_my_player(player))
+    {
+        local_state.minimap_pos_x = 11;
+        local_state.minimap_pos_y = 11;
+        local_state.minimap_zoom = settings.minimap_zoom;
+        local_state.roomspace_size = DEFAULT_USER_ROOMSPACE_WIDTH;
+        setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
+        local_state.main_palette = engine_palette;
+    }
     player->continue_work_state = PSt_CtrlDungeon;
     player->work_state = PSt_CtrlDungeon;
-    player->main_palette = engine_palette;
-    player->minimap_zoom = settings.minimap_zoom;
     player->isometric_view_zoom_level = settings.isometric_view_zoom_level;
     player->frontview_zoom_level = settings.frontview_zoom_level;
-    player->isometric_tilt = settings.isometric_tilt;
     if (is_my_player(player))
     {
         if (default_tag_mode != 3)
@@ -805,11 +828,9 @@ void init_player(struct PlayerInfo *player, short no_explore)
     player->roomspace_width = 1;
     player->roomspace_height = 1;
     player->roomspace_detection_looseness = DEFAULT_USER_ROOMSPACE_DETECTION_LOOSENESS;
-    player->user_defined_roomspace_width = DEFAULT_USER_ROOMSPACE_WIDTH;
     switch (game.game_kind)
     {
     case GKind_LocalGame:
-        init_player_as_single_keeper(player);
         init_player_start(player, false);
         reset_player_mode(player, PVT_DungeonTop);
         if ( !no_explore ) {
@@ -819,7 +840,8 @@ void init_player(struct PlayerInfo *player, short no_explore)
         break;
     case GKind_MultiGame:
         //workaround until settings are synced through multiplayer
-        player->minimap_zoom = 256;
+        if (is_my_player(player))
+            local_state.minimap_zoom = 256;
         if (game.packet_save_head.isometric_view_zoom_level == 0)
         {
             player->isometric_view_zoom_level = CAMERA_ZOOM_MAX;
@@ -833,7 +855,6 @@ void init_player(struct PlayerInfo *player, short no_explore)
           ERRORLOG("Non Keeper in Keeper game");
           break;
         }
-        init_player_as_single_keeper(player);
         init_player_start(player, false);
         reset_player_mode(player, PVT_DungeonTop);
         init_keeper_map_exploration_by_terrain(player);
@@ -1105,6 +1126,7 @@ void init_players_local_game(void)
     SYNCDBG(4,"Starting");
     struct PlayerInfo* player = get_my_player();
     player->id_number = my_player_number;
+    player->user_id = SOLO_HUMAN_ID;
     player->allocflags |= PlaF_Allocated;
 
     if( player->id_number == PLAYER_GOOD)
@@ -1120,6 +1142,7 @@ void init_players_local_game(void)
         default: player->view_mode_restore = PVM_IsoWibbleView; break;
     }
     init_player(player, 0);
+    init_user_state(player->user_id);
     set_creature_tendencies(player, CrTend_Imprison, IMPRISON_BUTTON_DEFAULT);
     set_creature_tendencies(player, CrTend_Flee, FLEE_BUTTON_DEFAULT);
     game.creatures_tend_imprison = IMPRISON_BUTTON_DEFAULT;
@@ -1169,7 +1192,7 @@ void process_players(void)
     SYNCDBG(17,"Finished");
 }
 
-TbBool player_sell_trap_at_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
+TbBool player_sell_trap_at_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool whole_slab)
 {
     struct Thing *thing;
     struct Coord3d pos;
@@ -1177,8 +1200,7 @@ TbBool player_sell_trap_at_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, M
     MapSlabCoord slb_y = subtile_slab(stl_y);
     int32_t sell_value = 0;
     unsigned long traps_sold;
-    struct PlayerInfo* player = get_player(plyr_idx);
-    if (player->full_slab_cursor == false)
+    if (!whole_slab)
     {
         thing = get_trap_for_position(stl_x, stl_y);
         if (!thing_is_sellable_trap(thing))
@@ -1342,12 +1364,6 @@ void set_player_colour(PlayerNumber plyr_idx, unsigned char colour_idx)
             }
         }
     }
-}
-
-void set_player_roomspace_size(struct PlayerInfo *player, long size) {
-    player->user_defined_roomspace_width = size;
-    player->roomspace_width = size;
-    player->roomspace_height = size;
 }
 
 /******************************************************************************/

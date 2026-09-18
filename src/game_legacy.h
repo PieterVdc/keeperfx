@@ -199,6 +199,7 @@ struct DesyncChecksums {
     TbBigChecksum doors;
     TbBigChecksum rooms;
     TbBigChecksum players;
+    TbBigChecksum dig_tasks;
     TbBigChecksum action_seed;
     TbBigChecksum ai_seed;
     TbBigChecksum player_seed;
@@ -212,6 +213,8 @@ struct LogDetailedSnapshot {
     int player_count;
     struct LogRoomDesyncInfo rooms[ROOMS_COUNT];
     int room_count;
+    struct MapTask dig_tasks[DUNGEONS_COUNT][MAPTASKS_COUNT];
+    unsigned short dig_task_counts[DUNGEONS_COUNT];
 };
 
 struct Game {
@@ -232,6 +235,7 @@ struct Game {
     char active_lens_type;
     unsigned char applied_lens_type;
     struct PlayerInfo players[PLAYERS_COUNT];
+    struct UserState user_states[MAX_NET_USERS];
     struct Column columns_data[COLUMNS_COUNT];
     unsigned short slabset_num;
     struct SlabSet slabset[SLABSET_COUNT];
@@ -276,7 +280,6 @@ struct Game {
     uint32_t ceiling_search_dist;
     uint32_t ceiling_step;
     short col_static_entries[18];
-    //unsigned char level_file_number; // merged with level_number to get maps > 255
     short loaded_level_number;
     short texture_animation[TEXTURE_BLOCKS_ANIM_FRAMES*TEXTURE_BLOCKS_ANIM_COUNT];
     unsigned char texture_id;
@@ -330,6 +333,7 @@ struct Game {
     int32_t flash_button_index; /**< GUI Button Designation ID of a button which is supposed to flash, as part of tutorial. */
     char loaded_swipe_idx;
     unsigned char active_messages_count;
+    unsigned char active_script_var_count;
     int32_t bonus_time;
     struct Coord3d armageddon_mappos;
     GameTurn armageddon_cast_turn;
@@ -375,11 +379,7 @@ struct Game {
     unsigned char script_timer_id;
     uint32_t script_timer_limit;
     TbBool timer_real;
-    unsigned char script_value_type;
-    unsigned char script_value_id;
-    PlayerNumber script_variable_player;
-    int32_t script_variable_target;
-    unsigned char script_variable_target_type;
+    struct ScriptVariable script_variables[DISPLAY_VARIABLES_LIMIT];   
     TbBool heart_lost_display_message;
     TbBool heart_lost_quick_message;
     uint32_t heart_lost_message_id;
