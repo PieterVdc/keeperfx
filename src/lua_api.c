@@ -124,19 +124,27 @@ static int lua_Ally_players(lua_State *L)
 static int lua_Start_money(lua_State *L)
 {
     struct PlayerRange player_range = luaL_checkPlayerRange(L, 1);
-    GoldAmount gold_val = luaL_checkinteger(L, 2);
-
+    GoldAmount gold_base = luaL_checkinteger(L, 2);
+    if (gold_base > SENSIBLE_GOLD)
+    {
+        gold_base = SENSIBLE_GOLD;
+        SCRPTWRNLOG("Gold added to players reduced to %d", SENSIBLE_GOLD);
+    }
+    GoldAmount gold_val = 0;
     for (PlayerNumber i = player_range.start_idx; i < player_range.end_idx; i++)
     {
-        if (gold_val > SENSIBLE_GOLD)
-        {
-            gold_val = SENSIBLE_GOLD;
-            SCRPTWRNLOG("Gold added to player reduced to %d", SENSIBLE_GOLD);
+
+        struct Dungeon* dungeon = get_dungeon(i);
+        if (dungeon_invalid(dungeon)) {
+            continue;
         }
-        player_add_offmap_gold(i, gold_val);
+        gold_val = gold_base-dungeon->offmap_money_owned;
+        if (gold_val != 0)
+        {
+            player_add_offmap_gold(i, gold_val);
+        }
     }
     return 0;
-
 }
 
 static int lua_Max_creatures(lua_State *L)
@@ -1095,7 +1103,7 @@ static int lua_Add_shot_to_level(lua_State *L)
     int hittype            = luaL_checkNamedCommand(L, 4, hit_type_desc);
     struct Thing *target   = luaL_optCheckThing(L, 5);
     int32_t speed          = luaL_optCheckinteger(L, 6);
-
+    struct Thing *parent   = luaL_optCheckThing(L,7);
     ThingIndex target_index;
 
     if (thing_is_invalid(target))
@@ -1107,6 +1115,10 @@ static int lua_Add_shot_to_level(lua_State *L)
         target_index = target->index;
     }
     struct Thing* shottng = script_process_new_shot(shot_id, location, owner, target_index, hittype);
+    if((!thing_is_invalid(shottng)) && (!thing_is_invalid(parent)))
+    {
+        shottng->parent_idx = parent->index;
+    }
     lua_pushThing(L, shottng);
     if (!thing_is_invalid(target))
     {

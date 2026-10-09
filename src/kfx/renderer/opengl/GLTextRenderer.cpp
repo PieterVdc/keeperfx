@@ -23,18 +23,18 @@ float LineHeightExplicit(const struct TbSpriteSheet* font, const struct AsianFon
 
 TbBool GLTextRenderer::DrawTextResized(int32_t x, int32_t y, int32_t units_per_px, const char* text)
 {
-    IRTextDrawCmd* cmd = AppendTextCommand(x, y, units_per_px, text);
+    IRTextDrawCmd* cmd = AppendTextCommand(x, y, units_per_px);
     if (cmd == nullptr)
         return LbTextDrawResizedImmediate(x, y, units_per_px, text);
 
     const struct TbSpriteSheet* font = (const struct TbSpriteSheet*)cmd->font;
     const struct AsianFont* dbc_font = cmd->dbc_enabled ? (const struct AsianFont*)cmd->dbc_font : nullptr;
     cmd->glyph_first = (uint32_t)m_text_write_cmds->glyphs.Size();
-    if (m_ui && (font || dbc_font))
+    if (m_ui && text && (font || dbc_font))
     {
         DrawState state{ cmd->draw_colour, cmd->draw_flags };
         m_layout_out = m_text_write_cmds;
-        Layout(*cmd, font, dbc_font, state);
+        Layout(*cmd, text, font, dbc_font, state);
         m_layout_out = nullptr;
     }
     cmd->glyph_count = (uint32_t)m_text_write_cmds->glyphs.Size() - cmd->glyph_first;
@@ -70,7 +70,7 @@ void GLTextRenderer::DrawGlyphs(const IRTextDrawCmd& cmd, const TextCommandBuffe
         switch (glyph.kind)
         {
         case IRTextGlyphKind::PaletteSprite:
-            m_ui->DrawGlyphQuad(glyph.sprite, glyph.x, glyph.y, glyph.units_per_px, 1.0f, 1.0f, 1.0f, glyph.alpha, /*sample_palette=*/true);
+            m_ui->DrawGlyphQuad(glyph.sprite, glyph.x, glyph.y, glyph.units_per_px, 1.0f, 1.0f, 1.0f, glyph.alpha, /*sample_palette=*/true, cmd.cmap);
             break;
         case IRTextGlyphKind::ColourSprite:
             m_ui->DrawGlyphQuad(glyph.sprite, glyph.x, glyph.y, glyph.units_per_px, r, g, b, glyph.alpha, /*sample_palette=*/false);
@@ -85,7 +85,7 @@ void GLTextRenderer::DrawGlyphs(const IRTextDrawCmd& cmd, const TextCommandBuffe
         glDisable(GL_SCISSOR_TEST);
 }
 
-void GLTextRenderer::Layout(const IRTextDrawCmd& cmd, const struct TbSpriteSheet* font,
+void GLTextRenderer::Layout(const IRTextDrawCmd& cmd, const char* text, const struct TbSpriteSheet* font,
                                    const struct AsianFont* dbc_font, DrawState& state)
 {
     const int ups = cmd.units_per_px;
@@ -101,7 +101,7 @@ void GLTextRenderer::Layout(const IRTextDrawCmd& cmd, const struct TbSpriteSheet
         return dbc_font && LbDbcIsDuospaceChar(dbc_font, chr);
     };
 
-    const float h = LineHeightExplicit(font, dbc_font) * ups / 16.0f;
+    const float h = (float)((int)LineHeightExplicit(font, dbc_font) * ups / 16);
     const float justifyx = (float)(cmd.justify_x - cmd.clip_x);
     const float justifyy = (float)(cmd.justify_y - cmd.clip_y);
     float posx = (float)cmd.pos_x + justifyx;
@@ -130,8 +130,8 @@ void GLTextRenderer::Layout(const IRTextDrawCmd& cmd, const struct TbSpriteSheet
     const float clip_y = (float)cmd.clip_y;
 
     long count = 0;
-    const char* sbuf = cmd.text;
-    const char* ebuf = cmd.text;
+    const char* sbuf = text;
+    const char* ebuf = text;
 
     while (*ebuf != '\0')
     {
@@ -318,7 +318,7 @@ float GLTextRenderer::EmitWesternGlyph(const struct TbSpriteSheet* font, uint32_
     glyph.alpha = draw_flags_source_weight(state.flags);
     m_layout_out->glyphs.Append(glyph);
 
-    float w = spr->SWidth * units_per_px / 16.0f;
+    float w = (float)(spr->SWidth * units_per_px / 16);
     if (state.flags & Lb_TEXT_UNDERLINE)
         EmitUnderline(x, y, w, (float)LbSprFontCharHeight(font, ' ') * units_per_px / 16.0f, units_per_px, state);
     return w;
@@ -359,7 +359,7 @@ float GLTextRenderer::EmitDbcGlyph(const struct AsianFont* dbc_font, uint32_t ch
     glyph.y = gy;
     m_layout_out->glyphs.Append(glyph);
 
-    float advance = (glyph_h == 16) ? (float)(spacing + glyph_w) * scale : (float)(spacing + glyph_w);
+    float advance = (glyph_h == 16) ? (float)((spacing + glyph_w) * units_per_px / 16) : (float)(spacing + glyph_w);
     if (state.flags & Lb_TEXT_UNDERLINE)
         EmitUnderline(x, y, advance, (float)LbDbcCharHeight(dbc_font) * scale, units_per_px, state);
     return advance;

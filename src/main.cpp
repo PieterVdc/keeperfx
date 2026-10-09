@@ -60,6 +60,7 @@
 #include "vidmode.h"
 #include "kjm_input.h"
 #include "packets.h"
+#include "replay.h"
 #include "config.h"
 #include "config_slabsets.h"
 #include "config_strings.h"
@@ -239,9 +240,15 @@ TbBool all_dungeons_destroyed(const struct PlayerInfo *win_player)
     {
       if (i == win_plyr_idx)
         continue;
+      if (player_defeat_settled(i))
+        continue;
       if (!player_is_friendly_or_defeated(i,win_plyr_idx))
         return false;
     }
+    
+    // So long as two unallied humans can both plausibly win, the game goes on.
+    if (!human_victory_kernel_exists())
+        return false;
     SYNCDBG(1,"Returning true for player %ld",win_plyr_idx);
     return true;
 }
@@ -856,8 +863,9 @@ void reinit_level_after_load(void)
     local_state.lens_palette = 0;
     local_state.main_palette = engine_palette;
     init_navigation();
-    reinit_packets_after_load();
     game.easter_eggs_enabled = start_params.easter_egg;
+    if (!network_is_active() && !replay.load_enable)
+        get_my_player()->cheats_allowed = game.easter_eggs_enabled;
     parchment_loaded = 0;
     for (i=0; i < PLAYERS_COUNT; i++)
     {
@@ -969,7 +977,7 @@ void clear_players_for_save(void)
 {
     struct PlayerInfo *player;
     unsigned short saved_player_id;
-    unsigned short saved_is_active;
+    unsigned char saved_player_type;
     unsigned short saved_allocation_flags;
     struct Camera cammem;
     int i;
@@ -977,15 +985,16 @@ void clear_players_for_save(void)
     {
       player = get_player(i);
       saved_player_id = player->id_number;
-      saved_is_active = player->is_active;
+      saved_player_type = player->player_type;
       saved_allocation_flags = player->allocflags;
       memcpy(&cammem,&player->cameras[CamIV_FirstPerson],sizeof(struct Camera));
       memset(player, 0, sizeof(struct PlayerInfo));
       player->id_number = saved_player_id;
       player->user_id = -1;
-      player->is_active = saved_is_active;
+      player->player_type = saved_player_type;
       set_flag_value(player->allocflags, PlaF_Allocated, ((saved_allocation_flags & PlaF_Allocated) != 0));
       set_flag_value(player->allocflags, PlaF_CompCtrl, ((saved_allocation_flags & PlaF_CompCtrl) != 0));
+      set_flag_value(player->allocflags, PlaF_Placeholder, ((saved_allocation_flags & PlaF_Placeholder) != 0));
       memcpy(&player->cameras[CamIV_FirstPerson],&cammem,sizeof(struct Camera));
       set_player_active_camera(player, CamIV_FirstPerson);
     }
@@ -1288,35 +1297,6 @@ void process_objective_with_icon(const char *msg_text, PlayerNumber plyr_idx, Tb
     display_objectives_with_icon(player->id_number, x, y, icon_idx);
 }
 
-short winning_player_quitting(struct PlayerInfo *player, int32_t *plyr_count)
-{
-    struct PlayerInfo *swplyr;
-    int i;
-    int k;
-    int n;
-    if (player->victory_state == VicS_LostLevel)
-    {
-      return 0;
-    }
-    k = 0;
-    n = 0;
-    for (i=0; i < PLAYERS_COUNT; i++)
-    {
-      swplyr = get_player(i);
-      if (player_exists(swplyr))
-      {
-        if (swplyr->is_active == 1)
-        {
-          k++;
-          if (swplyr->victory_state == VicS_LostLevel)
-            n++;
-        }
-      }
-    }
-    *plyr_count = k;
-    return ((k - n) == 1);
-}
-
 short lose_level(struct PlayerInfo *player)
 {
     if (!is_my_player(player))
@@ -1346,9 +1326,10 @@ short complete_level(struct PlayerInfo *player)
     SYNCDBG(6,"Starting");
     if (!is_my_player(player))
         return false;
-    if (network_is_active())
+    if (game.game_kind == GKind_MultiGame)
     {
-        LbNetwork_Stop();
+        if (network_is_active())
+            LbNetwork_Stop();
         quit_game = 1;
         return true;
     }
@@ -1393,7 +1374,7 @@ void update_local_mouse_light(void)
     if (player->instance_num != PI_Unset)
         return;
     // ... or when watching a replay
-    if (game.packet_load_enable)
+    if (replay.load_enable)
         return;
     // ... or during text input (save menu)
     if (game_is_busy_doing_gui_string_input())
@@ -2080,6 +2061,7 @@ static short resolve_startup_config(void)
     features_enabled &= ~Ft_DisableCursorCameraPanning; // don't disable cursor camera panning
     features_enabled |= Ft_DeltaTime; // enable delta time
     features_enabled |= Ft_NoCdMusic; // use music files (OGG) rather than CD music
+    features_enabled &= ~Ft_ParchmentFade; // do not fade into and out of the parchment map
     if (!load_configuration())
     {
         ERRORLOG("Configuration load error.");

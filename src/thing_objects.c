@@ -279,7 +279,7 @@ TbBool thing_is_object_with_tooltip(const struct Thing* thing, TbBool is_optiona
     if (!thing_is_object(thing))
         return false;
     struct ObjectConfigStats* objst = get_object_model_stats(thing->model);
-    return ((objst->tooltip_stridx != GUIStr_Empty) && (objst->tooltip_optional == is_optional));
+    return (!string_idx_is_empty(objst->tooltip_stridx) && (objst->tooltip_optional == is_optional));
 }
 TbBool thing_is_object_with_mandatory_tooltip(const struct Thing* thing)
 {
@@ -976,7 +976,7 @@ long process_temple_special(struct Thing *thing, long sacowner)
     if (object_is_mature_food(thing))
     {
         dungeon->chickens_sacrificed++;
-        if (temple_check_for_arachnid_join_dungeon(dungeon) && (game.easter_eggs_enabled == true))
+        if (game.easter_eggs_enabled && temple_check_for_arachnid_join_dungeon(dungeon))
             return true;
     } else
     {

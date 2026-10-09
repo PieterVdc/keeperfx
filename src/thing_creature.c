@@ -6802,7 +6802,7 @@ TbBool change_creature_owner_if_near_dungeon_heart(struct Thing *creatng)
         if (player_is_neutral(plyr_idx))
             continue;
         struct PlayerInfo* player = get_player(plyr_idx);
-        if ( ((player->allocflags & PlaF_Allocated) != 0) && (player->is_active == 1) && (player->victory_state != VicS_LostLevel) )
+        if (is_active_keeper(player) && (player->victory_state != VicS_LostLevel) )
         {
             struct Thing* heartng = get_player_soul_container(plyr_idx);
             if (thing_exists(heartng) && (get_chessboard_distance(&creatng->mappos, &heartng->mappos) < subtile_coord(6,0)))
@@ -8038,10 +8038,7 @@ void script_move_creature(struct Thing* thing, TbMapLocation location, ThingMode
         clear_thing_velocity(thing);
     }
     reset_interpolation_of_thing(thing);
-    if (!is_thing_some_way_controlled(thing))
-    {
-        initialise_thing_state(thing, CrSt_CreatureDoingNothing);
-    }
+    set_start_state(thing);
     cctrl->turns_at_job = -1;
     check_map_explored(thing, thing->mappos.x.stl.num, thing->mappos.y.stl.num);
 }

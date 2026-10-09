@@ -65,6 +65,7 @@
 #include "frontmenu_ingame_tabs.h"
 
 #include "keeperfx.hpp"
+#include "local_camera.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -547,6 +548,8 @@ void draw_power_hand(void)
     if (local_state.display_needs_update)
         return;
     if (game.small_map_state == 2)
+        return;
+    if (replay_camera_detached())
         return;
     RendererSetDrawFlags(0x00);
     if (player->view_type != PVT_DungeonTop)
@@ -1144,7 +1147,7 @@ void process_things_in_dungeon_hand(void)
         player = get_player(plyr_idx);
         struct Dungeon *dungeon;
         dungeon = get_players_dungeon(player);
-        if (player_exists(player) && (player->is_active == 1) && !dungeon_invalid(dungeon))
+        if (is_active_keeper(player) && !dungeon_invalid(dungeon))
         {
             int i;
             for (i = 0; i < dungeon->num_things_in_hand; i++)

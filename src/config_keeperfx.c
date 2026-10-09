@@ -63,6 +63,9 @@ struct InstallInfo install_info;
 char keeper_runtime_directory[152];
 short api_enabled = false;
 uint16_t api_port = 5599;
+uint32_t packetsave_max_kb = 0;
+TbBool replays_enabled = true;
+uint32_t max_replays[ReplTyp_Count] = {5, 5, 10};
 unsigned long features_enabled = 0;
 unsigned char viewport_mode = VpMode_Original;
 TbBool exit_on_lua_error = false;
@@ -172,6 +175,10 @@ const struct NamedCommand conf_commands[] = {
   {"MULTIPLAYER_PORT"              , 48},
   {"RENDERER"                      , 49},
   {"VIEWPORT_MODE"                 , 50},
+  {"PARCHMENT_MAP_FADE"            , 51},
+  {"AUTOMATIC_REPLAYS"             , 52},
+  {"MAX_REPLAYS"                   , 53},
+  {"REPLAY_MAX_SIZE"               , 54},
   {NULL,                   0},
   };
 
@@ -308,6 +315,13 @@ TbBool use_relative_mouse_mode(void)
 }
 
 /**
+ * Returns if the mouse should use SDL relative ("raw") mode instead of the grab-and-warp scheme.
+ */
+TbBool use_parchment_fade(void)
+{
+    return ((features_enabled & Ft_ParchmentFade) != 0);
+}
+/**
  * Returns if we should pause the music, if the user pauses the game.
  */
 TbBool pause_music_when_game_paused(void)
@@ -442,9 +456,6 @@ static void load_file_configuration(const char *fname, const char *sname, const 
               install_info.inst_path[sizeof(install_info.inst_path)-1] = '\0';
           }
           break;
-      case 2: // INSTALL_TYPE
-          // This command is just skipped...
-          break;
       case 3: // LANGUAGE
           i = recognize_conf_parameter(buf,&pos,len,lang_type);
           if (i <= 0)
@@ -454,9 +465,6 @@ static void load_file_configuration(const char *fname, const char *sname, const 
             break;
           }
           install_info.lang_id = i;
-          break;
-      case 4: // KEYBOARD
-          // Works only in DK Premium
           break;
       case 5: // SCREENSHOT
           i = recognize_conf_parameter(buf,&pos,len,scrshot_type);
@@ -749,9 +757,6 @@ static void load_file_configuration(const char *fname, const char *sname, const 
               }
           }
           break;
-        case 23: //SKIP_HEART_ZOOM
-          CONFLOG("The \"%s\" setting is unused. Use the -skipheartzoom command line option instead.", COMMAND_TEXT(cmd_num));
-          break;
         case 24: //CURSOR_EDGE_CAMERA_PANNING
           i = recognize_conf_parameter(buf,&pos,len,logicval_type);
           if (i <= 0)
@@ -846,12 +851,6 @@ static void load_file_configuration(const char *fname, const char *sname, const 
               line_box_size = i;
           } else {
               CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",COMMAND_TEXT(cmd_num),config_textname);
-          }
-          break;
-      case 32: // COMMAND_CHAR
-          if (get_conf_parameter_single(buf,&pos,len,word_buf,sizeof(word_buf)) > 0)
-          {
-              cmd_char = word_buf[0];
           }
           break;
       case 33: // API_ENABLED
@@ -1085,9 +1084,66 @@ static void load_file_configuration(const char *fname, const char *sname, const 
           }
           viewport_mode = i;
           break;
+      case 51: // PARCHMENT_MAP_FADE
+          i = recognize_conf_parameter(buf, &pos, len, logicval_type);
+          if (i <= 0)
+          {
+              CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
+                  COMMAND_TEXT(cmd_num), config_textname);
+              break;
+          }
+          if (i == 1)
+              features_enabled |= Ft_ParchmentFade;
+          else
+              features_enabled &= ~Ft_ParchmentFade;
+          break;
+      case 52: // AUTOMATIC_REPLAYS
+          i = recognize_conf_parameter(buf, &pos, len, logicval_type);
+          if (i <= 0)
+          {
+              CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
+                  COMMAND_TEXT(cmd_num), config_textname);
+              break;
+          }
+          replays_enabled = (i == 1);
+          break;
+      case 53: // MAX_REPLAYS
+          i = 0;
+          for (int typ = 0; typ < ReplTyp_Count; typ++)
+          {
+              if (get_conf_parameter_single(buf,&pos,len,word_buf,sizeof(word_buf)) > 0)
+              {
+                  i = atoi(word_buf);
+                  if (i < 0) {
+                      CONFWRNLOG("Invalid \"%s\" value in %s file.",COMMAND_TEXT(cmd_num),config_textname);
+                      i = 0;
+                  }
+              }
+              max_replays[typ] = i;
+          }
+          break;
+      case 54: // REPLAY_MAX_SIZE
+          i = -1;
+          if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) > 0)
+          {
+              i = atoi(word_buf);
+          }
+          if (i >= 0) {
+              packetsave_max_kb = i;
+          }
+          else {
+              CONFWRNLOG("Invalid \"%s\" value in %s file.", COMMAND_TEXT(cmd_num), config_textname);
+          }
+          break;
       case ccr_comment:
           break;
       case ccr_endOfFile:
+          break;
+      case 2: // INSTALL_TYPE
+      case 4: // KEYBOARD
+      case 23: //SKIP_HEART_ZOOM
+      case 32: // COMMAND_CHAR
+          CONFLOG("The \"%s\" setting is depricated.", COMMAND_TEXT(cmd_num));
           break;
       default:
           CONFWRNLOG("Unrecognized command in %s file.",config_textname);

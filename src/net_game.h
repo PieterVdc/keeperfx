@@ -44,21 +44,28 @@ short setup_network_service(enum FrontendNetService service);
 int setup_old_network_service(void);
 TbBool init_players_network_game(void);
 void setup_count_players(void);
-void are_disconnect_victories_allowed(void);
 
 long network_session_join(void);
 
 TbBool network_user_active(NetUserId);
 const char *network_user_name(NetUserId);
 TbBool network_human_contenders_remain(void);
-TbBool player_has_enemies_to_defeat(const struct PlayerInfo *player);
+void resolve_placeholders(void);
 void process_player_leave_game_packet(struct PlayerInfo *player);
 void process_disconnected_network_players(void);
 TbBool user_present(NetUserId user);
 void host_spoof_dropped_user_packets(void);
 void sync_initial_network_seed(void);
+struct UserStartSettings;
+struct PlayerInfo;
+void build_local_user_start_settings(struct UserStartSettings *us);
+void apply_user_start_settings(struct PlayerInfo *player, const struct UserStartSettings *us, const struct UserStartSettings *host);
+void apply_recorded_network_stop(void);
+TbBool get_startup_user_settings(NetUserId user, struct UserStartSettings *us);
 TbBool network_is_host(void);
 PlayerNumber get_net_user_player_number(NetUserId user);
+void set_net_user_player_number(NetUserId user, PlayerNumber plyr_idx);
+void remap_user_to_solo(struct PlayerInfo *myplyr);
 /******************************************************************************/
 #ifdef __cplusplus
 }
