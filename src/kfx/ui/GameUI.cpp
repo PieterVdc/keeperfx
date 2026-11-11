@@ -12,12 +12,14 @@
 #include "frontend.h"              /* draw_gui */
 #include "engine_redraw.h"         /* draw_overlay_compass */
 #include "gui_msgs.h"              /* message_draw */
-#include "gui_tooltips.h"          /* draw_tooltip */
 #include "power_hand.h"            /* draw_power_hand */
 #include "gui_boxmenu.h"           /* gui_draw_all_boxes */
-#include "player_data.h"           /* struct PlayerInfo, PVT_MapScreen/MapFadeIn/MapFadeOut */
-#include "game_legacy.h"           /* game, GOF_ShowGui */
-#include "bflib_basics.h"          /* flag_is_set, TbBool */
+#include "kfx/renderer/RendererManager.h"
+#include "player_data.h"           /* struct PlayerInfo, PVT_MapScreen, local_state */
+#include "gui_parchment.h"         /* get_local_map_fade */
+#include "bflib_basics.h"          /* TbBool */
+#include "local_camera.h"
+#include "observer.h"
 
 #include "post_inc.h"
 
@@ -31,37 +33,30 @@ GameUI& GameUI::Get()
 
 bool GameUI::IsActiveForCurrentView(const struct PlayerInfo* player) const
 {
-    if (!player)
+    if (!player) {
         return false;
-    if (player->view_type == PVT_MapScreen
-        || player->view_type == PVT_MapFadeIn
-        || player->view_type == PVT_MapFadeOut)
-        return false;
-
-    if (player->view_mode == PVM_ParchFadeIn || player->view_mode == PVM_ParchFadeOut)
-        return false;
-    return true;
+    }
+    return (get_local_view_type() != PVT_MapScreen) && (get_local_map_fade() == PVT_None);
 }
 
 void GameUI::DrawFrame(struct PlayerInfo* player)
 {
-    if (!IsActiveForCurrentView(player))
+    observer_update_cursor();
+    if (!IsActiveForCurrentView(player)) {
         return;
+    }
 
-    TbBool show_sidebar = flag_is_set(game.operation_flags, GOF_ShowGui);
+    TbBool show_sidebar = local_state.show_gui;
 
-    if (show_sidebar)
-    {
+    if (show_sidebar) {
         draw_whole_status_panel();
     }
     draw_gui();
-    if (show_sidebar)
-    {
+    if (show_sidebar) {
         draw_overlay_compass(local_state.minimap_pos_x, local_state.minimap_pos_y);
     }
     
     message_draw();
-    draw_tooltip();
     draw_power_hand();
     gui_draw_all_boxes();
 }

@@ -40,6 +40,8 @@ enum MessageTypes {
     MsgType_Blank,
     MsgType_CreatureInstance,
     MsgType_Custom,
+    MsgType_Spectator,
+    MsgType_Local,
 };
 /******************************************************************************/
 #pragma pack(1)
@@ -53,14 +55,19 @@ unsigned long expiration_turn;
 struct GuiMessage {
     char text[64];
     short plyr_idx; //not playernumber because it is abused for other icons too
-    unsigned long expiration_turn;
+    uint32_t expiration_turn;
     short target_idx;
-    char type;
+    int8_t type;
     short icon_idx;
+    int8_t archon_digit; // 1-9 when sent by a user sharing a keeper
 };
 
 #pragma pack()
 /******************************************************************************/
+#define CHAT_LINE_SPACING_PERCENT 125
+
+extern int chat_font_size;
+
 void message_update(void);
 void message_draw(void);
 void zero_messages(void);

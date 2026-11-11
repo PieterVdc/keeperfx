@@ -38,6 +38,7 @@
 #include "front_simple.h"
 #include "front_input.h"
 #include "gui_draw.h"
+#include "gui_msgs.h"
 #include "scrcapt.h"
 #include "sounds.h"
 #include "vidmode.h"
@@ -63,10 +64,12 @@ struct InstallInfo install_info;
 char keeper_runtime_directory[152];
 short api_enabled = false;
 uint16_t api_port = 5599;
-uint32_t packetsave_max_kb = 0;
+uint32_t packetsave_max_kb = 32768;
 TbBool replays_enabled = true;
 uint32_t max_replays[ReplTyp_Count] = {5, 5, 10};
+uint32_t replay_rewind_buffer_kb = 65536;
 unsigned long features_enabled = 0;
+static unsigned char parchment_map_fade_turns = 0;
 unsigned char viewport_mode = VpMode_Original;
 TbBool exit_on_lua_error = false;
 TbBool FLEE_BUTTON_DEFAULT = false;
@@ -179,6 +182,8 @@ const struct NamedCommand conf_commands[] = {
   {"AUTOMATIC_REPLAYS"             , 52},
   {"MAX_REPLAYS"                   , 53},
   {"REPLAY_MAX_SIZE"               , 54},
+  {"CHAT_FONT_SIZE"                , 55},
+  {"REPLAY_REWIND_BUFFER_SIZE"     , 56},
   {NULL,                   0},
   };
 
@@ -256,7 +261,7 @@ unsigned int vid_scale_flags = SMK_FullscreenFit;
  * Returns if the censorship is on. This mostly affects blood.
  * Originally, censorship was on for german language.
  */
-TbBool censorship_enabled(void)
+TbBool local_censorship_enabled(void)
 {
   return ((features_enabled & Ft_Censorship) != 0);
 }
@@ -314,12 +319,10 @@ TbBool use_relative_mouse_mode(void)
   return ((features_enabled & Ft_RelativeMouseMode) != 0);
 }
 
-/**
- * Returns if the mouse should use SDL relative ("raw") mode instead of the grab-and-warp scheme.
- */
-TbBool use_parchment_fade(void)
+/** This machine's map fade length in turns, from keeperfx.cfg; 0 means no fade. */
+unsigned char get_parchment_map_fade_turns(void)
 {
-    return ((features_enabled & Ft_ParchmentFade) != 0);
+    return parchment_map_fade_turns;
 }
 /**
  * Returns if we should pause the music, if the user pauses the game.
@@ -400,29 +403,8 @@ TbBool prepare_diskpath(char *buf,long buflen)
     return true;
 }
 
-static void load_file_configuration(const char *fname, const char *sname, const char *config_textname, unsigned short flags)
+static void load_string_configuration(const char *buf, int32_t len, const char *config_textname)
 {
-  long len = LbFileLengthRnc(fname);
-  if (len < 2)
-  {
-    if ((flags & CnfLd_IgnoreErrors) == 0)
-      WARNMSG("%s file \"%s\" doesn't exist or is too small.", config_textname,sname);
-    return;
-  }
-  if (len > 65536)
-  {
-    WARNMSG("%s file \"%s\" is too large.",config_textname,sname);
-    return;
-  }
-  char* buf = (char*)KfxCalloc(len + 256, 1);
-  if (buf == NULL)
-    return;
-  // Loading file data
-  len = LbFileLoadAt(fname, buf);
-  if (len>0)
-  {
-    SYNCDBG(7,"Processing %s file, %ld bytes",config_textname,len);
-    buf[len] = '\0';
     // Set text line number - we don't have blocks so we need to initialize it manually
     text_line_number = 1;
     int32_t pos = 0;
@@ -1086,16 +1068,30 @@ static void load_file_configuration(const char *fname, const char *sname, const 
           break;
       case 51: // PARCHMENT_MAP_FADE
           i = recognize_conf_parameter(buf, &pos, len, logicval_type);
-          if (i <= 0)
+          if (i == 1)
           {
-              CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
-                  COMMAND_TEXT(cmd_num), config_textname);
+              parchment_map_fade_turns = PARCHMENT_MAP_FADE_FAST_TURNS;
               break;
           }
-          if (i == 1)
-              features_enabled |= Ft_ParchmentFade;
+          else if (i == 2)
+          {
+              parchment_map_fade_turns = 0;
+              break;
+          }
           else
-              features_enabled &= ~Ft_ParchmentFade;
+          {
+              if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) <= 0)
+              {
+                  CONFWRNLOG("Couldn't recognize \"%s\" command parameter in %s file.",
+                      COMMAND_TEXT(cmd_num), config_textname);
+                  break;
+              }
+              if (strcasecmp(word_buf, "ORIGINAL") == 0)
+                  parchment_map_fade_turns = PARCHMENT_MAP_FADE_ORIGINAL_TURNS;
+              else
+                  CONFWRNLOG("Incorrect value of \"%s\" parameter in %s file; expected OFF or ON.",
+                      COMMAND_TEXT(cmd_num), config_textname);
+          }
           break;
       case 52: // AUTOMATIC_REPLAYS
           i = recognize_conf_parameter(buf, &pos, len, logicval_type);
@@ -1135,6 +1131,32 @@ static void load_file_configuration(const char *fname, const char *sname, const 
               CONFWRNLOG("Invalid \"%s\" value in %s file.", COMMAND_TEXT(cmd_num), config_textname);
           }
           break;
+      case 55: // CHAT_FONT_SIZE
+          i = -1;
+          if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) > 0)
+          {
+              i = atoi(word_buf);
+          }
+          if (i > 0) {
+              chat_font_size = i;
+          }
+          else {
+              CONFWRNLOG("Invalid \"%s\" value in %s file.", COMMAND_TEXT(cmd_num), config_textname);
+          }
+          break;
+      case 56: // REPLAY_REWIND_BUFFER_SIZE
+          i = -1;
+          if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) > 0)
+          {
+              i = atoi(word_buf);
+          }
+          if (i >= 0) {
+              replay_rewind_buffer_kb = i;
+          }
+          else {
+              CONFWRNLOG("Invalid \"%s\" value in %s file.", COMMAND_TEXT(cmd_num), config_textname);
+          }
+          break;
       case ccr_comment:
           break;
       case ccr_endOfFile:
@@ -1152,6 +1174,32 @@ static void load_file_configuration(const char *fname, const char *sname, const 
       skip_conf_to_next_line(buf,&pos,len);
     }
 #undef COMMAND_TEXT
+}
+
+static void load_file_configuration(const char *fname, const char *sname, const char *config_textname, unsigned short flags)
+{
+  long len = LbFileLengthRnc(fname);
+  if (len < 2)
+  {
+    if ((flags & CnfLd_IgnoreErrors) == 0)
+      WARNMSG("%s file \"%s\" doesn't exist or is too small.", config_textname,sname);
+    return;
+  }
+  if (len > 65536)
+  {
+    WARNMSG("%s file \"%s\" is too large.", config_textname,sname);
+    return;
+  }
+  char* buf = (char*)KfxCalloc(len + 256, 1);
+  if (buf == NULL)
+    return;
+
+  len = LbFileLoadAt(fname, buf);
+  if (len>0)
+  {
+    SYNCDBG(7,"Processing %s file, %ld bytes", config_textname, len);
+    buf[len] = '\0';
+    load_string_configuration(buf, len, config_textname);
   }
   SYNCDBG(7,"%s loaded", config_textname);
   // Freeing
@@ -1249,6 +1297,9 @@ short load_configuration(void)
   load_file_configuration(fname, sname, config_textname, 0);
 
   load_configuration_for_mod_all();
+
+  if (start_params.config_overrides != NULL)
+    load_string_configuration(start_params.config_overrides, strlen(start_params.config_overrides), "CLI (-cfg)");
 
   // Returning if the setting are valid
   return (install_info.lang_id > 0) && (install_info.inst_path[0] != '\0');

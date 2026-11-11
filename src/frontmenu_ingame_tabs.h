@@ -91,6 +91,8 @@ short get_pixels_scaled_and_zoomed(long basic_zoom);
 short scale_pixel(long basic_zoom);
 void gui_zoom_in(struct GuiButton *gbtn);
 void gui_zoom_out(struct GuiButton *gbtn);
+void gui_go_to_map(struct GuiButton *gbtn);
+void gui_set_page(struct GuiButton *gbtn);
 void draw_whole_status_panel(void);
 void gui_set_button_flashing(long btn_idx, long gameturns);
 short button_designation_to_tab_designation(short btn_designt_id);
@@ -109,11 +111,23 @@ RoomIndex find_next_room_of_type(PlayerNumber plyr_idx, RoomKind rkind);
 
 void gui_query_next_creature_of_owner_and_model(struct GuiButton *gbtn);
 void gui_query_next_creature_of_owner(struct GuiButton *gbtn);
+void gui_set_query(struct GuiButton *gbtn);
+void gui_go_to_next_creature(struct GuiButton *gbtn);
+void gui_go_to_next_creature_activity(struct GuiButton *gbtn);
+void gui_go_to_next_wanderer(struct GuiButton *gbtn);
+void gui_go_to_next_worker(struct GuiButton *gbtn);
+void gui_go_to_next_fighter(struct GuiButton *gbtn);
+void gui_go_to_next_room(struct GuiButton *gbtn);
+void gui_go_to_next_trap(struct GuiButton *gbtn);
+void gui_go_to_next_door(struct GuiButton *gbtn);
+void gui_go_to_next_spell(struct GuiButton *gbtn);
 
 void maintain_spell_next_page_button(struct GuiButton *gbtn);
 void maintain_room_next_page_button(struct GuiButton *gbtn);
 void maintain_trap_next_page_button(struct GuiButton *gbtn);
 void gui_switch_players_visible(struct GuiButton* gbtn);
+void gui_scroll_activity_up(struct GuiButton *gbtn);
+void gui_scroll_activity_down(struct GuiButton *gbtn);
 
 void go_to_adjacent_menu_tab(int direction);
 /******************************************************************************/

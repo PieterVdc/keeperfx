@@ -17,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "observer.h"
 #include "kfx/renderer/RendererManager.h"
 #include "frontmenu_ingame_tabs.h"
 #include "globals.h"
@@ -59,6 +60,7 @@
 #include "magic_powers.h"
 #include "player_computer.h"
 #include "player_instances.h"
+#include "player_utils.h"
 #include "config_players.h"
 #include "config_settings.h"
 #include "frontmenu_ingame_evnt.h"
@@ -68,6 +70,9 @@
 #include "front_input.h"
 #include "game_legacy.h"
 #include "local_camera.h"
+#include "local_possession.h"
+#include "net_game.h"
+#include "net_spectator.h"
 #include "keeperfx.hpp"
 #include "vidfade.h"
 #include "config_keeperfx.h"
@@ -147,8 +152,9 @@ static PlayerNumber info_panel_pos_to_player_number(int idx)
             continue;
 
         struct PlayerInfo* player = get_player(i);
-        if(player_exists(player))
+        if (player_exists(player) || player_is_seat(player)) {
             current_players_count++;
+        }
 
         if(idx == current_players_count)
           return i;
@@ -190,22 +196,23 @@ short get_pixels_scaled_and_zoomed(long basic_zoom)
     return pixels_needed[draw_pixels];
 }
 
+static void set_minimap_zoom(uint32_t zoom)
+{
+    if ((zoom < MINIMAP_ZOOM_MIN) || (zoom > MINIMAP_ZOOM_MAX))
+        return;
+    settings.minimap_zoom = zoom;
+    save_settings();
+    set_packet_action(get_local_packet(), PckA_SetUserPref, UPref_MinimapZoom, zoom, 0, 0);
+}
+
 void gui_zoom_in(struct GuiButton *gbtn)
 {
-    if (local_state.minimap_zoom > 128) {
-        local_state.minimap_zoom >>= 1;
-        settings.minimap_zoom = local_state.minimap_zoom;
-        save_settings();
-    }
+    set_minimap_zoom(get_local_minimap_zoom() >> 1);
 }
 
 void gui_zoom_out(struct GuiButton *gbtn)
 {
-    if (local_state.minimap_zoom < 2048) {
-        local_state.minimap_zoom <<= 1;
-        settings.minimap_zoom = local_state.minimap_zoom;
-        save_settings();
-    }
+    set_minimap_zoom(get_local_minimap_zoom() << 1);
 }
 
 void gui_go_to_map(struct GuiButton *gbtn)
@@ -225,10 +232,11 @@ void gui_turn_on_autopilot(struct GuiButton *gbtn)
 void menu_tab_maintain(struct GuiButton *gbtn)
 {
     struct PlayerInfo* player = get_my_player();
-    if (player->victory_state != VicS_LostLevel)
+    if (player->victory_state != VicS_LostLevel || observer_is_active()) {
         gbtn->flags |= LbBtnF_Enabled;
-    else
+    } else {
         gbtn->flags &= ~LbBtnF_Enabled;
+    }
 }
 
 /**
@@ -370,14 +378,16 @@ void gui_area_autopilot_button(struct GuiButton *gbtn)
           spr_idx += 1;
         draw_gui_panel_sprite_left(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, spr_idx);
     }
-    else
-    {
-        draw_gui_panel_sprite_rmleft(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, spr_idx, 12);
-    }
 }
 
 void maintain_turn_on_autopilot(struct GuiButton *gbtn)
 {
+    if (!computer_assistant_allowed()) {
+        gbtn->flags &= ~LbBtnF_Enabled;
+        gbtn->tooltip_stridx = GUIStr_Empty;
+        return;
+    }
+    gbtn->flags |= LbBtnF_Enabled;
     struct PlayerInfo* player = get_my_player();
     struct Computer2* comp = get_computer_player(player->id_number);
     unsigned long cplr_model = comp->model;
@@ -602,8 +612,8 @@ long find_room_type_capacity_total_percentage(PlayerNumber plyr_idx, RoomKind rk
 void gui_area_big_room_button(struct GuiButton *gbtn)
 {
     RoomKind rkind = gbtn->content.lval;
-    struct PlayerInfo* player = get_my_player();
-    struct UserState* ustate = get_local_user_state();
+    const struct PlayerInfo *player = get_displayed_player();
+    const struct UserState *ustate = get_user_state_prediction(get_displayed_user());
 
     struct Dungeon* dungeon = get_players_dungeon(player);
 
@@ -635,7 +645,7 @@ void gui_area_big_room_button(struct GuiButton *gbtn)
     {
         boxsize = 1;
     }
-    if ((player->work_state == PSt_BuildRoom) && (boxsize > 1))
+    if ((ustate->work_state == PSt_BuildRoom) && (boxsize > 1))
     {
         snprintf(gui_textbuf, sizeof(gui_textbuf), "%ld", (long)roomst->cost * boxsize);
     }
@@ -643,9 +653,9 @@ void gui_area_big_room_button(struct GuiButton *gbtn)
     {
         snprintf(gui_textbuf, sizeof(gui_textbuf), "%ld", (long)roomst->cost);
     }
-    if (player->render_roomspace.total_roomspace_cost <= dungeon->total_money_owned)
+    if (ustate->render_roomspace.total_roomspace_cost <= dungeon->total_money_owned)
     {
-        if ((player->work_state == PSt_BuildRoom) && (ustate->chosen_room_kind == game.chosen_room_kind)
+        if ((ustate->work_state == PSt_BuildRoom) && (ustate->chosen_room_kind == game.chosen_room_kind)
           && ((get_gameturn() % (2 * gui_blink_rate)) < gui_blink_rate))
         {
             draw_gui_panel_sprite_rmleft(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx, 44);
@@ -803,6 +813,7 @@ void gui_choose_special_spell(struct GuiButton *gbtn)
 
 void gui_area_big_spell_button(struct GuiButton *gbtn)
 {
+    const struct UserState *ustate = get_user_state_prediction(get_displayed_user());
     unsigned short flg_mem = RendererGetDrawFlags();
 
     int units_per_px = (gbtn->width * 16 + 126 / 2) / 126;
@@ -816,7 +827,7 @@ void gui_area_big_spell_button(struct GuiButton *gbtn)
         RendererSetDrawFlags(flg_mem);
         return;
     }
-    struct PlayerInfo* player = get_my_player();
+    const struct PlayerInfo *player = get_displayed_player();
     struct Dungeon* dungeon = get_players_dungeon(player);
 
     RendererClearDrawFlags(Lb_SPRITE_TRANSPAR4);
@@ -841,7 +852,7 @@ void gui_area_big_spell_button(struct GuiButton *gbtn)
     snprintf(text, sizeof(text), "%ld", (long)price);
     if (dungeon->total_money_owned >= price)
     {
-        if ((player->work_state == powerst->work_state) && ((get_gameturn() % (2 * gui_blink_rate)) >= gui_blink_rate)) {
+        if ((ustate->work_state == powerst->work_state) && ((get_gameturn() % (2 * gui_blink_rate)) >= gui_blink_rate)) {
             draw_gui_panel_sprite_rmleft(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx, 44);
         } else {
             draw_gui_panel_sprite_left(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx);
@@ -1158,8 +1169,8 @@ void gui_area_trap_build_info_button(struct GuiButton* gbtn)
 void gui_area_big_trap_button(struct GuiButton *gbtn)
 {
     int manufctr_idx = gbtn->content.lval;
-    struct PlayerInfo* player = get_my_player();
-    struct UserState* ustate = get_local_user_state();
+    const struct PlayerInfo *player = get_displayed_player();
+    const struct UserState *ustate = get_user_state_prediction(get_displayed_user());
 
     struct Dungeon* dungeon = get_players_dungeon(player);
     struct ManufactureData* manufctr = get_manufacture_data(manufctr_idx);
@@ -1207,8 +1218,8 @@ void gui_area_big_trap_button(struct GuiButton *gbtn)
         if (amount <= 0) {
             draw_gui_panel_sprite_left(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx + 1);
         } else
-        if ((((manufctr->tngclass == TCls_Trap) && (ustate->chosen_trap_kind == manufctr->tngmodel) && (player->work_state == PSt_PlaceTrap))
-        || ((manufctr->tngclass == TCls_Door) && (ustate->chosen_door_kind == manufctr->tngmodel) && (player->work_state == PSt_PlaceDoor)))
+        if ((((manufctr->tngclass == TCls_Trap) && (ustate->chosen_trap_kind == manufctr->tngmodel) && (ustate->work_state == PSt_PlaceTrap))
+        || ((manufctr->tngclass == TCls_Door) && (ustate->chosen_door_kind == manufctr->tngmodel) && (ustate->work_state == PSt_PlaceDoor)))
         && ((get_gameturn() % (2 * gui_blink_rate)) < gui_blink_rate) )
         {
             draw_gui_panel_sprite_rmleft(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 32*units_per_px/16, ps_units_per_px, gbtn->sprite_idx, 44);
@@ -1290,40 +1301,16 @@ void maintain_big_room(struct GuiButton *gbtn)
 void maintain_spell(struct GuiButton *gbtn)
 {
     struct PlayerInfo* player = get_my_player();
-    long i = gbtn->content.lval;
-    if (!is_power_available(player->id_number, i))
-    {
+    int32_t i = gbtn->content.lval;
+    if (!is_power_available(player->id_number, i)
+     || (i == PwrK_ARMAGEDDON && game.armageddon_cast_turn != 0)
+     || (i == PwrK_HOLDAUDNC && player_uses_power_hold_audience(my_player_number))) {
         gbtn->btype_value |= LbBFeF_NoTooltip;
         gbtn->flags &= ~LbBtnF_Enabled;
-  } else
-  if (i == PwrK_ARMAGEDDON)
-  {
-      if (game.armageddon_cast_turn != 0)
-      {
-        gbtn->btype_value |= LbBFeF_NoTooltip;
-        gbtn->flags &= ~LbBtnF_Enabled;
-      } else
-      {
+    } else {
         gbtn->btype_value &= LbBFeF_IntValueMask;
         gbtn->flags |= LbBtnF_Enabled;
-      }
-  } else
-  if (i == PwrK_HOLDAUDNC)
-  {
-      if (player_uses_power_hold_audience(my_player_number))
-      {
-        gbtn->btype_value |= LbBFeF_NoTooltip;
-        gbtn->flags &= ~LbBtnF_Enabled;
-      } else
-      {
-        gbtn->btype_value &= LbBFeF_IntValueMask;
-        gbtn->flags |= LbBtnF_Enabled;
-      }
-  } else
-  {
-    gbtn->btype_value &= LbBFeF_IntValueMask;
-    gbtn->flags |= LbBtnF_Enabled;
-  }
+    }
 }
 
 void maintain_trap(struct GuiButton *gbtn)
@@ -1505,8 +1492,7 @@ void draw_name_box(long x, long y, int width, struct Thing *thing)
     if (thing_is_creature(thing) && (thing->ccontrol_idx > 0))
     {
         // Draw health bar
-        struct PlayerInfo* player = get_my_player();
-        struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+        struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
         struct CreatureControl* cctrl = creature_control_get_from_thing(ctrltng);
         HitPoints maxhealth = cctrl->max_health;
         HitPoints curhealth = ctrltng->health;
@@ -1538,8 +1524,7 @@ void gui_creature_query_background1(struct GuiMenu *gmnu)
 {
     SYNCDBG(19,"Starting");
     int units_per_px = (gmnu->width * 16 + 140 / 2) / 140;
-    struct PlayerInfo* player = get_my_player();
-    struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+    struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     draw_name_box(gmnu->pos_x + 4*units_per_px/16, gmnu->pos_y + 262*units_per_px/16, gmnu->width, ctrltng);
     int portrt_x = gmnu->pos_x + (4 * units_per_px + 8) / 16;
     int portrt_y = gmnu->pos_y + (188 * units_per_px + 8) / 16;
@@ -1564,8 +1549,7 @@ void gui_creature_query_background2(struct GuiMenu *gmnu)
 {
     SYNCDBG(19,"Starting");
     int units_per_px = (gmnu->width * 16 + 140 / 2) / 140;
-    struct PlayerInfo* player = get_my_player();
-    struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+    struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     int nambox_x = gmnu->pos_x + 4 * units_per_px / 16;
     int nambox_y = gmnu->pos_y + 200 * units_per_px / 16;
     draw_name_box(nambox_x, nambox_y, gmnu->width, ctrltng);
@@ -1838,12 +1822,11 @@ long anger_get_creature_highest_anger_type_and_byte_percentage(struct Thing *cre
 
 void gui_area_smiley_anger_button(struct GuiButton *gbtn)
 {
-    struct PlayerInfo* player = get_my_player();
     // Get scale factor
     int units_per_px = (gbtn->width * 16 + 56 / 2) / 56;
     int ps_units_per_px = simple_gui_panel_sprite_width_units_per_px(gbtn, gbtn->sprite_idx, 100);
     draw_gui_panel_sprite_left(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, gbtn->sprite_idx);
-    struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+    struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     TRACE_THING(ctrltng);
     if (thing_is_creature(ctrltng))
     {
@@ -1871,10 +1854,9 @@ void gui_area_smiley_anger_button(struct GuiButton *gbtn)
 
 void gui_area_experience_button(struct GuiButton *gbtn)
 {
-    struct PlayerInfo* player = get_my_player();
     int units_per_px = (gbtn->width * 16 + 56 / 2) / 56;
     int ps_units_per_px = simple_gui_panel_sprite_width_units_per_px(gbtn, gbtn->sprite_idx, 100);
-    struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+    struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     TRACE_THING(ctrltng);
     if (thing_is_creature(ctrltng))
     {
@@ -1899,10 +1881,9 @@ void gui_area_experience_button(struct GuiButton *gbtn)
 
 void gui_area_instance_button(struct GuiButton *gbtn)
 {
-    struct PlayerInfo* player = get_my_player();
     int units_per_px = (gbtn->width * 16 + 60 / 2) / 60;
     int ps_units_per_px = simple_gui_panel_sprite_height_units_per_px(gbtn, GPS_rpanel_bar_with_pic_full_blue_down, 100);
-    struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+    struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     TRACE_THING(ctrltng);
     if (!thing_is_creature(ctrltng))
     {
@@ -1918,7 +1899,9 @@ void gui_area_instance_button(struct GuiButton *gbtn)
         gui_area_progress_bar_short(gbtn, units_per_px, 0, 32);
         return;
     }
-    struct CreatureControl* cctrl = creature_control_get_from_thing(ctrltng);
+    const struct CreatureControl* cctrl = get_local_creature_control(ctrltng);
+    const GameTurn turn = get_local_creature_turn(ctrltng);
+    const TbBool has_reset = creature_instance_has_reset_at(ctrltng, cctrl, curbtn_inst_id, turn);
     int spr_idx;
     if (cctrl->active_instance_id == curbtn_inst_id) {
       spr_idx = GPS_rpanel_bar_with_pic_full_blue_up;
@@ -1931,16 +1914,16 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     {
         gui_area_progress_bar_short(gbtn, units_per_px, 0, 32);
     } else
-    if (!creature_instance_has_reset(ctrltng, curbtn_inst_id))
+    if (!has_reset)
     {
-        long turns_progress;
-        long turns_required;
+        int32_t turns_progress;
+        int32_t turns_required;
         if ((ctrltng->alloc_flags & TAlF_IsControlled) != 0) {
             turns_required = inst_inf->fp_reset_time;
         } else {
             turns_required = inst_inf->reset_time;
         }
-        turns_progress = (long)get_gameturn() - (long)cctrl->instance_use_turn[curbtn_inst_id] + cctrl->inst_action_turns - cctrl->inst_total_turns;
+        turns_progress = (GameTurnDelta)(turn - cctrl->instance_use_turn[curbtn_inst_id]) + cctrl->inst_action_turns - cctrl->inst_total_turns;
         gui_area_progress_bar_short(gbtn, units_per_px, turns_progress, turns_required);
     } else
     {
@@ -1955,7 +1938,7 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     spr_idx = gbtn->sprite_idx;
     // Show disabled icon if instance is on cooldown or creature is frozen.
     TbBool disabled;
-    if (!creature_instance_has_reset(ctrltng, curbtn_inst_id))
+    if (!has_reset)
     {
         disabled = true;
     }
@@ -1986,8 +1969,7 @@ void gui_area_instance_button(struct GuiButton *gbtn)
 /** Callback function of maintaining creature skill button. */
 void maintain_instance(struct GuiButton *gbtn)
 {
-    struct PlayerInfo* player = get_my_player();
-    struct Thing* ctrltng = thing_get(player->controlled_thing_idx);
+    struct Thing* ctrltng = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     TRACE_THING(ctrltng);
     if (!thing_is_creature(ctrltng))
     {
@@ -2190,8 +2172,7 @@ void gui_area_stat_button(struct GuiButton *gbtn)
 {
     int ps_units_per_px = simple_gui_panel_sprite_height_units_per_px(gbtn, GPS_rpanel_frame_rect_wide_up, 100);
     draw_gui_panel_sprite_left(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, GPS_rpanel_frame_rect_wide_up);
-    struct PlayerInfo* player = get_my_player();
-    struct Thing* thing = thing_get(player->controlled_thing_idx);
+    struct Thing* thing = thing_get(get_user_state(get_displayed_user())->controlled_thing_idx);
     if (!thing_exists(thing))
         return;
     if (thing->class_id == TCls_Creature)
@@ -2292,8 +2273,9 @@ static unsigned char count_current_players_count()
     for (size_t i = 0; i < PLAYERS_COUNT; i++)
     {
         struct PlayerInfo* player = get_player(i);
-        if(player_exists(player) && player_is_keeper(i))
+        if ((player_exists(player) || player_is_seat(player)) && player_is_keeper(i)) {
             current_players_count++;
+        }
     }
     return current_players_count;
 }
@@ -2366,46 +2348,43 @@ void maintain_prison_bar(struct GuiButton *gbtn)
     }
 }
 
-void maintain_room_button(struct GuiButton *gbtn)
+void maintain_player_info_button(struct GuiButton *gbtn)
 {
-    PlayerNumber plyr_idx = gbtn->content.lval;
-    struct PlayerInfo* player = get_player(plyr_idx);
-    gbtn->sprite_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_room_red_std_a,plyr_idx);
-
-    if (player_exists(player))
-    {
-        gbtn->btype_value &= LbBFeF_IntValueMask;
-        gbtn->flags |= LbBtnF_Enabled;
-    } else
-    {
+    if (info_panel_pos_to_player_number(gbtn->content.lval) == -1) {
         gbtn->btype_value |= LbBFeF_NoMouseOver;
         gbtn->flags &= ~LbBtnF_Enabled;
         gbtn->tooltip_stridx = GUIStr_Empty;
+    } else {
+        gbtn->btype_value &= LbBFeF_IntValueMask;
+        gbtn->flags |= LbBtnF_Enabled;
     }
 }
-void maintain_creature_button(struct GuiButton* gbtn)
+
+static int get_active_computer_assist_slot(void)
 {
-    PlayerNumber plyr_idx = gbtn->content.lval;
-    struct PlayerInfo* player = get_player(plyr_idx);
-    if (player_exists(player))
+    struct PlayerInfo* player = get_my_player();
+    if (!player_exists(player))
+        return -1;
+
+    // return slot corresponding to the player's synced preference, or if that
+    // doesn't match the active kind, then go with the first slot that does.
+    // (matters only if the mod maps multiple slots to the same kind)
+    struct Computer2* comp = get_computer_player(player->id_number);
+    if (computer_player_invalid(comp) || dungeon_invalid(comp->dungeon))
+        return -1;
+    const struct UserState* ustate = get_local_user_state();
+    uint32_t preferred_kind = user_state_invalid(ustate) ? 0 : ustate->prefs[UPref_StartingComputerAssistantKind];
+    int first_match = -1;
+    for (int i = 0; i < COMPUTER_ASSIST_TYPES_COUNT; i++)
     {
-        if (player_has_heart(plyr_idx))
-        {
-            gbtn->sprite_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_player_red_std_a,plyr_idx);
-        }
-        else
-        {
-            gbtn->sprite_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_player_red_dead,plyr_idx);
-        }
-        gbtn->btype_value &= LbBFeF_IntValueMask;
-        gbtn->flags |= LbBtnF_Enabled;
+        if (comp_player_conf.computer_assist_types[i] != comp->model)
+            continue;
+        if (i + 1 == preferred_kind)
+            return i;
+        if (first_match < 0)
+            first_match = i;
     }
-    else
-    {
-        gbtn->btype_value |= LbBFeF_NoMouseOver;
-        gbtn->flags &= ~LbBtnF_Enabled;
-        gbtn->tooltip_stridx = GUIStr_Empty;
-    }
+    return first_match;
 }
 
 void maintain_compsetting_button(struct GuiButton* gbtn)
@@ -2413,6 +2392,7 @@ void maintain_compsetting_button(struct GuiButton* gbtn)
     struct ComputerType* cpt = get_computer_type_template(comp_player_conf.computer_assist_types[gbtn->btype_value]);
     gbtn->tooltip_stridx = cpt->tooltip_stridx;
     gbtn->sprite_idx = cpt->sprite_idx;
+    gbtn->button_state_left_pressed = gbtn->btype_value == get_active_computer_assist_slot();
 }
 
 void pick_up_next_wanderer(struct GuiButton *gbtn)
@@ -2518,9 +2498,11 @@ void gui_area_player_creature_info(struct GuiButton *gbtn)
     struct PlayerInfo* player = get_player(plyr_idx);
     draw_gui_panel_sprite_left_player(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, GPS_rpanel_frame_rect_wide_up, plyr_idx);
     struct Dungeon* dungeon = get_players_dungeon(player);
-    if (player_exists(player) && !dungeon_invalid(dungeon))
-    {
-        unsigned long spr_idx = get_player_colored_icon_idx(player_has_heart(plyr_idx) ? GPS_plyrsym_symbol_player_red_std_a : GPS_plyrsym_symbol_player_red_dead, plyr_idx);
+    if (!dungeon_invalid(dungeon)) {
+        int32_t spr_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_player_red_dead, plyr_idx);
+        if (player_has_heart(plyr_idx) && (player->victory_state != VicS_LostLevel)) {
+            spr_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_player_red_std_a, plyr_idx);
+        }
         if (((dungeon->num_active_creatrs < dungeon->max_creatures_attracted) && (!game.pool.is_empty))
             || ((get_gameturn() % (2 * gui_blink_rate)) >= gui_blink_rate))
         {
@@ -2551,8 +2533,7 @@ void gui_area_player_room_info(struct GuiButton *gbtn)
     draw_gui_panel_sprite_left_player(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, GPS_rpanel_frame_rect_wide_up, plyr_idx);
     struct Dungeon* dungeon = get_players_dungeon(player);
 
-    if (player_exists(player) && !dungeon_invalid(dungeon))
-    {
+    if (!dungeon_invalid(dungeon)) {
         draw_gui_panel_sprite_left_player(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, GPS_plyrsym_symbol_room_red_std_a, plyr_idx);
         long i = dungeon->total_rooms;
         char text[16];
@@ -2655,12 +2636,12 @@ void draw_whole_status_panel(void)
     LbTiledSpriteDraw(0, 0, fs_units_per_px, &status_panel);
     // Draws gold amount; note that button_sprite[] is used instead of full font
     draw_gold_total(player->id_number, gmnu->pos_x + gmnu->width/2, gmnu->pos_y + gmnu->height*67/200, fs_units_per_px, dungeon->total_money_owned);
+    int32_t basic_zoom = get_local_minimap_zoom();
     if (16/mm_units_per_px < 3)
-        mmzoom = (local_state.minimap_zoom) / scale_value_for_resolution_with_upp(2,mm_units_per_px);
+        mmzoom = basic_zoom / scale_value_for_resolution_with_upp(2,mm_units_per_px);
     else
-        mmzoom = local_state.minimap_zoom;
+        mmzoom = basic_zoom;
     panel_map_draw_slabs(local_state.minimap_pos_x, local_state.minimap_pos_y, mm_units_per_px, mmzoom);
-    long basic_zoom = local_state.minimap_zoom;
     panel_map_draw_overlay_things(mm_units_per_px, mmzoom, basic_zoom);
     panel_map_submit_to_renderer();
     unsigned char placefill_threshold = (RendererPhysicalHeight() >= 400) ? 80 : 40;
@@ -2740,8 +2721,7 @@ void update_room_tab_to_config(void)
         ibtn->draw_call = gui_area_room_button;
     }
     // Update active menu
-    struct PlayerInfo *player = get_my_player();
-    if (player->view_type == PVT_DungeonTop)
+    if (get_user_view_type(get_my_user()) == PVT_DungeonTop)
     {
         if (menu_is_active(GMnu_ROOM))
         {
@@ -2839,8 +2819,7 @@ void update_trap_tab_to_config(void)
         }
     }
     // Update active menu
-    struct PlayerInfo *player = get_my_player();
-    if (player->view_type == PVT_DungeonTop)
+    if (get_user_view_type(get_my_user()) == PVT_DungeonTop)
     {
         if ( menu_is_active(GMnu_TRAP) )
         {
@@ -2922,30 +2901,29 @@ void draw_placefiller(long scr_x, long scr_y, long units_per_px)
     LbSpriteDrawResized(scr_x, scr_y, units_per_px, spr);
 }
 
-void gui_query_next_creature_of_owner_and_model(struct GuiButton *gbtn)
+static void query_next_creature_of_owner(TbBool same_model)
 {
-    struct PlayerInfo *player = get_my_player();
-    struct Thing *creatng = thing_get(player->influenced_thing_idx);
-    ThingIndex next_creature = get_index_of_next_creature_of_owner_and_model(creatng, creatng->owner, creatng->model, player);
-    if (next_creature != player->influenced_thing_idx)
-    {
-        struct Packet* pckt = get_local_packet();
-        set_packet_action(pckt, PckA_PlyrQueryCreature, next_creature, 0x02, 0, 0);
+    ThingIndex queried_creature = get_local_user_state_prediction()->influenced_thing_idx;
+    struct Thing *creatng = thing_get(queried_creature);
+    ThingModel crmodel = 0;
+    if (same_model) {
+        crmodel = creatng->model;
+    }
+    ThingIndex next_creature = get_index_of_next_creature_of_owner_and_model(creatng, creatng->owner, crmodel, get_my_user());
+    if (next_creature != queried_creature) {
+        set_packet_action(get_local_packet(), PckA_PlyrQueryCreature, next_creature, 0x02, 0, 0);
         play_non_3d_sample(snd_tab_click);
     }
 }
 
+void gui_query_next_creature_of_owner_and_model(struct GuiButton *gbtn)
+{
+    query_next_creature_of_owner(true);
+}
+
 void gui_query_next_creature_of_owner(struct GuiButton *gbtn)
 {
-    struct PlayerInfo *player = get_my_player();
-    struct Thing *creatng = thing_get(player->influenced_thing_idx);
-    ThingIndex next_creature = get_index_of_next_creature_of_owner_and_model(creatng, creatng->owner, 0, player);
-    if (next_creature != player->influenced_thing_idx)
-    {
-        struct Packet* pckt = get_local_packet();
-        set_packet_action(pckt, PckA_PlyrQueryCreature, next_creature, 0x02, 0, 0);
-        play_non_3d_sample(snd_tab_click);
-    }
+    query_next_creature_of_owner(false);
 }
 
 void maintain_spell_next_page_button(struct GuiButton *gbtn)

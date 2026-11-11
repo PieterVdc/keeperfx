@@ -430,6 +430,9 @@ void init_creature_model_stats(ThingModel crmodel)
     crconf->damage_to_boulder = 4;
     crconf->thing_size_xy = 128;
     crconf->thing_size_z = 64;
+    crconf->fall_acceleration = 32;
+    crconf->inertia_floor = 32;
+    crconf->inertia_air = 8;
     crconf->bleeds = true;
     crconf->humanoid_creature = true;
     crconf->piss_on_dead = false;
@@ -549,7 +552,7 @@ void init_creature_model_graphics(void)
     {
         for (int k = 0; k < CREATURE_GRAPHICS_INSTANCES; k++)
         {
-            game.conf.crtr_conf.creature_graphics[i][k] = -1;
+            game.conf.crtr_conf.creature_graphics[i][k] = ANIMATION_NONE;
         }
     }
 }
@@ -2213,8 +2216,8 @@ const char *creature_instance_code_name(CrInstance inst_id)
 
 struct CreatureJobConfig *get_config_for_job(CreatureJob job_flags)
 {
-    long i = 0;
-    unsigned long k = job_flags;
+    int i = 0;
+    uint64_t k = job_flags;
     while (k)
     {
         k >>= 1;

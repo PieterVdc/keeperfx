@@ -35,6 +35,7 @@ enum CreatureWanderingSlots {
 #pragma pack(1)
 
 struct PlayerInfo;
+struct UserState;
 
 #pragma pack()
 /******************************************************************************/
@@ -42,7 +43,9 @@ TbBool player_has_lost(PlayerNumber plyr_idx);
 TbBool player_cannot_win(PlayerNumber plyr_idx);
 TbBool player_defeat_settled(PlayerNumber plyr_idx);
 TbBool player_is_placeholder(const struct PlayerInfo *player);
+TbBool player_is_seat(const struct PlayerInfo *player);
 TbBool human_victory_kernel_exists(void);
+TbBool placeholder_has_human_ally(const struct PlayerInfo *placeholder);
 void set_player_as_won_level(struct PlayerInfo *player);
 void set_player_as_lost_level(struct PlayerInfo *player);
 
@@ -59,8 +62,12 @@ TbBool player_sell_trap_at_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, M
 TbBool player_sell_door_at_subtile(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y);
 
 void init_players(void);
+int32_t user_get_visibility_bounds(NetUserId user, MapCoord *x, MapCoord *y);
+TbBool get_starting_highlight_mode(void);
+void init_local_player_state(void);
 void init_player(struct PlayerInfo *player, short no_explore);
-void init_user_state(NetUserId user);
+void init_user_state(NetUserId user, PlayerNumber player_id, const char *name);
+void init_user_controls(struct UserState *ustate);
 void turn_user_cursor_light(NetUserId user, TbBool turn_on);
 void post_init_players(void);
 void post_init_player(struct PlayerInfo* player);

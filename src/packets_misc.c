@@ -16,11 +16,13 @@
  *     (at your option) any later version.
  */
 /******************************************************************************/
-#include "net_game.h"
 #include "pre_inc.h"
+#include "observer.h"
+#include "net_game.h"
 #include "kfx/renderer/RendererManager.h"
 #include "packets.h"
 #include "net_exchange_gameplay.h"
+#include "net_spectator.h"
 #include "bflib_datetm.h"
 #include "front_landview.h"
 #include "game_legacy.h"
@@ -32,6 +34,7 @@ extern "C" {
 /******************************************************************************/
 #define MULTIPLAYER_PAUSE_COOLDOWN_MS 500
 struct Packet bad_packet;
+static struct Packet local_observer_packet;
 unsigned long last_pause_toggle_time = 0;
 extern TbBool force_player_num;
 extern TbBool keeper_screen_redraw(void);
@@ -44,6 +47,9 @@ NetUserId get_local_user(void)
 {
     if (replay.load_enable)
     {
+        NetUserId rec_user = replay.head.recording_user;
+        if ((rec_user >= 0) && (rec_user < MAX_NET_USERS) && (get_net_user_player_number(rec_user) == my_player_number))
+            return rec_user;
         for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
             if (get_net_user_player_number(user) == my_player_number)
                 return user;
@@ -62,8 +68,7 @@ NetUserId get_local_user(void)
         return SOLO_HUMAN_ID;
     }
 
-    if (netstate.my_id >= 0 && netstate.my_id < MAX_NET_USERS)
-    {
+    if (netstate.my_id >= 0 && netstate.my_id < MAX_NET_CONNECTIONS) {
         return netstate.my_id;
     }
 
@@ -73,23 +78,64 @@ NetUserId get_local_user(void)
 
 struct Packet *get_local_packet(void)
 {
+    if (observer_is_active()) {
+        return &local_observer_packet;
+    }
     return get_packet(get_local_user());
+}
+
+static TbBool timestamp_packet_pending;
+
+void request_timestamp_packet(void)
+{
+    timestamp_packet_pending = true;
+}
+
+// sends the host's current time (not the time zone) as a packet, occasionally.
+void set_pending_timestamp_packet_action(struct Packet *pckt)
+{
+    const GameTurn turn = get_gameturn();
+    if ((get_local_user() == SERVER_ID) && (turn % 256 == 128))
+        timestamp_packet_pending = true;
+    if (!timestamp_packet_pending || (pckt->action != PckA_None) || flag_is_set(game.operation_flags, GOF_Paused))
+        return;
+    int32_t tz = game.timestamp_tz;
+    if (!get_local_timezone(&tz, NULL))
+        tz = game.timestamp_tz;
+    
+    // 11 bits for tz (in minutes).
+    const int32_t tz_minutes = max(-1024, min(1023, tz / 60));
+    const TbTimeSec now = LbTimeSec();
+    const uint64_t timestamp = (now == (TbTimeSec)-1) ? 0 : (uint64_t)now;
+    
+    // par2: upper 21 bits of the timestamp, then tz
+    const uint32_t par2 = ((uint32_t)(timestamp >> 32) & 0x1FFFFF) | ((uint32_t)tz_minutes << 21);
+    set_packet_action(pckt, PckA_SetTimestamp, (uint32_t)timestamp, par2,
+        (uint16_t)turn, (uint16_t)(turn >> 16));
+    timestamp_packet_pending = false;
+}
+
+// my keeper's packet is the local user's, not whichever user is listed first
+static struct Packet *get_player_packet(const struct PlayerInfo *player)
+{
+    if (player == &local_observer_player) {
+        return get_local_packet();
+    }
+    return get_packet(is_my_player(player) ? get_local_user() : get_player_primary_user(player));
 }
 
 void set_players_packet_action(struct PlayerInfo *player, unsigned char pcktype,
         unsigned long par1, unsigned long par2, unsigned short par3, unsigned short par4)
 {
-    struct Packet* pckt = get_packet(player->user_id);
-    pckt->actn_par1 = par1;
-    pckt->actn_par2 = par2;
-    pckt->actn_par3 = par3;
-    pckt->actn_par4 = par4;
-    pckt->action = pcktype;
+    if (observer_is_active() && player != &local_observer_player) {
+        return;
+    }
+    set_packet_action(get_player_packet(player), pcktype, par1, par2, par3, par4);
 }
 
 unsigned char get_players_packet_action(struct PlayerInfo *player)
 {
-    struct Packet* pckt = get_packet(player->user_id);
+    struct Packet* pckt = get_player_packet(player);
     return pckt->action;
 }
 
@@ -100,7 +146,7 @@ void set_packet_control(struct Packet *pckt, unsigned long flag)
 
 void set_players_packet_control(struct PlayerInfo *player, unsigned long flag)
 {
-    struct Packet* pckt = get_packet(player->user_id);
+    struct Packet* pckt = get_player_packet(player);
     pckt->control_flags |= flag;
 }
 
@@ -111,7 +157,7 @@ void unset_packet_control(struct Packet *pckt, unsigned long flag)
 
 void unset_players_packet_control(struct PlayerInfo *player, unsigned long flag)
 {
-    struct Packet* pckt = get_packet(player->user_id);
+    struct Packet* pckt = get_player_packet(player);
     pckt->control_flags &= ~flag;
 }
 
@@ -131,6 +177,12 @@ void set_players_packet_position(struct Packet *pckt, long x, long y, unsigned c
  */
 struct Packet *get_packet(NetUserId user)
 {
+    if (user == OBSERVER_USER) {
+        return &local_observer_packet;
+    }
+    if (network_is_active() && user == netstate.my_id && user >= MAX_NET_USERS && user < MAX_NET_CONNECTIONS) {
+        return &local_observer_packet;
+    }
     if ((user < 0) || (user >= PACKETS_COUNT))
         return INVALID_PACKET;
     return &game.packets[user];
@@ -138,10 +190,10 @@ struct Packet *get_packet(NetUserId user)
 
 void clear_packets(void)
 {
-    for (int i = 0; i < PACKETS_COUNT; i++)
-    {
+    for (int i = 0; i < PACKETS_COUNT; i++) {
         memset(&game.packets[i], 0, sizeof(struct Packet));
     }
+    memset(&local_observer_packet, 0, sizeof(local_observer_packet));
 }
 
 void post_init_packets(void)
@@ -180,8 +232,11 @@ void set_packet_pause_toggle()
     struct PlayerInfo* player = get_my_player();
     if (player_invalid(player))
         return;
-    if (player->user_id >= PACKETS_COUNT)
+    if (get_local_user() >= PACKETS_COUNT)
         return;
+    if (network_user_is_spectator(netstate.my_id)) {
+        return;
+    }
     if (network_is_active()) {
         unsigned long current_time = LbTimerClock();
         if (current_time - last_pause_toggle_time < MULTIPLAYER_PAUSE_COOLDOWN_MS) {

@@ -31,8 +31,19 @@ extern "C" {
 
 /******************************************************************************/
 #define NET_SERVICE_LEN 64
+#define NET_PLAYER_COLOUR_RANDOM MAX_NET_USERS
+#define NET_TEAM_COUNT 4
+#define NET_TEAM_RANDOM NET_TEAM_COUNT
+#define NET_DEFAULT_NAME_NUMBER_RANGE 1000
+
+enum NetPlayerSettingKind {
+    NetPlayerSetting_Colour,
+    NetPlayerSetting_Team,
+    NetPlayerSetting_Count,
+};
 
 enum FrontendNetService {
+    FrontendNetSvc_None = -2,
     FrontendNetSvc_Skirmish = -1,
     FrontendNetSvc_Online = 0,
     FrontendNetSvc_LAN = 1,
@@ -43,13 +54,19 @@ enum FrontendNetService {
 /******************************************************************************/
 
 struct ConfigInfo {
-    char str_join[20];
-    char net_player_name[20];
+    char str_join[PLAYER_MP_NAME_LEN];
+    char net_player_name[PLAYER_MP_NAME_LEN];
     char net_lobby_name[64];
+    uint8_t max_players;
+    uint8_t spectators_enabled;
+    uint8_t spectator_chat;
+    uint8_t computer_players;
+    uint8_t cheats_enabled;
+    uint8_t computer_assistant;
 };
 
 struct TbNetworkPlayerName {
-    char name[20];
+    char name[PLAYER_MP_NAME_LEN];
 };
 
 extern int fe_network_active;
@@ -58,13 +75,31 @@ extern struct TbNetworkSessionNameEntry *net_session[SESSION_ENTRIES_COUNT];
 extern long net_number_of_sessions;
 extern long net_session_index_active;
 extern struct TbNetworkPlayerName net_player[MAX_NET_USERS];
+extern const struct ConfigInfo default_net_config_info;
+extern const struct ConfigInfo default_skirmish_config_info;
 extern struct ConfigInfo net_config_info;
+extern struct ConfigInfo net_lobby_settings;
+extern struct ConfigInfo skirmish_config_info;
 extern char net_service[16][NET_SERVICE_LEN];
-extern char net_player_name[20];
-extern char tmp_net_player_name[24];
+extern char net_player_name[PLAYER_MP_NAME_LEN];
+extern char tmp_net_player_name[PLAYER_MP_NAME_LEN+4];
+extern int8_t net_player_colour[MAX_NET_USERS];
+extern int8_t net_player_team[MAX_NET_USERS];
+extern int32_t net_lobby_max_players;
+extern PlayerBitFlags net_lobby_empty_seats;
+extern LevelNumber net_level;
 
 #pragma pack()
 /******************************************************************************/
+TbBool net_player_colours_conflict(void);
+NetUserId net_lobby_primary_user(NetUserId user);
+TbBool net_lobby_computer_player(NetUserId user);
+TbBool net_lobby_force_coop(void);
+void frontnet_select_coop_level(LevelNumber lvnum);
+void frontnet_cycle_player_setting(enum NetPlayerSettingKind kind, NetUserId user, TbBool backwards);
+void net_resolve_player_colours(int8_t player_colours[MAX_NET_USERS]);
+char net_alliances_from_player_colours(const int8_t player_colours[MAX_NET_USERS]);
+void net_store_lobby_empty_seats(const int8_t player_slots[MAX_NET_USERS]);
 void process_network_error(long errcode);
 void draw_out_of_sync_box(long a1, long a2, long box_width);
 void display_attempting_to_join_message(int remaining_s);
@@ -74,6 +109,10 @@ void setup_alliances(void);
 void frontnet_service_setup(void);
 void frontnet_session_setup(void);
 void frontnet_start_setup(void);
+void frontnet_skirmish_setup(void);
+void frontnet_skirmish_update(void);
+struct ConfigInfo *active_lobby_config(void);
+void frontnet_skirmish_resolve_seats(void);
 void frontnet_service_update(void);
 void frontnet_session_update(void);
 void frontnet_start_update(void);
@@ -83,10 +122,8 @@ void process_frontend_chat_message(NetUserId user, const char *message);
 TbBool frontnet_service_selected(enum FrontendNetService service);
 void enum_sessions_callback(struct TbNetworkCallbackData *netcdat, void *ptr);
 
-void net_load_config_file(void);
-void net_write_config_file(void);
-
 void frontnet_send_campaign_change_message(const char *campaign_fname);
+void current_campaign_net_name(char *buf, size_t size);
 /******************************************************************************/
 #ifdef __cplusplus
 }

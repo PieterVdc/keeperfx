@@ -24,6 +24,7 @@
 
 #include "thing_data.h"
 #include "config.h"
+#include "net_main.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -175,8 +176,8 @@ struct CompoundTngFilterParam {
 };
 
 struct StructureList {
-     unsigned long count;
-     unsigned long index;
+     uint32_t count;
+     uint32_t index;
 };
 
 #pragma pack()
@@ -274,7 +275,7 @@ void stop_all_things_playing_samples(void);
 unsigned long update_creatures_not_in_list(void);
 void update_things_in_list(struct StructureList *list);
 void init_player_start(struct PlayerInfo *player, TbBool keep_prev);
-void setup_computer_players(void);
+void setup_computer_players(PlayerBitFlags zombie_players);
 void setup_zombie_players(void);
 void init_all_creature_states(void);
 void init_creature_states_for_player(PlayerNumber plyr_idx);
@@ -303,8 +304,6 @@ void place_thing_in_mapwho(struct Thing *thing);
 struct Thing *find_hero_gate_of_number(long num);
 long get_free_hero_gate_number(void);
 
-struct Thing *find_creature_lair_totem_at_subtile(MapSubtlCoord stl_x, MapSubtlCoord stl_y, ThingModel crmodel);
-
 TbBool thing_is_shootable(const struct Thing *thing, PlayerNumber shot_owner, HitTargetFlags hit_targets);
 HitTargetFlags hit_type_to_hit_targets(long hit_type);
 HitTargetFlags collide_filter_thing_is_of_type(const struct Thing *thing, const struct Thing *sectng, HitTargetFlags a3, long a4);
@@ -325,7 +324,7 @@ struct Thing* find_players_backup_dungeon_heart(PlayerNumber plyridx);
 
 struct Thing *find_random_thing_in_room(ThingClass tngclass, ThingModel tngmodel,struct Room *room);
 
-ThingIndex get_index_of_next_creature_of_owner_and_model(struct Thing *current_creature, PlayerNumber owner, ThingModel crmodel, struct PlayerInfo *player);
+ThingIndex get_index_of_next_creature_of_owner_and_model(struct Thing *current_creature, PlayerNumber owner, ThingModel crmodel, NetUserId user);
 struct Thing* get_timebomb_target(struct Thing *creatng);
 
 void setup_all_player_creatures_and_diggers_leave_or_die(PlayerNumber plyr_idx);

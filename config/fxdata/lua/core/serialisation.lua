@@ -3,18 +3,20 @@
 -- Used by the engine to serialize complex Lua state; not intended for API users.
 
 local binser = require 'external.binser'
-local base64 = require 'external.base64'
+local anon_functions = require 'core.anon_functions'
 require 'classes.Pos3d'
-local serialization_version = 2
+local serialization_version = 3
 
 local registry = debug.getregistry()
 for _, name in ipairs({ "Player", "Thing", "Slab", "Camera", "Room", "Map", "Pos3d" }) do
     binser.registerResource(registry[name], "metatable:" .. name)
 end
 
-local registered_cfunctions = {}
+-- Registers every function (Lua or C) reachable from source by a stable string-keyed
+-- path as a binser resource, so it serializes as a name instead of bytecode.
+local registered_functions = {}
 local scanned_tables = {}
-local function register_cfunctions(source, prefix)
+local function register_named_functions(source, prefix)
     if scanned_tables[source] then
         return
     end
@@ -29,71 +31,126 @@ local function register_cfunctions(source, prefix)
     for _, name in ipairs(names) do
         local value = rawget(source, name)
         local path = prefix .. name
-        if type(value) == "function" and debug.getinfo(value, "S").what == "C" then
-            if not registered_cfunctions[value] then
+        if type(value) == "function" then
+            if not registered_functions[value] then
                 binser.registerResource(value, path)
-                registered_cfunctions[value] = true
+                registered_functions[value] = true
             end
         elseif type(value) == "table" then
-            register_cfunctions(value, path .. ".")
+            register_named_functions(value, path .. ".")
         end
     end
 end
-register_cfunctions(_G, "global:")
-register_cfunctions(registry, "registry:")
+register_named_functions(_G, "global:")
+register_named_functions(registry, "registry:")
 
-local function restore_legacy_data(value, seen)
-    if type(value) == "table" then
-        if seen[value] then
-            return seen[value]
-        end
-        if value.__serialized_function then
-            local dumped = base64.decode(value.__serialized_function)
-            local func, err = load(dumped, nil, "b", _G)
-            assert(func, "Failed to load function: " .. tostring(err))
-            seen[value] = func
-            return func
-        end
-
-        local out = {}
-        seen[value] = out
-        for k, v in pairs(value) do
-            out[restore_legacy_data(k, seen)] = restore_legacy_data(v, seen)
-        end
-
-        if out.__class == "Player" then
-            setmetatable(out, registry.Player)
-        elseif out.__class == "Thing" then
-            setmetatable(out, registry.Thing)
-        elseif out.__class == "Slab" then
-            setmetatable(out, registry.Slab)
-        end
-        return out
+-- Walks value in place, replacing every anonymous (unregistered) function it finds with
+-- its anon_functions.encode() spec, and recording the change in changes so
+-- revert_anon_functions can put the real functions back afterwards. Mutates the live
+-- Game tree temporarily rather than cloning it, so table identity, array/hash parts and
+-- metatables stay exactly what binser's own traversal expects.
+local function collect_anon_functions(value, seen, changes)
+    if type(value) ~= "table" or seen[value] then
+        return
     end
-    return value
+    seen[value] = true
+    for k, v in pairs(value) do
+        if type(v) == "function" then
+            if not registered_functions[v] then
+                local spec = anon_functions.encode(v)
+                if spec then
+                    changes[#changes + 1] = { tbl = value, key = k, orig = v }
+                    value[k] = spec
+                end
+            end
+        elseif type(v) == "table" then
+            collect_anon_functions(v, seen, changes)
+        end
+    end
+end
+
+local function revert_anon_functions(changes)
+    for i = #changes, 1, -1 do
+        changes[i].tbl[changes[i].key] = changes[i].orig
+    end
+end
+
+local function restore_anon_functions(value, seen)
+    if type(value) ~= "table" or seen[value] then
+        return
+    end
+    seen[value] = true
+    for k, v in pairs(value) do
+        if type(v) == "table" then
+            -- rawget, not v.__anon_fn: v may be a Thing/Player/etc proxy whose metatable
+            -- has its own __index, which a plain index would needlessly go through.
+            if rawget(v, "__anon_fn") then
+                value[k] = anon_functions.decode(v)
+            else
+                restore_anon_functions(v, seen)
+            end
+        end
+    end
 end
 
 function GetSerializedData()
+    assert(type(Game) == "table", "Game state must be a table")
+    local changes = {}
+    anon_functions.begin()
     local ok, result = pcall(function()
+        collect_anon_functions(Game, {}, changes)
         return binser.serialize(Game, serialization_version)
     end)
-    print("GetSerializedData ok: " .. tostring(ok))
+    revert_anon_functions(changes)
+    anon_functions.finish("saved")
     if not ok then
-        error("binser failed: " .. result)
+        error("binser failed: " .. tostring(result))
     end
     return result
 end
 
 function SetSerializedData(serialized_data)
-    local ok, result = pcall(function()
-        local values = binser.deserialize(serialized_data)
-        if values[2] == serialization_version then
-            return values[1]
-        end
-        return restore_legacy_data(values[1], {})
-    end)
-    if not ok then
-        error("binser load failed: " .. result)
+    local values, count = binser.deserialize(serialized_data)
+    local restored = values[1]
+    assert(type(restored) == "table", "Serialized game state must be a table")
+    assert(count == 2 and values[2] == serialization_version,
+        "Save was made with an incompatible Lua serialization version (" .. tostring(values[2]) .. ")")
+    anon_functions.begin()
+    restore_anon_functions(restored, {})
+    anon_functions.finish("restored")
+    Game = restored
+end
+
+-- Deepcopy tables, booleans, numbers and strings only.
+local function plain_copy(value, copies)
+    local kind = type(value)
+    if kind == "nil" or kind == "boolean" or kind == "number" or kind == "string" then
+        return value
     end
-    Game = result
+    if kind ~= "table" then
+        error("can't store a " .. kind, 0)
+    end
+    if copies[value] then
+        return copies[value]
+    end
+    local copy = {}
+    copies[value] = copy
+    for k, v in next, value do
+        local key_kind = type(k)
+        if key_kind ~= "boolean" and key_kind ~= "number" and key_kind ~= "string" then
+            error("can't store a " .. key_kind .. " key", 0)
+        end
+        copy[k] = plain_copy(v, copies)
+    end
+    return copy
+end
+
+function SerializeCustomIntralevelData(value)
+    return binser.serialize(plain_copy(value, {}))
+end
+
+function DeserializeCustomIntralevelData(serialized_data)
+    local values, count = binser.deserialize(serialized_data)
+    assert(count == 1, "Custom intralevel data must hold one value")
+    return values[1]
 end

@@ -17,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "observer.h"
 #include "player_data.h"
 
 #include "globals.h"
@@ -27,6 +28,7 @@
 #include "player_instances.h"
 #include "config_players.h"
 #include "game_legacy.h"
+#include "local_camera.h"
 #include "net_game.h"
 #include "engine_redraw.h"
 #include "frontend.h"
@@ -49,28 +51,52 @@ struct PlayerInfo bad_player;
 
 struct LocalState local_state;
 struct UserState bad_user_state;
+static struct UserState local_user_state_prediction;
+static TbBool local_user_state_prediction_active;
 
 /** The current player's number. */
 unsigned char my_player_number;
 /******************************************************************************/
 
-struct Camera *get_player_active_camera(const struct PlayerInfo *player)
+enum LocalViewMode get_dungeon_view_mode(const struct UserState *ustate)
 {
-    if (player == NULL)
-        return NULL;
-    unsigned char cam_idx = player->active_camera_idx;
-    if (cam_idx >= 4)
-        cam_idx = CamIV_Isometric;
-    return &((struct PlayerInfo *)player)->cameras[cam_idx];
+    if (ustate->prefs[UPref_FrontView] != 0)
+        return PVM_FrontView;
+    return (ustate->prefs[UPref_Wibble] != 0) ? PVM_IsoWibbleView : PVM_IsoStraightView;
 }
 
-void set_player_active_camera(struct PlayerInfo *player, unsigned char cam_idx)
+int32_t get_user_dungeon_yaw(NetUserId user)
 {
-    if (player == NULL)
-        return;
-    if (cam_idx >= 4)
-        cam_idx = CamIV_Isometric;
-    player->active_camera_idx = cam_idx;
+    const struct UserState *ustate = get_user_state(user);
+    if (user_state_invalid(ustate))
+        return 0;
+    return ustate->dungeon_camera.yaw[ustate->prefs[UPref_FrontView] != 0];
+}
+
+
+
+unsigned char get_user_view_type(NetUserId user)
+{
+    const struct UserState *ustate = get_user_state(user);
+    if (user_state_invalid(ustate))
+        return PVT_None;
+    return ustate->view_type;
+}
+
+
+/** Which of a user's local cameras shows this user's view. */
+unsigned char get_user_active_camera_index(NetUserId user)
+{
+    switch (get_user_view_type(user))
+    {
+    case PVT_CreatureContrl:
+    case PVT_CreaturePasngr:
+        return CamIV_FirstPerson;
+    case PVT_MapScreen:
+        return CamIV_Parchment;
+    default:
+        return (get_user_state(user)->prefs[UPref_FrontView] != 0) ? CamIV_FrontView : CamIV_Isometric;
+    }
 }
 
 struct PlayerInfo *get_player_f(PlayerNumber plyr_idx,const char *func_name)
@@ -92,6 +118,9 @@ struct PlayerInfo *get_player_f(PlayerNumber plyr_idx,const char *func_name)
 
 TbBool player_invalid(const struct PlayerInfo *player)
 {
+    if (player == &local_observer_player) {
+        return false;
+    }
     if (player == INVALID_PLAYER)
         return true;
     return (player < &game.players[0]);
@@ -118,41 +147,187 @@ TbBool is_active_keeper(const struct PlayerInfo *player)
 
 TbBool is_my_player(const struct PlayerInfo *player)
 {
-    struct PlayerInfo* myplyr = &game.players[my_player_number % PLAYERS_COUNT];
-    return (player == myplyr);
+    return player == get_my_player();
+}
+
+struct PlayerInfo *get_my_player(void)
+{
+    if (observer_is_active()) {
+        return &local_observer_player;
+    }
+    return get_player(my_player_number);
+}
+
+const struct PlayerInfo *get_displayed_player(void)
+{
+    if (observer_is_following_user()) {
+        return get_player(my_player_number);
+    }
+    return get_my_player();
+}
+
+NetUserId get_displayed_user(void)
+{
+    if (observer_is_following_user()) {
+        return observer_get_watched_user();
+    }
+    if (observer_is_active()) {
+        return OBSERVER_USER;
+    }
+    return get_local_user();
+}
+
+NetUserId get_my_user(void)
+{
+    if (observer_is_active()) {
+        return OBSERVER_USER;
+    }
+    return get_local_user();
+}
+
+TbBool is_local_user(NetUserId user)
+{
+    return user == get_my_user();
 }
 
 TbBool is_my_player_number(PlayerNumber plyr_num)
 {
-    struct PlayerInfo* myplyr = &game.players[my_player_number % PLAYERS_COUNT];
-    return (plyr_num == myplyr->id_number);
+    if (observer_is_active()) {
+        return plyr_num == my_player_number;
+    }
+    struct PlayerInfo *player = &game.players[my_player_number % PLAYERS_COUNT];
+    return plyr_num == player->id_number && is_my_player(player);
 }
 
 // returns user's UserState, or INVALID_USER_STATE.
 struct UserState *get_user_state(NetUserId user)
 {
+    if (user == OBSERVER_USER) {
+        return &local_observer_user_state;
+    }
+    if (network_is_active() && user == netstate.my_id && user >= MAX_NET_USERS && user < MAX_NET_CONNECTIONS) {
+        return &local_observer_user_state;
+    }
     if ((user < 0) || (user >= MAX_NET_USERS))
         return INVALID_USER_STATE;
     return &game.user_states[user];
 }
 
-struct UserState *get_player_user_state(const struct PlayerInfo *player)
+struct PlayerInfo *get_user_player(NetUserId user)
 {
+    if (user == OBSERVER_USER) {
+        return &local_observer_player;
+    }
+    return get_player(get_net_user_player_number(user));
+}
+
+NetUserId get_player_primary_user(const struct PlayerInfo *player)
+{
+    if (player == &local_observer_player) {
+        return OBSERVER_USER;
+    }
     if ((player == NULL) || player_invalid(player))
-        return INVALID_USER_STATE;
-    // get state for lowest-id connected user that has this player
+        return -1;
     for (NetUserId user = 0; user < MAX_NET_USERS; ++user) {
-        // TODO: store player_id in UserState, avoids net_* function
-        if (get_net_user_player_number(user) == player->id_number) {
-            return &game.user_states[user];
+        if (game.user_states[user].player_id == player->id_number) {
+            return user;
         }
     }
-    return INVALID_USER_STATE;
+    return -1;
+}
+
+int32_t count_player_users(PlayerNumber plyr_idx)
+{
+    if (plyr_idx == PLAYER_NONE)
+        return 0;
+    int32_t count = 0;
+    for (NetUserId user = 0; user < MAX_NET_USERS; ++user) {
+        if (game.user_states[user].player_id == plyr_idx) {
+            count++;
+        }
+    }
+    return count;
+}
+
+// 0 for a keeper's primary user, 1+ for its other archon users
+int32_t get_user_archon_index(NetUserId user)
+{
+    const struct UserState *ustate = get_user_state(user);
+    if (user_state_invalid(ustate) || ustate->player_id == PLAYER_NONE)
+        return 0;
+    int32_t index = 0;
+    for (NetUserId other = 0; other < user; ++other) {
+        if (game.user_states[other].player_id == ustate->player_id) {
+            index++;
+        }
+    }
+    return index;
+}
+
+struct UserState *get_player_primary_user_state(const struct PlayerInfo *player)
+{
+    return get_user_state(get_player_primary_user(player));
+}
+
+void name_player_after_primary_user(struct PlayerInfo *player)
+{
+    const struct UserState *ustate = get_player_primary_user_state(player);
+    if (!user_state_invalid(ustate)) {
+        snprintf(player->player_name, sizeof(player->player_name), "%s", ustate->name);
+    }
+}
+
+void set_local_user_state_prediction(const struct UserState *ustate)
+{
+    local_user_state_prediction_active = (ustate != NULL);
+    if (ustate != NULL) {
+        local_user_state_prediction = *ustate;
+    }
+}
+
+/**
+ * Returns the player's user state as it will be once the local user's pending packets are processed.
+ */
+const struct UserState *get_user_state_prediction(NetUserId user)
+{
+    const struct UserState *ustate = get_user_state(user);
+    if (!user_state_invalid(ustate) && ustate == get_local_user_state()) {
+        return get_local_user_state_prediction();
+    }
+    return ustate;
+}
+
+
+const struct UserState *get_local_user_state_prediction(void)
+{
+    if (local_user_state_prediction_active) {
+        return &local_user_state_prediction;
+    }
+    return get_local_user_state();
+}
+
+ThingIndex get_user_thing_under_hand(NetUserId user)
+{
+    if (is_local_user(user)) {
+        return local_state.local_thing_under_hand;
+    }
+    return get_user_state(user)->thing_under_hand;
 }
 
 struct UserState *get_local_user_state(void)
 {
+    if (observer_is_active()) {
+        return &local_observer_user_state;
+    }
     return get_user_state(get_local_user());
+}
+
+uint32_t get_local_minimap_zoom(void)
+{
+    const struct UserState *ustate = get_local_user_state_prediction();
+    if (user_state_invalid(ustate))
+        return MINIMAP_ZOOM_DEFAULT;
+    return clamp(ustate->prefs[UPref_MinimapZoom], MINIMAP_ZOOM_MIN, MINIMAP_ZOOM_MAX);
 }
 
 TbBool user_state_invalid(const struct UserState *ustate)
@@ -160,6 +335,15 @@ TbBool user_state_invalid(const struct UserState *ustate)
     if (ustate == INVALID_USER_STATE)
         return true;
     return (ustate == NULL);
+}
+
+int32_t user_zoom_min(const struct UserState *ustate, TbBool front_view)
+{
+    if (user_state_invalid(ustate))
+        return front_view ? frontview_zoom_distance_setting : max(CAMERA_ZOOM_MIN, zoom_distance_setting);
+    if (front_view)
+        return ustate->prefs[UPref_MaxZoomFrontview];
+    return max(CAMERA_ZOOM_MIN, (int32_t)ustate->prefs[UPref_MaxZoomIso]);
 }
 
 TbBool player_is_roaming(PlayerNumber plyr_num)
@@ -291,12 +475,12 @@ TbBool player_is_friendly_or_defeated(PlayerNumber check_plyr_idx, PlayerNumber 
 
 void clear_players(void)
 {
+    observer_reset();
     for (int i = 0; i < PLAYERS_COUNT; i++)
     {
         struct PlayerInfo* player = &game.players[i];
         memset(player, 0, sizeof(struct PlayerInfo));
         player->id_number = PLAYERS_COUNT;
-        player->user_id = -1;
         switch (i)
         {
         case PLAYER_GOOD:
@@ -312,10 +496,21 @@ void clear_players(void)
     }
     memset(&bad_player, 0, sizeof(struct PlayerInfo));
     bad_player.id_number = PLAYERS_COUNT;
-    bad_player.user_id = -1;
     memset(game.user_states, 0, sizeof(game.user_states));
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+        game.user_states[user].player_id = PLAYER_NONE;
+        game.user_states[user].reconnect_player_id = PLAYER_NONE;
+    }
+    struct LocalState prev_local_state = local_state;
     memset(&local_state, 0, sizeof(local_state));
+    local_state.fast_forward = prev_local_state.fast_forward;
+    local_state.process_turn_time = prev_local_state.process_turn_time;
+    local_state.delta_time = prev_local_state.delta_time;
+    local_state.time_delta = prev_local_state.time_delta;
+    local_state.show_gui = prev_local_state.show_gui;
+    local_state.show_panel = prev_local_state.show_panel;
     memset(&bad_user_state, 0, sizeof(bad_user_state));
+    bad_user_state.player_id = PLAYER_NONE;
     game.human_players_count = 0;
     //game.game_kind = GKind_LocalGame;
 }
@@ -370,14 +565,9 @@ void set_player_ally_locked(PlayerNumber plyr_idx, PlayerNumber ally_idx, TbBool
         clear_flag(player->players_with_locked_ally_status, to_flag(ally_idx)); // unlock ally player's ally status with player plyridx
 }
 
-void set_player_state(struct PlayerInfo *player, short nwrk_state, int32_t chosen_kind)
+void set_user_work_state_kind(struct UserState *ustate, int32_t chosen_kind)
 {
-  struct UserState* ustate = get_player_user_state(player);
-  SYNCDBG(6,"Player %d state %s to %s",(int)player->id_number,player_state_code_name(player->work_state),player_state_code_name(nwrk_state));
-  // Selecting the same state again - update only 2nd parameter
-  if (player->work_state == nwrk_state)
-  {
-    switch ( player->work_state )
+    switch (ustate->work_state)
     {
     case PSt_BuildRoom:
         ustate->chosen_room_kind = chosen_kind;
@@ -411,61 +601,57 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, int32_t chose
         ustate->chosen_power_kind = PwrK_CHICKEN;
         break;
     }
+}
+
+void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind)
+{
+  struct UserState* ustate = get_user_state(user);
+  if (user_state_invalid(ustate))
+    return;
+  struct PlayerInfo* player = get_user_player(user);
+  SYNCDBG(6,"User %d (player %d) state %s to %s",(int)user,(int)player->id_number,player_state_code_name(ustate->work_state),player_state_code_name(nwrk_state));
+  // Selecting the same state again - update only 2nd parameter
+  if (ustate->work_state == nwrk_state)
+  {
+    set_user_work_state_kind(ustate, chosen_kind);
     return;
   }
-  player->continue_work_state = player->work_state;
-  player->work_state = nwrk_state;
-  if ((player->work_state != PSt_CreatrQuery) && (player->work_state != PSt_CreatrInfo)
-     && (player->work_state != PSt_QueryAll) && (player->work_state != PSt_CreatrInfoAll)
-     && (player->work_state != PSt_CtrlDirect) && (player->work_state != PSt_CtrlPassngr)
-     && (player->work_state != PSt_FreeCtrlDirect) && (player->work_state != PSt_FreeCtrlPassngr))
+  ustate->continue_work_state = ustate->work_state;
+  ustate->work_state = nwrk_state;
+  if ((ustate->work_state != PSt_CreatrQuery) && (ustate->work_state != PSt_CreatrInfo)
+     && (ustate->work_state != PSt_QueryAll) && (ustate->work_state != PSt_CreatrInfoAll)
+     && (ustate->work_state != PSt_CtrlDirect) && (ustate->work_state != PSt_CtrlPassngr)
+     && (ustate->work_state != PSt_FreeCtrlDirect) && (ustate->work_state != PSt_FreeCtrlPassngr))
   {
-      clear_selected_thing(player);
+      clear_selected_thing(ustate);
   }
-  switch (player->work_state)
+  set_user_work_state_kind(ustate, chosen_kind);
+  switch (ustate->work_state)
   {
   case PSt_CtrlDungeon:
       ustate->full_slab_cursor = 1;
       ustate->chosen_power_kind = PwrK_None; //Cleanup for spells. Traps, doors and rooms do not require cleanup.
       break;
-  case PSt_BuildRoom:
-      ustate->chosen_room_kind = chosen_kind;
-      break;
   case PSt_HoldInHand:
-      create_power_hand(player->id_number);
+      create_power_hand(user);
       break;
   case PSt_Slap:
   {
+      struct Coord3d pos;
+      pos.x.val = 0;
+      pos.y.val = 0;
+      pos.z.val = 0;
+      struct Thing* thing = create_object(&pos, ObjMdl_PowerHand, player->id_number, -1);
+      if (thing_is_invalid(thing))
       {
-          struct Coord3d pos;
-          pos.x.val = 0;
-          pos.y.val = 0;
-          pos.z.val = 0;
-          struct Thing* thing = create_object(&pos, ObjMdl_PowerHand, player->id_number, -1);
-          if (thing_is_invalid(thing))
-          {
-              player->hand_thing_idx = 0;
-              break;
-          }
-          player->hand_thing_idx = thing->index;
-          set_power_hand_graphic(player->id_number, HndA_SideHover);
-          place_thing_in_limbo(thing);
+          ustate->hand_thing_idx = 0;
           break;
       }
+      ustate->hand_thing_idx = thing->index;
+      set_power_hand_graphic(user, HndA_SideHover);
+      place_thing_in_limbo(thing);
+      break;
   }
-  case PSt_PlaceTrap:
-      ustate->chosen_trap_kind = chosen_kind;
-      break;
-  case PSt_PlaceDoor:
-      ustate->chosen_door_kind = chosen_kind;
-      break;
-  case PSt_CastPowerOnSubtile:
-  case PST_CastPowerOnTarget:
-  case PSt_CallToArms:
-  case PSt_SightOfEvil:
-  case PSt_CreateDigger:
-      ustate->chosen_power_kind = chosen_kind;
-      break;
   case PSt_MkGoodCreatr:
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         ustate->cheatselection.chosen_player = PLAYER_GOOD;
@@ -475,43 +661,31 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, int32_t chose
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         ustate->cheatselection.chosen_player = player->id_number;
         break;
-  case PSt_FreeCtrlPassngr:
-  case PSt_FreeCtrlDirect:
-  case PSt_CtrlPassngr:
-  case PSt_CtrlDirect:
-        ustate->chosen_power_kind = PwrK_POSSESS;
-        break;
-  case PSt_FreeDestroyWalls:
-      ustate->chosen_power_kind = PwrK_DESTRWALLS;
-      break;
-  case PSt_FreeCastDisease:
-      ustate->chosen_power_kind = PwrK_DISEASE;
-      break;
-  case PSt_FreeTurnChicken:
-      ustate->chosen_power_kind = PwrK_CHICKEN;
-      break;
    default:
       break;
   }
 }
 
 /**
- * Sets player view type.
+ * Sets a user's view type.
  *
- * @param player The player for whom view type will be set.
+ * @param user The user whose view type will be set.
  * @param nview The new view type.
  */
-void set_player_mode(struct PlayerInfo *player, unsigned short nview)
+void set_user_view_type(NetUserId user, unsigned short nview)
 {
-  if (is_my_player(player) && local_state.view_type == nview)
-    local_state.view_type = PVT_None;
-  if (player->view_type == nview)
+  struct UserState* ustate = get_user_state(user);
+  if (user_state_invalid(ustate))
     return;
-  player->view_type = nview;
-  struct UserState* ustate = get_player_user_state(player);
+  const TbBool is_local = (user == get_local_user());
+  if (is_local && local_state.view_type == nview)
+    local_state.view_type = PVT_None;
+  if (ustate->view_type == nview)
+    return;
+  const TbBool leaving_map = (ustate->view_type == PVT_MapScreen);
+  ustate->view_type = nview;
   ustate->init_flags &= ~UsrIF_CreaturePassengerMode;
-  ustate->first_person_unfreeze_delay = 0;
-  if (is_my_player(player))
+  if (is_local)
   {
     // GameUI::IsActiveForCurrentView() decides fresh each frame whether to
     // submit sidebar content based on view_type, but a transition that also
@@ -525,20 +699,14 @@ void set_player_mode(struct PlayerInfo *player, unsigned short nview)
     game.view_mode_flags |= GNFldD_CreatureViewMode;
     stop_all_things_playing_samples();
   }
-  switch (player->view_type)
+  switch (nview)
   {
   case PVT_DungeonTop:
   {
-      if (player->view_mode_restore == PVM_FrontView) {
-        set_engine_view(player, PVM_FrontView);
-      } else if (player->view_mode_restore == PVM_IsoStraightView) {
-        set_engine_view(player, PVM_IsoStraightView);
-      } else {
-        set_engine_view(player, PVM_IsoWibbleView);
-      }
-      if (is_my_player(player)) {
+      if (is_local) {
+        update_local_view(user, leaving_map);
         if (local_state.view_type == PVT_None) {
-          toggle_status_menu((game.operation_flags & GOF_ShowPanel) != 0);
+          toggle_status_menu(local_state.show_panel);
         }
         setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
       }
@@ -546,74 +714,72 @@ void set_player_mode(struct PlayerInfo *player, unsigned short nview)
   }
   case PVT_CreatureContrl:
   case PVT_CreaturePasngr:
-      set_engine_view(player, PVM_CreatureView);
-      if (is_my_player(player))
+      if (is_local)
       {
+        update_local_view(user, leaving_map);
         game.view_mode_flags &= ~GNFldD_CreatureViewMode;
         setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
       }
       break;
   case PVT_MapScreen:
-      if (is_my_player(player) && local_state.view_type == PVT_None) {
+      if (is_local && local_state.view_type == PVT_None) {
         toggle_status_menu(0);
       }
-      player->continue_work_state = player->work_state;
-      set_engine_view(player, PVM_ParchmentView);
-      break;
-  case PVT_MapFadeIn:
-      set_player_instance(player, PI_MapFadeTo, 0);
-      break;
-  case PVT_MapFadeOut:
-      set_player_instance(player, PI_MapFadeFrom, 0);
+      ustate->continue_work_state = ustate->work_state;
+      if (is_local)
+        update_local_view(user, leaving_map);
       break;
   }
 }
 
-void reset_player_mode(struct PlayerInfo *player, unsigned short nview)
+void reset_user_view_type(NetUserId user, unsigned short nview)
 {
-  struct UserState* ustate = get_player_user_state(player);
-  player->view_type = nview;
-  ustate->first_person_unfreeze_delay = 0;
+  struct UserState* ustate = get_user_state(user);
+  if (user_state_invalid(ustate))
+    return;
+  const TbBool is_local = (user == get_local_user());
+  const TbBool leaving_map = ustate->view_type == PVT_MapScreen;
+  ustate->view_type = nview;
   switch (nview)
   {
     case PVT_DungeonTop:
-      player->work_state = player->continue_work_state;
-      if (player->view_mode_restore == PVM_FrontView) {
-        set_engine_view(player, PVM_FrontView);
-      } else if (player->view_mode_restore == PVM_IsoStraightView) {
-        set_engine_view(player, PVM_IsoStraightView);
-      } else {
-        set_engine_view(player, PVM_IsoWibbleView);
-      }
-      if (is_my_player(player))
+      ustate->work_state = ustate->continue_work_state;
+      if (is_local) {
+        update_local_view(user, leaving_map);
         game.view_mode_flags &= ~GNFldD_CreatureViewMode;
+      }
       break;
     case PVT_CreatureContrl:
     case PVT_CreaturePasngr:
-      player->work_state = player->continue_work_state;
-      set_engine_view(player, PVM_CreatureView);
-      if (is_my_player(player))
+      ustate->work_state = ustate->continue_work_state;
+      if (is_local) {
+        update_local_view(user, leaving_map);
         game.view_mode_flags |= GNFldD_CreatureViewMode;
+      }
       break;
     case PVT_MapScreen:
-      player->work_state = player->continue_work_state;
-      set_engine_view(player, PVM_ParchmentView);
-      if (is_my_player(player))
+      ustate->work_state = ustate->continue_work_state;
+      if (is_local) {
+        update_local_view(user, leaving_map);
         game.view_mode_flags &= ~GNFldD_CreatureViewMode;
+      }
       break;
     default:
       break;
   }
 }
 
-unsigned char rotate_mode_to_view_mode(unsigned char mode)
+/** Front view leaves the wibble preference as given, for when the user returns to iso. */
+void rotate_mode_to_dungeon_view(unsigned char mode, TbBool *front_view, TbBool *wibble)
 {
-    switch (mode) {
-        case 0: return PVM_IsoWibbleView;
-        case 1: return PVM_IsoStraightView;
-        case 2: return PVM_FrontView;
-        default: ERRORLOG("Unrecognised video rotate mode: %u", mode); return PVM_IsoWibbleView;
+    if (mode > 2)
+    {
+        ERRORLOG("Unrecognised video rotate mode: %u", mode);
+        mode = 0;
     }
+    *front_view = (mode == 2);
+    if (mode != 2)
+        *wibble = (mode == 0);
 }
 
 unsigned char get_player_color_idx(PlayerNumber plyr_idx)

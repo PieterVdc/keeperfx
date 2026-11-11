@@ -19,14 +19,16 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "bflib_netsession.h"
+#include "net_main.h"
 #include "bflib_basics.h"
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <json-dom.h>
 #include "ver_defs.h"
 #include "post_inc.h"
 
-static const char *const session_phase_names[] = {"Unknown", "Lobby", "In-Game", "In-Landview"};
+static const char *const session_phase_names[] = {"Unknown", "Lobby", "In-Game", "In-Landview", "Loading"};
 
 /******************************************************************************/
 void net_copy_name_string(char *dst, const char *src, int32_t max_len)
@@ -41,10 +43,10 @@ void net_copy_name_string(char *dst, const char *src, int32_t max_len)
 }
 /******************************************************************************/
 
-void net_json_escape(char *output, size_t output_size, const char *input)
+TbBool net_json_escape(char *output, size_t output_size, const char *input)
 {
     if (output_size == 0) {
-        return;
+        return false;
     }
     size_t used = 0;
     for (const unsigned char *c = (const unsigned char *)input; *c; c++) {
@@ -55,7 +57,8 @@ void net_json_escape(char *output, size_t output_size, const char *input)
             needed = 2;
         }
         if (used + needed >= output_size) {
-            break;
+            output[used] = '\0';
+            return false;
         }
         if (*c < 32) {
             used += snprintf(output + used, output_size - used, "\\u%04x", *c);
@@ -67,20 +70,31 @@ void net_json_escape(char *output, size_t output_size, const char *input)
         }
     }
     output[used] = '\0';
+    return true;
 }
 
 int net_session_metadata_json(const struct TbNetworkSessionNameEntry *session, char *output, size_t size)
 {
-    if (size == 0 || session->player_count > SESSION_HUMANS_MAX || session->max_players > SESSION_HUMANS_MAX || session->phase < NetPhase_Unknown || session->phase > NetPhase_InLandview) {
+    if (size == 0 || session->player_count > SESSION_HUMANS_MAX || session->max_players > SESSION_HUMANS_MAX || session->phase < NetPhase_Unknown || session->phase > NetPhase_Loading) {
         return -1;
     }
     const char *joinable = "false";
     if (session->joinable) {
         joinable = "true";
     }
+    char lobby_name[sizeof(session->text) * 6];
+    net_json_escape(lobby_name, sizeof(lobby_name), session->text);
     char version[sizeof(session->version) * 6];
     net_json_escape(version, sizeof(version), session->version);
-    int used = snprintf(output, size, "\"version\":\"%s\",\"phase\":\"%s\",\"joinable\":%s,\"maxPlayers\":%d,\"players\":[", version, session_phase_names[session->phase], joinable, session->max_players);
+    const char *spectators_enabled = "false";
+    if (session->spectators_enabled) {
+        spectators_enabled = "true";
+    }
+    const char *rejoin_open = "false";
+    if (session->rejoin_open) {
+        rejoin_open = "true";
+    }
+    int used = snprintf(output, size, "\"name\":\"%s\",\"version\":\"%s\",\"phase\":\"%s\",\"joinable\":%s,\"maxPlayers\":%d,\"spectatorSupport\":%d,\"spectatorsEnabled\":%s,\"maxSpectators\":%d,\"spectatorCount\":%d,\"rejoinOpen\":%s,\"players\":[", lobby_name, version, session_phase_names[session->phase], joinable, session->max_players, session->spectator_support, spectators_enabled, session->max_spectators, session->spectator_count, rejoin_open);
     for (int i = 0; i < session->player_count; i++) {
         if (used < 0 || used >= size) {
             return -1;
@@ -108,6 +122,11 @@ void net_session_parse_metadata(struct TbNetworkSessionNameEntry *session, const
     session->roster_known = 0;
     session->player_count = 0;
     session->max_players = 0;
+    session->spectator_support = 0;
+    session->spectators_enabled = 0;
+    session->max_spectators = 0;
+    session->spectator_count = 0;
+    session->rejoin_open = 0;
     session->created_at = 0;
     session->version[0] = '\0';
     memset(session->players, 0, sizeof(session->players));
@@ -127,7 +146,7 @@ void net_session_parse_metadata(struct TbNetworkSessionNameEntry *session, const
         }
     }
     const char *phase = value_string(value_dict_get(root, "phase"));
-    for (int i = NetPhase_Lobby; phase && i <= NetPhase_InLandview; i++) {
+    for (int i = NetPhase_Lobby; phase && i <= NetPhase_Loading; i++) {
         if (strcmp(phase, session_phase_names[i]) == 0) {
             session->phase = i;
             break;
@@ -138,6 +157,20 @@ void net_session_parse_metadata(struct TbNetworkSessionNameEntry *session, const
         session->joinable = value_bool(joinable);
     }
     VALUE *capacity = value_dict_get(root, "maxPlayers");
+    VALUE *spectator_support = value_dict_get(root, "spectatorSupport");
+    VALUE *spectators_enabled = value_dict_get(root, "spectatorsEnabled");
+    VALUE *max_spectators = value_dict_get(root, "maxSpectators");
+    VALUE *spectator_count = value_dict_get(root, "spectatorCount");
+    if (value_type(spectator_support) == VALUE_INT32 && value_int32(spectator_support) == 1 && value_type(spectators_enabled) == VALUE_BOOL && value_type(max_spectators) == VALUE_INT32 && value_int32(max_spectators) >= 0 && value_int32(max_spectators) <= MAX_NET_SPECTATORS && value_type(spectator_count) == VALUE_INT32 && value_int32(spectator_count) >= 0 && value_int32(spectator_count) <= MAX_NET_SPECTATORS) {
+        session->spectator_support = 1;
+        session->spectators_enabled = value_bool(spectators_enabled);
+        session->max_spectators = value_int32(max_spectators);
+        session->spectator_count = value_int32(spectator_count);
+    }
+    VALUE *rejoin_open = value_dict_get(root, "rejoinOpen");
+    if (value_type(rejoin_open) == VALUE_BOOL) {
+        session->rejoin_open = value_bool(rejoin_open);
+    }
     if (value_type(capacity) == VALUE_INT32 && value_int32(capacity) > 0 && value_int32(capacity) <= SESSION_HUMANS_MAX) {
         session->max_players = value_int32(capacity);
     }
@@ -192,3 +225,25 @@ enum NetJoinRejection net_session_join_rejection(const struct TbNetworkSessionNa
 }
 
 enum NetJoinRejection net_join_rejection;
+
+enum NetJoinRejection net_session_spectator_rejection(const struct TbNetworkSessionNameEntry *session)
+{
+    if (!session->spectator_support) {
+        return NetJoin_SpectatorsUnsupported;
+    }
+    char version[sizeof(session->version)];
+    snprintf(version, sizeof(version), "%d.%d.%d.%d", VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD);
+    if (strcmp(session->version, version) != 0) {
+        return NetJoin_Version;
+    }
+    if (session->phase != NetPhase_InGame) {
+        return NetJoin_SpectatorState;
+    }
+    if (!session->spectators_enabled && !session->rejoin_open) {
+        return NetJoin_SpectatorsDisabled;
+    }
+    if (session->spectator_count >= session->max_spectators) {
+        return NetJoin_SpectatorsFull;
+    }
+    return NetJoin_Accepted;
+}

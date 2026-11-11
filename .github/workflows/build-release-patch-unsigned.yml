@@ -21,14 +21,16 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        
+
+    - uses: ./.github/actions/prepare-official-build
+
     - uses: dkfans/setup-cpp@master
 
     - name: Update system
       run: |
         set -eux
         sudo apt update
-        sudo apt install -y build-essential g++-mingw-w64-i686 cmake ninja-build libpng16-16t64 7zip
+        sudo apt install -y build-essential g++-mingw-w64-i686 cmake ninja-build libpng16-16t64 7zip gdb-multiarch python3
 
     - name: Build gfx
       run: |

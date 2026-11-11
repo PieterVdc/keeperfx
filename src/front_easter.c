@@ -153,7 +153,7 @@ void input_eastegg(void)
       play_non_3d_sample(snd_tab_click);
     }
     // Maintain the JLW cheat
-    if (game.easter_eggs_enabled == true)
+    if (start_params.easter_egg == true)
     {
       allow = (lbKeyOn[KC_LSHIFT]) && (lbKeyOn[KC_RSHIFT]);
       state = input_eastegg_keycodes(&game.eastegg02_cntr,allow,&eastegg_jlw_codes);
@@ -162,7 +162,7 @@ void input_eastegg(void)
       }
     }
     // Maintain the BBKING cheat
-    if (game.easter_eggs_enabled == true)
+    if (start_params.easter_egg == true)
     {
       allow = lbKeyOn[KC_RSHIFT];
       static unsigned char length = 0;
@@ -195,13 +195,13 @@ static void draw_bouncing_eastegg_message(long idx, const char *text, long width
   LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
   RendererClearDrawFlags(Lb_TEXT_ONE_COLOR);
   LbTextSetFont(winfont);
-  px[idx] += vx[idx] * game.delta_time;
+  px[idx] += vx[idx] * local_state.delta_time;
   if (px[idx] < 0)
   {
     px[idx] = 0;
     vx[idx] = -vx[idx];
   }
-  py[idx] += vy[idx] * game.delta_time;
+  py[idx] += vy[idx] * local_state.delta_time;
   if (py[idx] < 0)
   {
     py[idx] = 0;
@@ -252,7 +252,7 @@ void draw_eastegg(void)
   {
       // Advance by frame time rather than by game turn, so the movement stays smooth.
       // The 256 unit period is a whole number of cycles on both axes, so it wraps seamlessly.
-      skeksis_time += game.delta_time;
+      skeksis_time += local_state.delta_time;
       if (skeksis_time >= 256.0f)
         skeksis_time -= 256.0f;
       LbTextSetFont(winfont);
@@ -278,7 +278,7 @@ void draw_eastegg(void)
   {
     draw_bouncing_eastegg_message(0, "Simon says Hi to everyone he knows...", width, height, ee_units_per_px);
   }
-  if (game.easter_eggs_enabled == false)
+  if (start_params.easter_egg == false)
     return;
 
   if (game.eastegg02_cntr >= eastegg_jlw_codes.length)

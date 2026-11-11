@@ -55,6 +55,7 @@
 #include "engine_lenses.h"
 #include "room_util.h"
 #include "player_instances.h"
+#include "local_camera.h"
 
 #include "keeperfx.hpp"
 #include "post_inc.h"
@@ -164,7 +165,7 @@ TbBool detonate_shot(struct Thing *shotng, TbBool destroy)
         {
             power_level = SPELL_MAX_LEVEL;
         }
-        magic_use_power_direct(shotng->owner, PwrK_DESTRWALLS, power_level, shotng->mappos.x.stl.num, shotng->mappos.y.stl.num,INVALID_THING, PwMod_CastForFree);
+        magic_use_power_direct(shotng->owner, NO_USER,PwrK_DESTRWALLS, power_level, shotng->mappos.x.stl.num, shotng->mappos.y.stl.num,INVALID_THING, PwMod_CastForFree);
         break;
     default:
         break;
@@ -417,7 +418,7 @@ struct Thing *create_shot_hit_effect(struct Coord3d *effpos, long effowner, Effe
     return efftng;
 }
 
-short lua_process_shot_hit(struct Thing *shotng, struct Thing *target, MapSubtlCoord next_stl_x, MapSubtlCoord next_stl_y, struct ShotConfigStats *shotst) 
+short lua_process_shot_hit(struct Thing *shotng, struct Thing *target, MapSubtlCoord next_stl_x, MapSubtlCoord next_stl_y, struct ShotConfigStats *shotst)
 {
     if (thing_exists(target) && target->health < 0) {
         return 1;
@@ -781,8 +782,7 @@ long shot_kill_object(struct Thing *shotng, struct Thing *target)
     {
         target->active_state = ObSt_BeingDestroyed;
         target->health = -1;
-        if (is_my_player_number(shotng->owner))
-        {
+        if (is_my_player_number(shotng->owner)) {
             struct PlayerInfo* player = get_player(target->owner);
             if (is_active_keeper(player) && (shotng->owner != target->owner))
             {
@@ -792,6 +792,7 @@ long shot_kill_object(struct Thing *shotng, struct Thing *target)
         struct Dungeon* dungeon = get_players_num_dungeon(shotng->owner);
         if (!dungeon_invalid(dungeon)) {
             dungeon->lvstats.keepers_destroyed++;
+            dungeon->lvstats.keeper_destroyed[ALL_PLAYERS]++;
             dungeon->lvstats.keeper_destroyed[target->owner]++;
         }
         return 1;
@@ -1226,7 +1227,7 @@ long shot_hit_creature_at(struct Thing *shotng, struct Thing *trgtng, struct Coo
     struct ShotConfigStats* shotst = get_shot_model_stats(shotng->model);
     long push_strength = shotst->push_on_hit;
     struct Thing* shooter = get_parent_thing(shotng);
-    
+
     if (((shotst->model_flags & ShMF_NoHit) != 0) || (trgtng->health < 0)) {
         return 0;
     }
@@ -1360,6 +1361,8 @@ long shot_hit_creature_at(struct Thing *shotng, struct Thing *trgtng, struct Coo
         i = adjusted_push_strength * shotng->velocity.y.val;
         trgtng->veloc_push_add.y.val += i / 16;
         trgtng->state_flags |= TF1_PushAdd;
+        trgtng->pushed_by_player = shotng->owner;
+        trgtng->last_turn_pushed = get_gameturn();
     }
 
     if (creature_is_being_unconscious(trgtng))
@@ -1634,10 +1637,7 @@ TngUpdateRet move_shot(struct Thing *shotng)
 
 static TbBool lightning_is_close_to_player(struct PlayerInfo *player, struct Coord3d *pos)
 {
-    struct Camera *camera = get_player_active_camera(player);
-    if (camera == NULL)
-        return false;
-    return get_chessboard_distance(&camera->mappos, pos) < subtile_coord(45,0);
+    return get_chessboard_distance(&get_local_active_camera()->mappos, pos) < subtile_coord(45,0);
 }
 
 static void affect_nearby_friends_with_alarm(struct Thing *traptng)
@@ -1666,7 +1666,7 @@ static void affect_nearby_friends_with_alarm(struct Thing *traptng)
         }
         i = cctrl->players_next_creature_idx;
         // Thing list loop body
-        if (!thing_is_picked_up(thing) && !is_thing_directly_controlled(thing) &&
+        if (!thing_is_picked_up(thing) && !user_controls_thing(ANY_USER, thing, UCT_Direct | UCT_PossessionEntryZoom) &&
             !creature_is_being_unconscious(thing) && !creature_is_kept_in_custody(thing) &&
             (cctrl->combat_flags == 0) && !creature_is_dragging_something(thing) && !creature_is_dying(thing) && !creature_is_leaving_and_cannot_be_stopped(thing))
         {
@@ -1799,10 +1799,10 @@ TngUpdateRet update_shot(struct Thing *thing)
                 {
                   if (is_my_player_number(thing->owner))
                   {
-                      if ((thing->parent_idx > 0) && (myplyr->controlled_thing_idx == thing->parent_idx))
+                      if ((thing->parent_idx > 0) && (get_local_user_state()->controlled_thing_idx == thing->parent_idx))
                       {
                           PaletteSetUserPalette(get_local_user(), lightning_palette);
-                          get_user_state(get_local_user())->additional_flags |= UsrAF_LightningPaletteIsActive;
+                          local_state.lightning_palette_active = true;
                       }
                   }
                 }
@@ -2049,6 +2049,8 @@ static TngUpdateRet affect_thing_by_wind(struct Thing *thing, ModTngFilterParam 
         wind_push.z = (shotng->veloc_base.z.val * blow_distance) / creature_distance;
         SYNCDBG(8,"Applying (%d,%d,%d) to %s index %d",(int)wind_push.x,(int)wind_push.y,(int)wind_push.z,thing_model_name(thing),(int)thing->index);
         apply_transitive_velocity_to_thing(thing, &wind_push);
+        thing->pushed_by_player = shotng->owner;
+        thing->last_turn_pushed = get_gameturn();
         return TUFRet_Modified;
     }
     return TUFRet_Unchanged;
@@ -2084,7 +2086,7 @@ struct Thing* script_process_new_shot(ThingModel tngmodel, TbMapLocation locatio
     }
     thing->shot.hit_type = hittype;
     thing->shot.target_idx = target;
-    
+
     // Try to move thing out of the solid wall if it's inside one
     if (thing_in_wall_at(thing, &thing->mappos))
     {
@@ -2113,8 +2115,9 @@ long apply_wallhug_force_to_boulder(struct Thing *thing)
   {
     if ( thing_touching_floor(thing) )
     {
-      long top_cube = get_top_cube_at(thing->mappos.x.stl.num, thing->mappos.y.stl.num, NULL);
-      if ( ((top_cube & 0xFFFFFFFE) != 0x28) && (top_cube != 39) )
+      if (!(subtile_has_lava_on_top(thing->mappos.x.stl.num, thing->mappos.y.stl.num) ||
+            subtile_has_water_on_top(thing->mappos.x.stl.num, thing->mappos.y.stl.num) ||
+            subtile_has_abyss_on_top(thing->mappos.x.stl.num, thing->mappos.y.stl.num)))
       {
         thing->veloc_push_add.z.val += 48;
         thing->state_flags |= TF1_PushAdd;

@@ -39,13 +39,18 @@
 #include "gui_topmsg.h"
 #include "gui_soundmsgs.h"
 #include "kjm_input.h"
+#include "lens_api.h"
 #include "config_sounds.h"
 #include "lvl_filesdk1.h"
 #include "lua_base.h"
 #include "lua_triggers.h"
 #include "net_exchange_common.h"
 #include "net_game.h"
+#include "net_lobby.h"
+#include "net_spectator.h"
+#include "observer.h"
 #include "frontmenu_ingame_evnt.h"
+#include "net_filecheck.h"
 #include "net_resync.h"
 #include "room_library.h"
 #include "room_list.h"
@@ -173,14 +178,25 @@ static TbBool init_level(void)
     // above. No-op on software / before GL is active.
     RendererClearKeeperSpriteAtlas();
     lens_mode = 0;
+    reset_lens_failures();
     setup_heap_manager();
 
     wait_for_all_players();
     init_seeds();
+    if (replay.load_enable) {
+        game.timestamp = replay.head.timestamp;
+        game.timestamp_tz = replay.head.timestamp_tz;
+        game.timestamp_turn = replay.head.timestamp_turn;
+    } else {
+        take_game_timestamp();
+    }
     sync_initial_network_seed();
+    network_spectator_init_icons(initial_replay_seed);
 
     recheck_all_mod_exist();
 
+    reset_loaded_file_checksums();
+    add_loaded_file_checksum(prepare_file_path(campaign.fgroup, campaign.fname));
     luascript_loaded = open_lua_script(get_selected_level_number());
     // Restore campaign-layer sounds before creature configs load, so creature cfg custom
     // sounds are added to the already-restored bank (not wiped afterwards).
@@ -192,6 +208,10 @@ static TbBool init_level(void)
     load_stats_files();
     level_load_time_phase(LevelLoadTime_GameSetup);
     check_and_auto_fix_stats();
+    // Config is fully loaded and fixed up here, and the level script hasn't run
+    // any commands yet: this is the baseline the save-time config overlay diffs
+    // against (save-format spec 5.3/13.1 P5.3).
+    take_conf_baseline();
 
     // We should do this after 'load stats'
     update_room_tab_to_config();
@@ -248,6 +268,7 @@ static TbBool init_level(void)
     battle_initialise();
     ambient_sound_prepare();
     zero_messages();
+    render_onscreen_msg_time = 0;
     game.armageddon_cast_turn = 0;
     game.armageddon_over_turn = 0;
     clear_messages();
@@ -272,8 +293,9 @@ static TbBool init_level(void)
 static void post_init_level(void)
 {
     SYNCDBG(8,"Starting");
-    if (!replay.save_enable && !replay.load_enable)
+    if (!replay.save_enable && !replay.load_enable && (!network_is_active() || net_join_role != NetRole_Spectator)) {
         setup_auto_replay_save();
+    }
     if (replay.save_enable)
         open_new_packet_file_for_save();
     calculate_dungeon_area_scores();
@@ -351,14 +373,20 @@ TbBool startup_saved_packet_game(void)
     }
     if (!init_level())
         return false;
+    if (!verify_replay_map_checksums())
+        ERRORLOG("Replay \"%s\": level on disk differs from original", replay.fname);
     setup_zombie_players();
-    init_players();
     restore_users_from_packet_save();
     for (NetUserId user = 0; user < MAX_NET_USERS; user++)
     {
-        const PlayerNumber plyr_idx = get_net_user_player_number(user);
-        if ((plyr_idx >= 0) && (replay.head.user_players[user] >= 0))
-            apply_user_start_settings(get_player(plyr_idx), &replay.head.user_start[user], &replay.head.user_start[SERVER_ID]);
+        if ((get_net_user_player_number(user) >= 0) && (replay.head.user_players[user] >= 0))
+            apply_user_preferences(user, replay.head.user_prefs[user], UPF_NewGame);
+    }
+    init_players();
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++)
+    {
+        if ((get_net_user_player_number(user) >= 0) && (replay.head.user_players[user] >= 0))
+            apply_user_start_tendencies(user);
     }
     frontend_alliances = replay.head.frontend_alliances;
     setup_alliances();
@@ -367,8 +395,10 @@ TbBool startup_saved_packet_game(void)
     post_init_level();
     post_init_players();
     set_selected_level_number(0);
-    struct PlayerInfo* player = get_my_player();
-    set_engine_view(player, player->view_mode_restore);
+    if ((game.mode_flags & MFlg_IsDemoMode) == 0) {
+        observer_init(my_player_number);
+    }
+    update_local_view(get_my_user(), false);
     return true;
 }
 
@@ -385,6 +415,7 @@ void startup_network_game(CoroutineLoop *context, TbBool local)
         game.local_plyr_idx = default_loc_player;
         my_player_number = default_loc_player;
     }
+    net_lobby_empty_seats = 0;
     if (!init_level()) {
         coroutine_clear(context, true);
         return;
@@ -394,6 +425,7 @@ void startup_network_game(CoroutineLoop *context, TbBool local)
     if (local)
     {
         game.game_kind = GKind_LocalGame;
+        frontnet_skirmish_resolve_seats();
         init_players_local_game();
         if (AssignCpuKeepers || campaign.assignCpuKeepers) {
             ShouldAssignCpuKeepers = 1;
@@ -402,6 +434,7 @@ void startup_network_game(CoroutineLoop *context, TbBool local)
     {
         game.game_kind = GKind_MultiGame;
         if (!init_players_network_game()) {
+            clear_flag(game.operation_flags, GOF_SingleLevel);
             coroutine_clear(context, true);
             return;
         }
@@ -413,22 +446,34 @@ void startup_network_game(CoroutineLoop *context, TbBool local)
 
 static CoroutineLoopState startup_network_game_tail(CoroutineLoop *context)
 {
-    TbBool ShouldAssignCpuKeepers = coroutine_args(context)[0];
-    if (game.game_kind == GKind_MultiGame) {
-        setup_alliances();
+    if (net_join_role == NetRole_Spectator && network_is_active()) {
+        setup_zombie_players();
+        post_init_level();
+        if (!network_spectator_start()) {
+            LbNetwork_Stop();
+            coroutine_clear(context, true);
+            return CLS_CONTINUE;
+        }
+        set_selected_level_number(0);
+        return CLS_CONTINUE;
     }
+    TbBool ShouldAssignCpuKeepers = coroutine_args(context)[0];
     if (fe_computer_players || ShouldAssignCpuKeepers)
     {
         SYNCDBG(5,"Setting up uninitialized players as computer players");
-        setup_computer_players();
+        setup_computer_players(net_lobby_empty_seats);
     } else
     {
         SYNCDBG(5,"Setting up uninitialized players as zombie players");
         setup_zombie_players();
     }
+    setup_alliances();
     post_init_level();
     post_init_players();
     post_init_packets();
+    if (game.game_kind == GKind_MultiGame && network_is_active()) {
+        network_game_started();
+    }
     set_selected_level_number(0);
 
 #ifdef FUNCTESTING
@@ -472,7 +517,17 @@ CoroutineLoopState set_not_has_quit(CoroutineLoop *context)
 void clear_complete_game(void)
 {
     memset(&game, 0, sizeof(struct Game));
+    local_state.fast_forward = 0;
+    local_state.process_turn_time = 0;
+    local_state.delta_time = 0;
+    local_state.time_delta = 0;
+    local_state.show_gui = false;
+    local_state.show_panel = false;
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++) {
+        game.user_states[user].player_id = PLAYER_NONE;
+    }
     memset(&intralvl, 0, sizeof(struct IntralevelData));
+    clear_custom_intralevel_data();
     replay.turns_packetoff = -1;
     game.local_plyr_idx = default_loc_player;
     replay.checksum_verify = start_params.packet_checksum_verify;
@@ -487,11 +542,10 @@ void clear_complete_game(void)
     fps_limit_main = start_params.num_fps_draw_main;
     fps_limit_secondary = start_params.num_fps_draw_secondary;
     game.mode_flags = start_params.mode_flags;
-    game.easter_eggs_enabled = start_params.easter_egg;
     set_flag_value(local_system_flags, GSF_AllowOnePlayer, start_params.one_player);
     game.computer_chat_flags = start_params.computer_chat_flags;
     game.operation_flags = start_params.operation_flags;
-    snprintf(replay.fname,150, "%s", start_params.packet_fname);
+    snprintf(replay.fname, sizeof(replay.fname), "%s", start_params.packet_fname);
     replay.save_enable = start_params.packet_save_enable;
     replay.load_enable = start_params.packet_load_enable;
     my_player_number = default_loc_player;

@@ -42,6 +42,7 @@
 #include "vidfade.h"
 
 #include "keeperfx.hpp"
+#include "net_game.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -287,9 +288,8 @@ long gf_give_door_trap(struct GuiBox *gbox, struct GuiBoxOption *goptn, unsigned
 
 long gfa_can_level_up(struct GuiBox *gbox, struct GuiBoxOption *goptn, int32_t *tag)
 {
-    struct PlayerInfo* player = get_my_player();
     //  if (player->cheat_mode == 0) return false; -- there's no cheat_mode flag yet
-	struct Thing* thing = thing_get(player->controlled_thing_idx);
+	struct Thing* thing = thing_get(get_local_user_state()->controlled_thing_idx);
 	if (thing_is_creature(thing))
 	{
 		struct CreatureControl *cctrl = creature_control_get_from_thing(thing);
@@ -315,9 +315,8 @@ long gf_level_up(struct GuiBox *gbox, struct GuiBoxOption *goptn, unsigned char 
 
 long gfa_can_level_down(struct GuiBox *gbox, struct GuiBoxOption *goptn, int32_t *tag)
 {
-    struct PlayerInfo* player = get_my_player();
     //  if (player->cheat_mode == 0) return false; -- there's no cheat_mode flag yet
-	struct Thing* thing = thing_get(player->controlled_thing_idx);
+	struct Thing* thing = thing_get(get_local_user_state()->controlled_thing_idx);
 	if (thing_is_creature(thing))
 	{
 		struct CreatureControl *cctrl = creature_control_get_from_thing(thing);
@@ -359,9 +358,8 @@ long gf_kill_creature(struct GuiBox *gbox, struct GuiBoxOption *goptn, unsigned 
 
 long gfa_is_creature(struct GuiBox *gbox, struct GuiBoxOption *goptn, int32_t *tag)
 {
-    struct PlayerInfo* player = get_my_player();
     //  if (player->cheat_mode == 0) return false; -- there's no cheat_mode flag yet
-	struct Thing* thing = thing_get(player->controlled_thing_idx);
+	struct Thing* thing = thing_get(get_local_user_state()->controlled_thing_idx);
 	return (thing_is_creature(thing));
 }
 
@@ -551,7 +549,7 @@ short toggle_main_cheat_menu(void)
   long mouse_y = GetMouseY();
   if ((gui_cheat_box_1==NULL) || (gui_box_is_not_valid(gui_cheat_box_1)))
   {
-    if (!get_my_player()->cheats_allowed)
+    if (!user_cheats_allowed(get_local_user()))
       return false;
     gui_cheat_box_1 = gui_create_box(mouse_x,mouse_y,gui_main_cheat_list);
     gui_move_box(gui_cheat_box_1, mouse_x, mouse_y, Fnt_CenterLeftPos);
@@ -586,7 +584,7 @@ short toggle_instance_cheat_menu(void)
     long mouse_y = GetMouseY();
     if (gui_box_is_not_valid(gui_cheat_box_3))
     {
-        if (!get_my_player()->cheats_allowed)
+        if (!user_cheats_allowed(get_local_user()))
             return false;
        gui_cheat_box_3 = gui_create_box(200,20,gui_instance_option_list);
        if (gui_cheat_box_3 == NULL)
@@ -619,7 +617,7 @@ short toggle_instance_cheat_menu(void)
  */
 TbBool open_creature_cheat_menu(void)
 {
-  if (!get_my_player()->cheats_allowed)
+  if (!user_cheats_allowed(get_local_user()))
     return false;
   if (!gui_box_is_not_valid(gui_cheat_box_2))
     return false;
@@ -665,7 +663,7 @@ TbBool toggle_creature_cheat_menu(void)
  */
 TbBool open_secondary_cheat_menu(void)
 {
-  if (!get_my_player()->cheats_allowed)
+  if (!user_cheats_allowed(get_local_user()))
     return false;
   if (!gui_box_is_not_valid(gui_cheat_box_2))
     return false;

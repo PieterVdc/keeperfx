@@ -22,7 +22,7 @@
 #include "globals.h"
 #include "bflib_guibtns.h"
 #include "gui_frontmenu.h"
-#include "game_saves.h"
+#include "kfx/save/SaveTypes.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +35,7 @@ extern "C" {
 #define MENU_LIST_ITEMS_COUNT       52
 #define FRONTEND_BUTTON_INFO_COUNT 118
 #define NET_MESSAGES_COUNT           8
-#define NET_MESSAGE_LEN             64
+#define NET_MESSAGE_LEN             192
 // Sprite limits
 #define PANEL_SPRITES_COUNT 514
 #define FRONTEND_FONTS_COUNT 4
@@ -87,7 +87,7 @@ enum FrontendMenuStates {
   FeSt_DRAG,
   FeSt_CAMPAIGN_INTRO,
   FeSt_MAPPACK_SELECT,
-  FeSt_MP_MAPPACK_SELECT,
+  FeSt_SKIRMISH_LOBBY,
   // Special testing states
   FeSt_FONT_TEST          = 255,
 };
@@ -244,7 +244,7 @@ struct DemoItem { //sizeof = 5
     };
 };
 
-struct NetMessage { // sizeof = 0x45
+struct NetMessage {
   unsigned char plyr_idx;
   uint32_t connection_id;
   char text[NET_MESSAGE_LEN];
@@ -327,7 +327,68 @@ const char * mdlf_default(const char *);
 int frontend_font_char_width(int fnt_idx,char c);
 int frontend_font_string_width(int fnt_idx, const char *str);
 
+/** Layout of the in-game error box, in menu units. */
+#define ERROR_BOX_WIDTH            300
+#define ERROR_BOX_HEIGHT           244
+#define ERROR_BOX_INSET_X          24
+#define ERROR_BOX_INSET_Y          46
+#define ERROR_BOX_INSET_WIDTH      226
+#define ERROR_BOX_INSET_HEIGHT     138
+#define ERROR_BOX_INSET_PADDING    6
+#define ERROR_BOX_SCROLL_X         (ERROR_BOX_INSET_X + ERROR_BOX_INSET_WIDTH + 4)
+#define ERROR_BOX_SCROLL_WIDTH     22
+#define ERROR_BOX_ARROW_HEIGHT     24
+#define ERROR_BOX_ARROW_GAP        2
+#define ERROR_BOX_ARROW_DOWN_Y     (ERROR_BOX_INSET_Y + ERROR_BOX_INSET_HEIGHT - ERROR_BOX_ARROW_HEIGHT)
+#define ERROR_BOX_TRACK_Y          (ERROR_BOX_INSET_Y + ERROR_BOX_ARROW_HEIGHT + ERROR_BOX_ARROW_GAP)
+#define ERROR_BOX_TRACK_HEIGHT     (ERROR_BOX_INSET_HEIGHT - 2 * (ERROR_BOX_ARROW_HEIGHT + ERROR_BOX_ARROW_GAP))
+/** btype_value of the scroll arrow buttons. */
+#define ERROR_BOX_ARROW_UP         1
+#define ERROR_BOX_ARROW_DOWN       2
+/** The close button's sprite has empty space above its artwork, so it is hit lower than it is drawn. */
+#define ERROR_BOX_BUTTON_Y         170
+#define ERROR_BOX_BUTTON_HIT_Y     200
+
+/** Layout of the frontend error box, in menu units. */
+#define FRONTEND_ERROR_MENU_WIDTH       640
+#define FRONTEND_ERROR_MENU_HEIGHT      480
+#define FRONTEND_ERROR_BOX_WIDTH        476
+#define FRONTEND_ERROR_BOX_LINES        9
+#define FRONTEND_ERROR_BOX_LINE_HEIGHT  22
+#define FRONTEND_ERROR_BOX_EDGE_HEIGHT  13
+#define FRONTEND_ERROR_BOX_HEIGHT       (2 * FRONTEND_ERROR_BOX_EDGE_HEIGHT + FRONTEND_ERROR_BOX_LINES * FRONTEND_ERROR_BOX_LINE_HEIGHT)
+#define FRONTEND_ERROR_BOX_X            ((FRONTEND_ERROR_MENU_WIDTH - FRONTEND_ERROR_BOX_WIDTH) / 2)
+#define FRONTEND_ERROR_BOX_Y            ((FRONTEND_ERROR_MENU_HEIGHT - FRONTEND_ERROR_BOX_HEIGHT) / 2)
+#define FRONTEND_ERROR_BOX_BORDER       20
+#define FRONTEND_ERROR_HEADER_WIDTH     (FRONTEND_ERROR_BOX_WIDTH - LOBBY_HEADER_INSET)
+#define FRONTEND_ERROR_HEADER_Y         (FRONTEND_ERROR_BOX_Y - LOBBY_HEADER_HEIGHT)
+#define FRONTEND_ERROR_TEXT_TOP         10
+#define FRONTEND_ERROR_TEXT_HEIGHT      156
+#define FRONTEND_ERROR_OK_HEIGHT        46
+#define FRONTEND_ERROR_OK_BOTTOM_GAP    8
+#define FRONTEND_ERROR_OK_Y             (FRONTEND_ERROR_BOX_Y + FRONTEND_ERROR_BOX_HEIGHT - FRONTEND_ERROR_OK_BOTTOM_GAP - FRONTEND_ERROR_OK_HEIGHT)
+/** The scrollbar sits just outside the box's right edge, like the other frontend list boxes. */
+#define FRONTEND_ERROR_SCROLL_X         ((FRONTEND_ERROR_MENU_WIDTH + FRONTEND_ERROR_BOX_WIDTH) / 2)
+#define FRONTEND_ERROR_SCROLL_WIDTH     26
+#define FRONTEND_ERROR_ARROW_HEIGHT     14
+#define FRONTEND_ERROR_ARROW_RAISE      1
+#define FRONTEND_ERROR_ARROW_UP_Y       (FRONTEND_ERROR_BOX_Y - FRONTEND_ERROR_ARROW_RAISE)
+#define FRONTEND_ERROR_ARROW_DOWN_Y     (FRONTEND_ERROR_BOX_Y + FRONTEND_ERROR_BOX_HEIGHT - FRONTEND_ERROR_BOX_EDGE_HEIGHT)
+#define FRONTEND_ERROR_TAB_INSET        4
+#define FRONTEND_ERROR_TAB_X            (FRONTEND_ERROR_SCROLL_X + FRONTEND_ERROR_TAB_INSET)
+#define FRONTEND_ERROR_TAB_Y            (FRONTEND_ERROR_BOX_Y + FRONTEND_ERROR_BOX_EDGE_HEIGHT)
+#define FRONTEND_ERROR_TAB_WIDTH        20
+#define FRONTEND_ERROR_TAB_HEIGHT       (FRONTEND_ERROR_ARROW_DOWN_Y - FRONTEND_ERROR_TAB_Y)
+
 void create_error_box(TextStringId msg_idx);
+void gui_close_error_box(struct GuiButton *gbtn);
+void gui_area_error_message(struct GuiButton *gbtn);
+void maintain_error_message(struct GuiButton *gbtn);
+void gui_error_message_scroll_up(struct GuiButton *gbtn);
+void gui_error_message_scroll_down(struct GuiButton *gbtn);
+void gui_error_message_scroll_drag(struct GuiButton *gbtn);
+void maintain_error_message_scroll(struct GuiButton *gbtn);
+void gui_area_error_scrollbar(struct GuiButton *gbtn);
 void create_message_box(const char *title, const char *line1, const char *line2, const char *line3, const char *line4, const char* line5);
 void gui_area_text(struct GuiButton *gbtn);
 TbBool get_button_area_input(struct GuiButton *gbtn, int a2);
@@ -347,8 +408,16 @@ void maintain_loadsave(struct GuiButton *gbtn);
 void gui_quit_game(struct GuiButton *gbtn);
 void gui_area_slider(struct GuiButton *gbtn);
 void frontend_draw_icon(struct GuiButton *gbtn);
+void frontend_draw_error_text_header(struct GuiButton *gbtn);
 void frontend_draw_error_text_box(struct GuiButton *gbtn);
+void frontend_maintain_error_text_box(struct GuiButton *gbtn);
+void frontend_error_text_scroll_up(struct GuiButton *gbtn);
+void frontend_error_text_scroll_down(struct GuiButton *gbtn);
+void frontend_error_text_scroll_drag(struct GuiButton *gbtn);
+void frontend_maintain_error_text_scroll(struct GuiButton *gbtn);
+void frontend_draw_error_text_scroll_tab(struct GuiButton *gbtn);
 void frontend_close_error_box(struct GuiButton *gbtn);
+void frontend_queue_message(TextStringId msg_idx);
 short is_toggleable_menu(short mnu_idx);
 
 void activate_room_build_mode(RoomKind rkind, TextStringId tooltip_id);
@@ -366,8 +435,6 @@ void frontend_change_state(struct GuiButton *gbtn);
 void frontend_draw_enter_text(struct GuiButton *gbtn);
 void frontend_draw_small_menu_button(struct GuiButton *gbtn);
 void frontend_toggle_computer_players(struct GuiButton *gbtn);
-void frontend_draw_computer_players(struct GuiButton *gbtn);
-void frontend_draw_mp_mappack(struct GuiButton *gbtn);
 void set_packet_start(struct GuiButton *gbtn);
 void gui_area_scroll_window(struct GuiButton *gbtn);
 void draw_scrolling_text_at(long pos_x, long pos_y, long width, long height, struct TextScrollWindow *scrollwnd, const char *text);
@@ -386,7 +453,6 @@ void frontend_draw_campaign_menu_button(struct GuiButton *gbtn);
 TbBool frontend_register_click(void);
 void frontend_campaign_menu_button_maintain(struct GuiButton *gbtn);
 void frontend_load_mappacks(struct GuiButton *gbtn);
-void frontend_load_mp_mappacks(struct GuiButton *gbtn);
 void frontend_load_continue_game(struct GuiButton *gbtn);
 short frontend_save_continue_game(short allow_lvnum_grow);
 void frontend_continue_game_maintain(struct GuiButton *gbtn);
@@ -402,7 +468,6 @@ void init_video_menu(struct GuiMenu *gmnu);
 void init_audio_menu(struct GuiMenu *gmnu);
 void frontend_init_options_menu(struct GuiMenu *gmnu);
 TbBool frontend_is_player_allied(long idx1, long idx2);
-void frontend_set_alliance(long idx1, long idx2);
 char update_menu_fade_level(struct GuiMenu *gmnu);
 void draw_menu_buttons(struct GuiMenu *gmnu);
 MenuNumber create_menu(struct GuiMenu *mnu);
@@ -415,11 +480,15 @@ void gui_set_autopilot(struct GuiButton *gbtn);
 
 FrontendMenuState frontend_set_state(FrontendMenuState nstate);
 FrontendMenuState get_startup_menu_state(void);
+void frontend_start_load_game(long slot_num);
+void frontend_load_game_failed(TextStringId msg_idx);
 FrontendMenuState get_menu_state_when_back_from_substate(FrontendMenuState substate);
 void frontend_input(void);
 void frontend_update(short *finish_menu);
 short frontend_draw(void);
+void queue_frontend_error_box(const char *text);
 void create_frontend_error_box(const char *text);
+void create_frontend_error_box_with_header(const char *header_format, const char *header_name, const char *text);
 void try_restore_frontend_error_box(); // Restore error box if frontend state was switched
 
 short menu_is_active(short idx);
@@ -429,7 +498,6 @@ void set_gui_visible(TbBool visible);
 void toggle_gui(void);
 void add_message(long plyr_idx, char *msg);
 unsigned long toggle_status_menu(short visib);
-void set_map_ui_hidden(TbBool status_menu, TbBool tooltips);
 TbBool toggle_first_person_menu(TbBool visible);
 void toggle_gui_overlay_map(void);
 

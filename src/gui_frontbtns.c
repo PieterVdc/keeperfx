@@ -36,6 +36,7 @@
 #include "sprites.h"
 #include "game_legacy.h"
 #include "custom_sprites.h"
+#include "config_spritecolors.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -218,96 +219,54 @@ void update_radio_button_data(struct GuiMenu *gmnu)
 
 TbBool gui_button_click_inputs(int gmbtn_idx)
 {
-    TbBool result;
-    struct GuiButton *gbtn;
-    if (gmbtn_idx < 0)
-      return false;
-    result = false;
-    gbtn = &active_buttons[gmbtn_idx];
+    if (gmbtn_idx < 0) {
+        return false;
+    }
+    TbBool result = false;
+    struct GuiButton *gbtn = &active_buttons[gmbtn_idx];
     Gf_Btn_Callback callback;
-    if (lbDisplay.MLeftButton)
-    {
+    if (lbDisplay.MLeftButton) {
         SYNCDBG(8,"Left down for button %d",(int)gmbtn_idx);
         result = true;
         callback = gbtn->click_event;
         if (button_accepts_left_click(gbtn)) {
-            if ((gbtn->flags & LbBtnF_Enabled) != 0)
-            {
-                SYNCDBG(18,"Left down action for type %d",(int)gbtn->gbtype);
-                switch (gbtn->gbtype)
-                {
-                case LbBtnT_HoldableBtn:
-                  if ((gbtn->button_state_left_pressed > 5) && (callback != NULL)) {
-                      callback(gbtn);
-                  } else {
-                      gbtn->button_state_left_pressed++;
-                  }
-                  break;
-                case LbBtnT_Hotspot:
-                  if (callback != NULL) {
-                      callback(gbtn);
-                  }
-                  break;
-                }
-            }
+            do_button_press_actions(gbtn, &gbtn->button_state_left_pressed, callback);
         }
-    } else
-    if (lbDisplay.MRightButton)
-    {
+    } else if (lbDisplay.MRightButton) {
         SYNCDBG(8,"Right down for button %d",(int)gmbtn_idx);
         result = true;
         callback = gbtn->rclick_event;
-        if ((callback != NULL) && ((gbtn->flags & LbBtnF_Enabled) != 0))
-        {
-            SYNCDBG(18,"Right down action for type %d",(int)gbtn->gbtype);
-            switch (gbtn->gbtype)
-            {
-            case LbBtnT_HoldableBtn:
-              if ((gbtn->button_state_right_pressed > 5) && (callback != NULL)) {
-                  callback(gbtn);
-              } else {
-                  gbtn->button_state_right_pressed++;
-              }
-              break;
-            case LbBtnT_Hotspot:
-              if (callback != NULL) {
-                  callback(gbtn);
-              }
-              break;
-            }
+        if (callback != NULL) {
+            do_button_press_actions(gbtn, &gbtn->button_state_right_pressed, callback);
         }
     }
-    if ( left_button_clicked )
-    {
+    if (left_button_clicked) {
         SYNCDBG(8,"Left click for button %d",(int)gmbtn_idx);
         result = true;
-        if (game.flash_button_index != 0)
-        {
-          if (gbtn->id_num == game.flash_button_index)
-            game.flash_button_index = 0;
+        if (game.flash_button_index != 0) {
+            if (gbtn->id_num == game.flash_button_index) {
+                game.flash_button_index = 0;
+            }
         }
         callback = gbtn->click_event;
         if (button_accepts_left_click(gbtn)) {
-          left_button_clicked = 0;
-          gui_last_left_button_pressed_id = gbtn->id_num;
-          do_button_click_actions(gbtn, &gbtn->button_state_left_pressed, callback);
+            left_button_clicked = 0;
+            gui_last_left_button_pressed_id = gbtn->id_num;
+            do_button_click_actions(gbtn, &gbtn->button_state_left_pressed, callback);
         }
-    } else
-    if ( right_button_clicked )
-    {
+    } else if (right_button_clicked) {
         SYNCDBG(8,"Right click for button %d",(int)gmbtn_idx);
         result = true;
-        if (game.flash_button_index != 0)
-        {
-          if (gbtn->id_num == game.flash_button_index)
-            game.flash_button_index = 0;
+        if (game.flash_button_index != 0) {
+            if (gbtn->id_num == game.flash_button_index) {
+                game.flash_button_index = 0;
+            }
         }
         callback = gbtn->rclick_event;
-        if ((callback != NULL))
-        {
-          right_button_clicked = 0;
-          gui_last_right_button_pressed_id = gbtn->id_num;
-          do_button_click_actions(gbtn, &gbtn->button_state_right_pressed, callback);
+        if (callback != NULL) {
+            right_button_clicked = 0;
+            gui_last_right_button_pressed_id = gbtn->id_num;
+            do_button_click_actions(gbtn, &gbtn->button_state_right_pressed, callback);
         }
     }
     return result;
@@ -408,7 +367,7 @@ void gui_round_glass_background(struct GuiMenu *gmnu)
     int fade_h;
     int i;
     fade_h = 0;
-    if (game.time_delta < 12)
+    if (local_state.time_delta < 12)
     {
       if (gmnu->visual_state == 1) {
           gmnu->fade_time = 1;
@@ -456,7 +415,7 @@ void gui_pretty_background(struct GuiMenu *gmnu)
     int i;
     fade_w = 0;
     fade_h = 0;
-    if (game.time_delta < 12)
+    if (local_state.time_delta < 12)
     {
       if (gmnu->visual_state == 1) {
           gmnu->fade_time = 1;
@@ -484,19 +443,16 @@ void gui_pretty_background(struct GuiMenu *gmnu)
     switch (gmnu->visual_state)
     {
     case 1:
-        width = fade_w * (gmnu->menu_init->fade_time - gmnu->fade_time) + scale_ui_value_lofi(86);
-        height = fade_h * (gmnu->menu_init->fade_time - gmnu->fade_time) + scale_ui_value_lofi(64);
+    case 3:
+    {
+        float grown = (gmnu->visual_state == 1) ? gmnu->menu_init->fade_time - gmnu->fade_time : gmnu->fade_time;
+        width = fade_w * grown + scale_ui_value_lofi(86);
+        height = fade_h * grown + scale_ui_value_lofi(64);
         px = gmnu->pos_x + gmnu->width/2 - width/2;
         py = gmnu->pos_y + gmnu->height/2 - height/2;
         draw_ornate_slab_outline64k(px, py, units_per_pixel, width, height);
         break;
-    case 3:
-        width = gmnu->width;
-        height = gmnu->height;
-        px = gmnu->pos_x + gmnu->width/2 - width/2;
-        py = gmnu->pos_y + gmnu->height/2 - (gmnu->height - fade_h)/2;
-        draw_ornate_slab_outline64k(px, py, units_per_pixel, width, height);
-        break;
+    }
     default:
         draw_ornate_slab64k(gmnu->pos_x, gmnu->pos_y, units_per_pixel, gmnu->width, gmnu->height);
         break;
@@ -864,14 +820,6 @@ void frontend_draw_scroll_box(struct GuiButton *gbtn)
         height_lines = 3;
         draw_scrollbar = false;
         break;
-      case 90:
-        height_lines = 4;
-        draw_scrollbar = false;
-        break;
-      case 91:
-        height_lines = 4;
-        draw_scrollbar = true;
-        break;
       case 94:
         height_lines = 10;
         draw_scrollbar = true;
@@ -886,37 +834,22 @@ void frontend_draw_scroll_box(struct GuiButton *gbtn)
 
 void frontend_draw_slider_button(struct GuiButton *gbtn)
 {
-    long spr_idx;
-    long btn_id;
-    if ((gbtn->flags & LbBtnF_Enabled) != 0)
-    {
-        btn_id = gbtn->content.lval;
-        if ( (btn_id != 0) && (frontend_mouse_over_button == btn_id) )
-        {
-            if ( (btn_id == 17) || (btn_id == 36) || (btn_id == 38) ) {
-                spr_idx = GFS_scrollbar_toparrow_act;
-            } else {
-                spr_idx = GFS_scrollbar_btmarrow_act;
-            }
-        } else
-        {
-            if ( (btn_id == 17) || (btn_id == 36) || (btn_id == 38) ) {
-                spr_idx = GFS_scrollbar_toparrow_std;
-            } else {
-                spr_idx = GFS_scrollbar_btmarrow_std;
-            }
-        }
-    } else
-    {
-      spr_idx = 0;
+    if ((gbtn->flags & LbBtnF_Enabled) == 0) {
+        return;
     }
-    if (spr_idx > 0)
-    {
-        // Detect scaling factor
-        int units_per_px;
-        units_per_px = simple_frontend_sprite_height_units_per_px(gbtn, spr_idx, 100);
-        draw_frontend_sprite_left(gbtn->scr_pos_x, gbtn->scr_pos_y, units_per_px, spr_idx);
+    int32_t btn_id = gbtn->content.lval;
+    TbBool hovered = (btn_id != 0) && (frontend_mouse_over_button == btn_id);
+    TbBool points_up = (btn_id == 17) || (btn_id == 36) || (btn_id == 38) || (btn_id == 54);
+    int32_t spr_idx = GFS_scrollbar_btmarrow_std;
+    if (points_up && hovered) {
+        spr_idx = GFS_scrollbar_toparrow_act;
+    } else if (points_up) {
+        spr_idx = GFS_scrollbar_toparrow_std;
+    } else if (hovered) {
+        spr_idx = GFS_scrollbar_btmarrow_act;
     }
+    int units_per_px = simple_frontend_sprite_height_units_per_px(gbtn, spr_idx, 100);
+    draw_frontend_sprite_left(gbtn->scr_pos_x, gbtn->scr_pos_y, units_per_px, spr_idx);
 }
 
 void gui_area_null(struct GuiButton *gbtn)
@@ -1010,6 +943,27 @@ struct GuiButton* get_gui_button(int id)
         }
     }
     return NULL;
+}
+
+void update_gui_button_player_colors(void)
+{
+    for (int menu_idx = 0; menu_idx < ACTIVE_MENUS_COUNT; menu_idx++) {
+        const struct GuiMenu *gmnu = get_active_menu(menu_idx);
+        if (gmnu->visual_state == 0) {
+            continue;
+        }
+        const struct GuiButtonInit *gbinit = gmnu->buttons;
+        for (int btn_idx = 0; btn_idx < ACTIVE_BUTTONS_COUNT && gbinit->gbtype != -1; btn_idx++) {
+            struct GuiButton *gbtn = &active_buttons[btn_idx];
+            if ((gbtn->flags & LbBtnF_Active) == 0 || gbtn->gmenu_idx != menu_idx) {
+                continue;
+            }
+            if (gbinit->sprite_idx != 0) {
+                gbtn->sprite_idx = get_player_colored_icon_idx(gbinit->sprite_idx, my_player_number);
+            }
+            gbinit++;
+        }
+    }
 }
 
 struct GuiButtonInit * get_gui_button_init(struct GuiMenu * menu, int id)

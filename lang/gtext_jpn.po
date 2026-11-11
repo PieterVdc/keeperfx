@@ -5815,22 +5815,22 @@ msgstr "遭遇戦"
 #: guitext:877
 msgctxt "World direction"
 msgid "N"
-msgstr "北"
+msgstr "N"
 
 #: guitext:878
 msgctxt "World direction"
 msgid "E"
-msgstr "東"
+msgstr "E"
 
 #: guitext:879
 msgctxt "World direction"
 msgid "S"
-msgstr "南"
+msgstr "S"
 
 #: guitext:880
 msgctxt "World direction"
 msgid "W"
-msgstr "西"
+msgstr "W"
 
 #: guitext:881
 msgctxt "Menu interface item"
@@ -6714,11 +6714,6 @@ msgctxt "Dungeon special description"
 msgid "Mysterious Box: There's no telling what this will do."
 msgstr "不思議な箱: 此れの作用は不明だ。"
 
-#: guitext:1006
-msgctxt "Network game message"
-msgid "Joined player has different map version from host."
-msgstr "参加しているプレイヤーのマップ版はホストの版とは違う。"
-
 #: guitext:1007
 msgctxt "In-game interface description"
 msgid ""
@@ -7253,16 +7248,6 @@ msgctxt "In-game message"
 msgid "You have been defeated. As host, keep the game running until the match concludes."
 msgstr "お前は、敗北した。ホストとして、試合が終了するまでゲームを終了しないこと。"
 
-#: guitext:1113
-msgctxt "Network game message"
-msgid "Verify /fxdata/ is the same across all PCs."
-msgstr "すべてのパソコンで「/fxdata/」を一致させてください。"
-
-#: guitext:1114
-msgctxt "Network game message"
-msgid "WARNING: Custom sprite mismatch with %s!"
-msgstr "警告：%sのカスタムスプライトが一致しません！"
-
 #: guitext:1115
 msgctxt "Network game message"
 msgid "I am the computer now!"
@@ -7274,9 +7259,9 @@ msgid "%s has left the game."
 msgstr "%sが退出しました。"
 
 #: guitext:1117
-msgctxt "Network game message"
-msgid "%s has disconnected."
-msgstr "%sの接続が切断されました。"
+msgctxt "Unused"
+msgid "unused"
+msgstr "unused"
 
 #: guitext:1118
 msgctxt "Unused"
@@ -7284,9 +7269,9 @@ msgid "unused"
 msgstr "unused"
 
 #: guitext:1119
-msgctxt "Network game message"
-msgid "Network connection to host lost"
-msgstr "ホストへのネットワーク接続が失われました"
+msgctxt "Unused"
+msgid "unused"
+msgstr "unused"
 
 #: guitext:1120
 #, fuzzy
@@ -7375,7 +7360,7 @@ msgstr "最大人数"
 #: guitext:1134
 #, fuzzy
 msgctxt "Network game interface"
-msgid "Allow observers"
+msgid "Allow spectators"
 msgstr "観戦を許可"
 
 #: guitext:1135
@@ -7419,3 +7404,182 @@ msgstr "ホストのゲームバージョンが異なります。"
 msgctxt "Network game interface"
 msgid "Lobby Name"
 msgstr "ロビー名"
+
+#: guitext:1142
+#, fuzzy, c-format
+msgctxt "In-game message"
+msgid "Fast Forward %s"
+msgstr "早送り %s"
+
+#: guitext:1143
+#, fuzzy
+msgctxt "Game speed"
+msgid "normal"
+msgstr "通常"
+
+#: guitext:1144
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Loading"
+msgstr "読み込み中"
+
+#: guitext:1145
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Show spectator chat"
+msgstr "観戦チャットを表示"
+
+#: guitext:1146
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Spectators can only join a running game."
+msgstr "観戦者は進行中のゲームにのみ参加できます。"
+
+#: guitext:1147
+#, fuzzy
+msgctxt "Network game interface"
+msgid "The host has disabled spectating."
+msgstr "ホストが観戦者の参加を無効にしています。"
+
+#: guitext:1148
+#, fuzzy
+msgctxt "Network game interface"
+msgid "All spectator connections are occupied."
+msgstr "観戦者用の接続がすべて使用中です。"
+
+#: guitext:1149
+#, fuzzy
+msgctxt "Network game message"
+msgid "Players cannot see the spectator chat."
+msgstr "プレイヤーには観戦者のチャットは表示されません。"
+
+#: guitext:1150
+#, fuzzy
+msgctxt "Network game message"
+msgid "You are spectating"
+msgstr "観戦中です"
+
+#: guitext:1151
+#, fuzzy, c-format
+msgctxt "Network game message"
+msgid "%s has joined as a spectator."
+msgstr "%s が観戦者として参加しました。"
+
+#: guitext:1152
+#, fuzzy, c-format
+msgctxt "Network game message"
+msgid "%s has stopped spectating."
+msgstr "%s が観戦を終了しました。"
+
+#: guitext:1153
+#, fuzzy, c-format
+msgctxt "Network game interface"
+msgid "Required map pack \"%s\" is missing."
+msgstr "必要なマップパック「%s」がありません。"
+
+#: guitext:1154
+#, fuzzy, c-format
+msgctxt "Network game interface"
+msgid "Your map pack \"%s\" is missing level %d."
+msgstr "あなたのマップパック「%s」にはレベル %d がありません。"
+
+#: guitext:1155
+msgctxt "Menu interface message"
+msgid "This save was made by an incompatible version and can't be loaded."
+msgstr "このセーブデータは互換性のないバージョンで作成されたため、ロードできません。"
+
+#: guitext:1156
+#, fuzzy
+msgctxt "Menu interface message"
+msgid "This save is damaged and can't be loaded."
+msgstr "このセーブデータは破損しているため、ロードできません。"
+
+#: guitext:1157
+#, fuzzy
+msgctxt "Menu interface message"
+msgid "The save couldn't be loaded."
+msgstr "セーブデータをロードできませんでした。"
+
+#: guitext:1158
+#, fuzzy
+msgctxt "Network game interface"
+msgid "You were disconnected because your game went out of sync."
+msgstr "ゲームの同期が取れなくなったため、切断されました。"
+
+#: guitext:1159
+#, fuzzy, c-format
+msgctxt "Network game message"
+msgid "%s lost connection (timed out)."
+msgstr "%sの接続が切れました（タイムアウト）。"
+
+#: guitext:1160
+#, fuzzy, c-format
+msgctxt "Network game message"
+msgid "%s has become a spectator."
+msgstr "%s は観戦者になりました。"
+
+#: guitext:1161
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Team"
+msgstr "チーム"
+
+#: guitext:1162
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Ping"
+msgstr "Ping"
+
+#: guitext:1163
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Add computer players"
+msgstr "コンピュータを追加"
+
+#: guitext:1164
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Allow cheats"
+msgstr "チートを許可"
+
+#: guitext:1165
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Allow computer assistant"
+msgstr "CPU補助を許可"
+
+#: guitext:1166
+#, fuzzy, c-format
+msgctxt "Network game message"
+msgid "%s has joined the game."
+msgstr "%s がゲームに参加しました。"
+
+#: guitext:1167
+#, fuzzy
+msgctxt "In-game interface description"
+msgid "Click to unpause"
+msgstr "クリックで再開"
+
+#: guitext:1168
+#, fuzzy, c-format
+msgctxt "On-screen message"
+msgid "Waiting on %s: %d.%d"
+msgstr "%s を待っています：%d.%d"
+
+#: guitext:1169
+#, fuzzy, c-format
+msgctxt "On-screen message"
+msgid "Connection unstable: %d.%d"
+msgstr "接続が不安定です：%d.%d"
+
+#: guitext:1170
+#, fuzzy, c-format
+msgctxt "Network game message"
+msgid "Files differ between %s and host"
+msgstr "%s とホストのファイルが異なります"
+
+#: guitext:1171
+#, fuzzy
+msgctxt "Network game interface"
+msgid "Single-Player Maps (co-op)..."
+msgstr "一人用（協力）..."

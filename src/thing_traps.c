@@ -593,7 +593,7 @@ struct Thing *activate_trap_spawn_creature(struct Thing *traptng, unsigned char 
 void activate_trap_god_spell(struct Thing *traptng, struct Thing *creatng, PowerKind pwkind)
 {
     struct TrapConfigStats *trapst = get_trap_model_stats(traptng->model);
-    magic_use_power_direct(traptng->owner, pwkind, trapst->activation_level, creatng->mappos.x.stl.num, creatng->mappos.y.stl.num, creatng, PwMod_CastForFree);
+    magic_use_power_direct(traptng->owner, NO_USER,pwkind, trapst->activation_level, creatng->mappos.x.stl.num, creatng->mappos.y.stl.num, creatng, PwMod_CastForFree);
 }
 
 TbBool activate_trap_lua(struct Thing *traptng, struct Thing *creatng, FuncIdx func_idx)
@@ -648,7 +648,7 @@ void activate_trap(struct Thing *traptng, struct Thing *creatng)
     }
 }
 
-void activate_trap_by_slap(struct PlayerInfo *player, struct Thing* traptng)
+void activate_trap_by_slap(NetUserId user, struct Thing* traptng)
 {
     struct Thing* trgtng = INVALID_THING;
     struct TrapConfigStats* trapst = get_trap_model_stats(traptng->model);
@@ -689,12 +689,8 @@ void activate_trap_by_slap(struct PlayerInfo *player, struct Thing* traptng)
             {
             case TrpAcT_HeadforTarget90:
             case TrpAcT_CreatureShot:
-            {
-                struct Camera* camera = get_player_active_camera(player);
-                if (camera != NULL)
-                    external_activate_trap_shot_at_angle(traptng, camera->rotation_angle_x, trgtng);
+                external_activate_trap_shot_at_angle(traptng, get_user_dungeon_yaw(user), trgtng);
                 break;
-            }
             default:
                 ERRORLOG("Illegal trap activation type %d (idx=%d)", (int)trapst->activation_type, traptng->index);
                 break;

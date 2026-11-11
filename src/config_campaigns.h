@@ -146,7 +146,7 @@ struct GameCampaign {
 };
 
 struct HighScore {
-  long score;
+  int32_t score;
   char name[HISCORE_NAME_LENGTH];
   LevelNumber lvnum;
 };
@@ -178,6 +178,7 @@ struct CampaignsList {
   struct GameCampaign *items;
   unsigned long items_num;
   unsigned long items_count;
+  uint32_t ordered_num;
 };
 
 /******************************************************************************/

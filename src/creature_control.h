@@ -168,7 +168,7 @@ struct CreatureControl {
     TbBool force_health_flower_displayed;
     TbBool force_health_flower_hidden;
     unsigned char paydays_owed;
-    char paydays_advanced;
+    int8_t paydays_advanced;
     int32_t annoy_untrained_turn;
     uint32_t last_roar_turn;
    /** The game enumerates the elements of annoyance array periodically and looks for the highest value.
@@ -201,7 +201,7 @@ struct CreatureControl {
     int32_t turns_at_job;
     short blocking_door_id;
     unsigned char move_flags;
-    unsigned long cleanse_flags;
+    uint32_t cleanse_flags;
 
   union // Union on diggers, heroes and normal creatures
   {
@@ -216,7 +216,7 @@ struct CreatureControl {
         unsigned short task_repeats;
       } digger;
       struct {
-        char hero_state;
+        int8_t hero_state;
         unsigned char hero_gate_creation_turn;
         TbBool hero_state_reset_flag;
         TbBool ready_for_attack_flag;
@@ -227,7 +227,7 @@ struct CreatureControl {
   struct {
       unsigned char objective;
       unsigned char original_objective;
-      char target_plyr_idx;
+      PlayerNumber target_plyr_idx;
       PlayerBitFlags player_broken_into_flags;
       int32_t tunnel_steps_counter;
       unsigned char tunnel_dig_direction;
@@ -349,12 +349,11 @@ struct CreatureControl {
     TbBool instance_available[INSTANCE_TYPES_MAX];
     unsigned short instance_anim_step_turns;
     SubtlCodedCoords collided_door_subtile;
-    char fighting_player_idx;
+    int8_t fighting_player_idx;
     ThingModel shot_model;
     struct CastedSpellData casted_spells[CREATURE_MAX_SPELLS_CASTED_AT];
     /** Current active skill instance. */
     CrInstance active_instance_id;
-    char head_bob;
     struct Navigation navi;
     /* Creature movement path data. */
     struct Ariadne arid;
@@ -456,7 +455,7 @@ struct CreatureControl *allocate_free_control_structure(void);
 void delete_control_structure(struct CreatureControl *cctrl);
 void delete_all_control_structures(void);
 
-struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *player, ThingModel crmodel, struct Coord3d *pos);
+struct Thing *create_and_control_creature_as_controller(NetUserId user, ThingModel crmodel, struct Coord3d *pos);
 
 TbBool disband_creatures_group(struct Thing *thing);
 struct Thing *get_group_last_member(struct Thing *thing);

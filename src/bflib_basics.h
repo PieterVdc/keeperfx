@@ -30,12 +30,24 @@ extern "C" {
 #endif
 /******************************************************************************/
 // Buffer sizes
-// Disk path max length
+// Legacy path max length
 #define DISKPATH_SIZE    144
+
+// Maximum disk path size OS can handle
+#if defined(_WIN32)
+#define OS_ABSPATH_SIZE  260 /* ANSI */
+#elif defined(__linux__)
+#define OS_ABSPATH_SIZE  4096
+#else
+// arbitrary fallback
+#define OS_ABSPATH_SIZE  512
+#endif
+
 #define LINEMSG_SIZE     160
 #define READ_BUFSIZE     256
 #define LOOPED_FILE_LEN 4096
 #define COMMAND_WORD_LEN  64
+#define FULLPATH_SIZE   4096
 
 // Max length of any processed string
 #define MAX_TEXT_LENGTH 4096
@@ -93,6 +105,8 @@ typedef FILE * TbFileHandle;
 typedef unsigned char TbBool;
 typedef short TbScreenPos;
 
+#define CHECKSUM_ADD(checksum, value) ((checksum) = (((checksum) << 5) | ((checksum) >> 27)) ^ (TbBigChecksum)(value))
+
 #define LOG_PREFIX_LEN 32
 
 struct TbLog {
@@ -126,7 +140,7 @@ extern struct DebugMessage ** debug_messages_tail;
 /******************************************************************************/
 extern const char *log_file_name;
 extern int debug_display_consolelog;
-extern char consoleLogArray[MAX_CONSOLE_LOG_COUNT][MAX_TEXT_LENGTH];
+extern char (*consoleLogArray)[MAX_TEXT_LENGTH];
 extern size_t consoleLogArraySize;
 
 // High level functions - DK specific
@@ -146,8 +160,8 @@ int LbNaviLog(const char *format, ...) __attribute__ ((format(printf, 1, 2), non
 #ifdef FUNCTESTING
 int LbFTestLog(const char *format, ...) __attribute__ ((format(printf, 1, 2), nonnull(1)));
 #endif
-int LbScriptLog(unsigned long line,const char *format, ...) __attribute__ ((format(printf, 2, 3), nonnull(2)));
-int LbConfigLog(unsigned long line,const char *format, ...) __attribute__ ((format(printf, 2, 3), nonnull(2)));
+int LbScriptLog(int32_t line, const char *format, ...) __attribute__ ((format(printf, 2, 3), nonnull(2)));
+int LbConfigLog(int32_t line, const char *format, ...) __attribute__ ((format(printf, 2, 3), nonnull(2)));
 
 int LbErrorLogSetup(const char *directory, const char *filename, TbBool flag);
 int LbErrorLogClose(void);
@@ -162,6 +176,25 @@ typedef void (*TbNetworkCallbackFunc)(struct TbNetworkCallbackData *, void *);
 /******************************************************************************/
 unsigned long llong (unsigned char *p) __attribute__ ((nonnull(1)));
 unsigned long lword (unsigned char *p) __attribute__ ((nonnull(1)));
+
+/* swap byte order for u32 */
+static inline uint32_t u32swap(uint32_t v)
+{
+    return v >> 24 | (v >> 8 & 0xFF00) | (v << 8 & 0xFF0000) | v << 24;
+}
+
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+/** Converts between native and big-endian byte order. */
+static inline uint32_t u32be(uint32_t v) { return v; }
+/** Converts between native and little-endian byte order. */
+static inline uint32_t u32le(uint32_t v) { return u32swap(v); }
+#else
+/** Converts between native and big-endian byte order. */
+static inline uint32_t u32be(uint32_t v) { return u32swap(v); }
+/** Converts between native and little-endian byte order. */
+static inline uint32_t u32le(uint32_t v) { return v; }
+#endif
+
 long saturate_set_signed(long long val,unsigned short nbits);
 unsigned long saturate_set_unsigned(unsigned long long val,unsigned short nbits);
 void make_lowercase(char *) __attribute__ ((nonnull(1)));

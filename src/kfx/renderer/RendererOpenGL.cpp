@@ -53,6 +53,9 @@ struct GLFrameData {
 
     UICommandBuffers    swipe_cmds;
 
+    UICommandBuffers    tooltip_ui_cmds;
+    TextCommandBuffers  tooltip_text_cmds;
+
     int32_t screen_w = 0;
     int32_t screen_h = 0;
 
@@ -108,6 +111,7 @@ struct RendererOpenGL::Impl {
     GLPaletteIndexLookup palette_index_lookup;
 
     bool fade_tables_refreshed = false;
+    unsigned int world_atlas_generation = 0;
 
     RenderThreadManager thread_mgr;
     GLFrameData frames[2];
@@ -272,6 +276,7 @@ bool RendererOpenGL::Init()
     m_impl->thread_mgr.Start(
         [this]{ render_thread_init(); },
         [this]{ render_thread_work(); },
+        [this]{ render_thread_present(); },
         [this]{ render_thread_cleanup(); });
 
     if (!m_impl->init_ok)
@@ -439,6 +444,8 @@ void RendererOpenGL::render_thread_init()
         fd.text_cmds.shared_seq = &fd.frame_seq;
         fd.parchment_ui_cmds.shared_seq   = &fd.frame_seq;
         fd.parchment_text_cmds.shared_seq = &fd.frame_seq;
+        fd.tooltip_ui_cmds.shared_seq   = &fd.frame_seq;
+        fd.tooltip_text_cmds.shared_seq = &fd.frame_seq;
     }
     m_impl->ui.SetUICommandBuffers(&m_impl->frames[0].ui_cmds);
     m_impl->text.SetTextCommandBuffers(&m_impl->frames[0].text_cmds);
@@ -479,6 +486,9 @@ void RendererOpenGL::render_thread_work()
 
         if (!m_impl->world_atlas.IsInitialized() && block_ptrs[0] != nullptr)
             m_impl->world_atlas.Init();
+        else if (m_impl->world_atlas_generation != level_textures_generation)
+            m_impl->world_atlas.Rebuild();
+        m_impl->world_atlas_generation = level_textures_generation;
 
         if (!m_impl->fade_tables_refreshed && fade_tables_ready)
         {
@@ -495,7 +505,10 @@ void RendererOpenGL::render_thread_work()
         KFX_ZONE_COLOR("RendererOpenGL::PresentScreenTarget", KFX_COLOR_RENDER_GPU);
         m_impl->PresentScreenTarget(fd);
     }
+}
 
+void RendererOpenGL::render_thread_present()
+{
     const int want_interval = vsync_enabled ? 1 : 0;
     if (want_interval != m_impl->swap_interval)
     {
@@ -668,8 +681,9 @@ void RendererOpenGL::FGCaptureScreenshot()
 void RendererOpenGL::FGExecuteCursor()
 {
     GLFrameData& fd = m_impl->frames[m_impl->render_idx];
-    m_impl->cursor.DrawSnapshot(fd.cursor_snapshot);
     m_impl->world.DrawCursorKeeperSprites();
+    m_impl->ui.DrawFromIR(fd.tooltip_ui_cmds, fd.tooltip_text_cmds, &m_impl->text);
+    m_impl->cursor.DrawSnapshot(fd.cursor_snapshot);
 }
 
 void RendererOpenGL::render_thread_cleanup()
@@ -748,6 +762,8 @@ void RendererOpenGL::PresentFrame()
     next_fd.parchment_ui_cmds.Reset();
     next_fd.parchment_text_cmds.Reset();
     next_fd.swipe_cmds.Reset();
+    next_fd.tooltip_ui_cmds.Reset();
+    next_fd.tooltip_text_cmds.Reset();
     next_fd.frame_seq = 0;
     next_fd.palette_dirty = false; // defensive; a real change always re-sets this itself
     // Both slots must hold the current palette, not the one last written into them.
@@ -798,6 +814,11 @@ void RendererOpenGL::PresentFrame()
 bool RendererOpenGL::BeginFrame()
 {
     return m_impl != nullptr && m_impl->init_ok;
+}
+
+bool RendererOpenGL::CanPresent() const
+{
+    return m_impl != nullptr && m_impl->thread_mgr.IsWorkDone();
 }
 
 void RendererOpenGL::EndFrame()
@@ -878,11 +899,11 @@ class IUIRenderer* RendererOpenGL::GetUIRenderer()
     return m_impl ? &m_impl->ui : nullptr;
 }
 
-void RendererOpenGL::SubmitMapFadeStep(int tick_step, float display_step, bool fading_in,
+void RendererOpenGL::SubmitMapFadeStep(bool starting, float display_step, float warp_scale,
                                        const unsigned char* ghost_table)
 {
     if (m_impl == nullptr) return;
-    m_impl->mapfade.SubmitStep(tick_step, display_step, fading_in, ghost_table);
+    m_impl->mapfade.SubmitStep(starting, display_step, warp_scale, ghost_table);
 }
 
 void RendererOpenGL::BeginOverlayCapture(OverlayCaptureKind kind)
@@ -899,6 +920,10 @@ void RendererOpenGL::BeginOverlayCapture(OverlayCaptureKind kind)
         // Text isn't redirected: the swipe overlay only ever submits sprites.
         m_impl->ui.SetUICommandBuffers(&fd.swipe_cmds);
         break;
+    case OVERLAY_CAPTURE_TOOLTIP:
+        m_impl->ui.SetUICommandBuffers(&fd.tooltip_ui_cmds);
+        m_impl->text.SetTextCommandBuffers(&fd.tooltip_text_cmds);
+        break;
     }
 }
 
@@ -907,7 +932,7 @@ void RendererOpenGL::EndOverlayCapture(OverlayCaptureKind kind)
     if (m_impl == nullptr) return;
     GLFrameData& fd = m_impl->frames[m_impl->write_idx];
     m_impl->ui.SetUICommandBuffers(&fd.ui_cmds);
-    if (kind == OVERLAY_CAPTURE_PARCHMENT)
+    if (kind == OVERLAY_CAPTURE_PARCHMENT || kind == OVERLAY_CAPTURE_TOOLTIP)
         m_impl->text.SetTextCommandBuffers(&fd.text_cmds);
 }
 

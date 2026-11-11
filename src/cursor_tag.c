@@ -17,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "observer.h"
 #include "globals.h"
 #include "bflib_basics.h"
 #include "config_trapdoor.h"
@@ -31,7 +32,10 @@
 #include "frontend.h"
 #include "thing_physics.h"
 #include "thing_navigate.h"
+#include "thing_creature.h"
 #include "packets.h"
+#include "local_camera.h"
+#include "net_game.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -44,6 +48,74 @@ extern "C" {
 }
 #endif
 /******************************************************************************/
+static struct MapVolumeBox co_user_cursor_boxes[MAX_NET_USERS];
+
+TbBool should_draw_cursor_box(NetUserId user)
+{
+    if (user != get_displayed_user() || game.small_map_state == 2 || is_observer_camera_active()) {
+        return false;
+    }
+    if (get_my_player() == &local_observer_player) {
+        return true;
+    }
+    return !gameplay_cursor_is_over_gui();
+}
+
+TbBool is_co_user_of_displayed_user(NetUserId user)
+{
+    const NetUserId displayed = get_displayed_user();
+    if (user < 0 || user >= MAX_NET_USERS || user == displayed || !user_present(user)) {
+        return false;
+    }
+    const PlayerNumber plyr_idx = get_net_user_player_number(displayed);
+    return plyr_idx >= 0 && get_net_user_player_number(user) == plyr_idx;
+}
+
+// NULL if cursor box shouldn't be shown
+struct MapVolumeBox *get_user_cursor_box(NetUserId user)
+{
+    if (should_draw_cursor_box(user)) {
+        return &map_volume_box;
+    }
+    if (is_co_user_of_displayed_user(user)) {
+        return &co_user_cursor_boxes[user];
+    }
+    return NULL;
+}
+
+const struct MapVolumeBox *get_visible_co_user_cursor_box(NetUserId user)
+{
+    if (game.small_map_state == 2 || is_observer_camera_active() || !is_co_user_of_displayed_user(user) || !co_user_cursor_boxes[user].visible) {
+        return NULL;
+    }
+    return &co_user_cursor_boxes[user];
+}
+
+void clear_co_user_cursor_box(NetUserId user)
+{
+    if (user >= 0 && user < MAX_NET_USERS) {
+        co_user_cursor_boxes[user].visible = 0;
+    }
+}
+
+// remap colours for co-users
+unsigned char get_user_cursor_box_colour(NetUserId user, unsigned char colour)
+{
+    if (user == get_displayed_user()) {
+        return colour;
+    }
+
+    switch (colour)
+    {
+    case SLC_GREEN:
+        return SLC_BEIGE;
+    case SLC_BROWN:
+        return SLC_DARKBROWN;
+    default:
+        return SLC_SIENNA;
+    }
+}
+
 unsigned char tag_cursor_blocks_dig(struct PlayerInfo *player, NetUserId user, const struct Packet *pckt, struct RoomSpace *render_roomspace, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool full_slab)
 {
     struct UserState* ustate = get_user_state(user);
@@ -83,58 +155,61 @@ unsigned char tag_cursor_blocks_dig(struct PlayerInfo *player, NetUserId user, c
             }
         }
     }
-    if (is_my_player_number(player->id_number) && !game_is_busy_doing_gui() && (game.small_map_state != 2) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0))
-    {
-        map_volume_box.visible = 1;
-        map_volume_box.color = line_color;
-        map_volume_box.beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((render_roomspace->centreX - calc_distance_from_roomspace_centre(render_roomspace->width,0)) * STL_PER_SLB), 0));
-        map_volume_box.beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((render_roomspace->centreY - calc_distance_from_roomspace_centre(render_roomspace->height,0)) * STL_PER_SLB), 0));
-        map_volume_box.end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((render_roomspace->centreX + calc_distance_from_roomspace_centre(render_roomspace->width,(render_roomspace->width % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((render_roomspace->centreY + calc_distance_from_roomspace_centre(render_roomspace->height,(render_roomspace->height % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.floor_height_z = floor_height_z;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL && ((pckt->control_flags & PCtr_MapCoordsValid) != 0)) {
+        box->visible = 1;
+        box->color = line_color;
+        box->beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((render_roomspace->centreX - calc_distance_from_roomspace_centre(render_roomspace->width,0)) * STL_PER_SLB), 0));
+        box->beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((render_roomspace->centreY - calc_distance_from_roomspace_centre(render_roomspace->height,0)) * STL_PER_SLB), 0));
+        box->end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((render_roomspace->centreX + calc_distance_from_roomspace_centre(render_roomspace->width,(render_roomspace->width % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        box->end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((render_roomspace->centreY + calc_distance_from_roomspace_centre(render_roomspace->height,(render_roomspace->height % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        box->floor_height_z = floor_height_z;
         render_roomspace->is_roomspace_a_single_subtile = !full_slab;
     }
     return line_color;
 }
 
-void tag_cursor_blocks_thing_in_hand(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool allow_unclaimed_path, TbBool full_slab)
+void tag_cursor_blocks_thing_in_hand(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
 {
-  SYNCDBG(7,"Starting");
-  MapSlabCoord slb_x = subtile_slab(stl_x);
-  MapSlabCoord slb_y = subtile_slab(stl_y);  
-  if (is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && (game.small_map_state != 2) )
-    {
-        map_volume_box.visible = true;
-        map_volume_box.color = can_drop_thing_here(stl_x, stl_y, plyr_idx, allow_unclaimed_path);
-        if (full_slab)
-        {
-            map_volume_box.beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
-            map_volume_box.beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
-            map_volume_box.end_x = subtile_coord(slab_subtile(slb_x, 0) + STL_PER_SLB, 0);
-            map_volume_box.end_y = subtile_coord(slab_subtile(slb_y, 0) + STL_PER_SLB, 0);
+    SYNCDBG(7,"Starting");
+    PlayerNumber plyr_idx = get_net_user_player_number(user);
+    struct UserState* ustate = get_user_state(user);
+    MapSlabCoord slb_x = subtile_slab(stl_x);
+    MapSlabCoord slb_y = subtile_slab(stl_y);
+    ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        TbBool full_slab = (ustate->roomspace_mode != single_subtile_mode);
+        TbBool allow_unclaimed_path = is_creature_droppable_on_path(get_first_thing_in_power_hand(user));
+        box->visible = true;
+        box->color = can_drop_thing_here(stl_x, stl_y, plyr_idx, allow_unclaimed_path);
+        if (full_slab) {
+            box->beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
+            box->beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
+            box->end_x = subtile_coord(slab_subtile(slb_x, 0) + STL_PER_SLB, 0);
+            box->end_y = subtile_coord(slab_subtile(slb_y, 0) + STL_PER_SLB, 0);
+        } else {
+            box->beg_x = subtile_coord(stl_x, 0);
+            box->beg_y = subtile_coord(stl_y, 0);
+            box->end_x = subtile_coord(stl_x + 1, 0);
+            box->end_y = subtile_coord(stl_y + 1, 0);
         }
-        else
-        {
-            map_volume_box.beg_x = subtile_coord(stl_x, 0);
-            map_volume_box.beg_y = subtile_coord(stl_y, 0);
-            map_volume_box.end_x = subtile_coord(stl_x + 1, 0);
-            map_volume_box.end_y = subtile_coord(stl_y + 1, 0); 
-        }
-        map_volume_box.floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
+        box->floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
     }
 }
 
-TbBool tag_cursor_blocks_sell_area(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool full_slab)
+TbBool tag_cursor_blocks_sell_area(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y, TbBool full_slab)
 {
     SYNCDBG(7,"Starting");
-    struct PlayerInfo* player = get_player(plyr_idx);
+    PlayerNumber plyr_idx = get_net_user_player_number(user);
+    struct UserState* ustate = get_user_state(user);
     MapSlabCoord slb_x = subtile_slab(stl_x);
     MapSlabCoord slb_y = subtile_slab(stl_y);
     struct SlabMap *slb;
     slb = get_slabmap_block(slb_x, slb_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
     unsigned char colour = SLC_RED;
-    if (player->render_roomspace.slab_count > 0 && full_slab)
+    if (ustate->render_roomspace.slab_count > 0 && full_slab)
     {
         colour = SLC_GREEN; // roomspace selling support is basic, this makes roomspace selling work over any slabtype
     }
@@ -147,21 +222,21 @@ TbBool tag_cursor_blocks_sell_area(PlayerNumber plyr_idx, MapSubtlCoord stl_x, M
             colour = SLC_GREEN;
         }
     }
-    if ( is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && game.small_map_state != 2 )
-    {
-        map_volume_box.visible = 1;
-        map_volume_box.color = colour;
-        map_volume_box.beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((player->render_roomspace.centreX - calc_distance_from_roomspace_centre(player->render_roomspace.width,0)) * STL_PER_SLB), 0));
-        map_volume_box.beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((player->render_roomspace.centreY - calc_distance_from_roomspace_centre(player->render_roomspace.height,0)) * STL_PER_SLB), 0));
-        map_volume_box.end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((player->render_roomspace.centreX + calc_distance_from_roomspace_centre(player->render_roomspace.width,(player->render_roomspace.width % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((player->render_roomspace.centreY + calc_distance_from_roomspace_centre(player->render_roomspace.height,(player->render_roomspace.height % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.floor_height_z = floor_height_z;
-        player->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        box->visible = 1;
+        box->color = colour;
+        box->beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((ustate->render_roomspace.centreX - calc_distance_from_roomspace_centre(ustate->render_roomspace.width,0)) * STL_PER_SLB), 0));
+        box->beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((ustate->render_roomspace.centreY - calc_distance_from_roomspace_centre(ustate->render_roomspace.height,0)) * STL_PER_SLB), 0));
+        box->end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((ustate->render_roomspace.centreX + calc_distance_from_roomspace_centre(ustate->render_roomspace.width,(ustate->render_roomspace.width % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        box->end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((ustate->render_roomspace.centreY + calc_distance_from_roomspace_centre(ustate->render_roomspace.height,(ustate->render_roomspace.height % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        box->floor_height_z = floor_height_z;
+        ustate->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
     }
     return (colour != SLC_RED);
 }
 
-TbBool tag_cursor_blocks_place_door(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
+TbBool tag_cursor_blocks_place_door(PlayerNumber plyr_idx, NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
 {
     SYNCDBG(7,"Starting");
     MapSlabCoord slb_x = subtile_slab(stl_x);
@@ -195,19 +270,19 @@ TbBool tag_cursor_blocks_place_door(PlayerNumber plyr_idx, MapSubtlCoord stl_x, 
             allowed = true;
         }
     }
-    if ( is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && game.small_map_state != 2 )
-    {
-        struct PlayerInfo* player = get_player(plyr_idx);
-        map_volume_box.visible = 1;
-        map_volume_box.beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
-        map_volume_box.beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
-        map_volume_box.end_x = subtile_coord(slab_subtile(slb_x, STL_PER_SLB), 0);
-        map_volume_box.end_y = subtile_coord(slab_subtile(slb_y, STL_PER_SLB), 0);
-        map_volume_box.floor_height_z = floor_height_z;
-        map_volume_box.color = allowed;
-        player->render_roomspace.is_roomspace_a_box = true;
-        player->render_roomspace.render_roomspace_as_box = true;
-        player->render_roomspace.is_roomspace_a_single_subtile = false;
+    struct UserState* ustate = get_user_state(user);
+    struct MapVolumeBox *box = user_state_invalid(ustate) ? NULL : get_user_cursor_box(user);
+    if (box != NULL) {
+        box->visible = 1;
+        box->beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
+        box->beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
+        box->end_x = subtile_coord(slab_subtile(slb_x, STL_PER_SLB), 0);
+        box->end_y = subtile_coord(slab_subtile(slb_y, STL_PER_SLB), 0);
+        box->floor_height_z = floor_height_z;
+        box->color = allowed;
+        ustate->render_roomspace.is_roomspace_a_box = true;
+        ustate->render_roomspace.render_roomspace_as_box = true;
+        ustate->render_roomspace.is_roomspace_a_single_subtile = false;
     }
     return allowed;
 }
@@ -216,7 +291,6 @@ TbBool tag_cursor_blocks_place_room(NetUserId user, MapSubtlCoord stl_x, MapSubt
 {
     SYNCDBG(7,"Starting");
     PlayerNumber plyr_idx = get_net_user_player_number(user);
-    struct PlayerInfo* player = get_player(plyr_idx);
     struct UserState* ustate = get_user_state(user);
     MapSlabCoord slb_x;
     MapSlabCoord slb_y;
@@ -224,7 +298,7 @@ TbBool tag_cursor_blocks_place_room(NetUserId user, MapSubtlCoord stl_x, MapSubt
     slb_y = subtile_slab(stl_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
     unsigned char colour = SLC_RED;
-    if(can_build_roomspace(plyr_idx, ustate->chosen_room_kind, player->render_roomspace) > 0)
+    if(can_build_roomspace(plyr_idx, ustate->chosen_room_kind, ustate->render_roomspace) > 0)
     {
         colour = SLC_GREEN;
     }
@@ -235,41 +309,43 @@ TbBool tag_cursor_blocks_place_room(NetUserId user, MapSubtlCoord stl_x, MapSubt
             SYNCDBG(7,"Cannot build %s on %s slabs centered at (%d,%d)", room_code_name(ustate->chosen_room_kind), slab_code_name(slb->kind), (int)slb_x, (int)slb_y);
         #endif
     }
-    if (is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && (game.small_map_state != 2))
-    {
-        map_volume_box.visible = 1;
-        map_volume_box.color = colour;
-        map_volume_box.beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((player->render_roomspace.centreX - calc_distance_from_roomspace_centre(player->render_roomspace.width,0)) * STL_PER_SLB), 0));
-        map_volume_box.beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((player->render_roomspace.centreY - calc_distance_from_roomspace_centre(player->render_roomspace.height,0)) * STL_PER_SLB), 0));
-        map_volume_box.end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((player->render_roomspace.centreX + calc_distance_from_roomspace_centre(player->render_roomspace.width,(player->render_roomspace.width % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((player->render_roomspace.centreY + calc_distance_from_roomspace_centre(player->render_roomspace.height,(player->render_roomspace.height % 2 == 0))) + 1) * STL_PER_SLB), 0));
-        map_volume_box.floor_height_z = floor_height_z;
-        player->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        box->visible = 1;
+        box->color = colour;
+        box->beg_x = (!full_slab ? (subtile_coord(stl_x, 0)) : subtile_coord(((ustate->render_roomspace.centreX - calc_distance_from_roomspace_centre(ustate->render_roomspace.width,0)) * STL_PER_SLB), 0));
+        box->beg_y = (!full_slab ? (subtile_coord(stl_y, 0)) : subtile_coord(((ustate->render_roomspace.centreY - calc_distance_from_roomspace_centre(ustate->render_roomspace.height,0)) * STL_PER_SLB), 0));
+        box->end_x = (!full_slab ? (subtile_coord(stl_x + 1, 0)) : subtile_coord((((ustate->render_roomspace.centreX + calc_distance_from_roomspace_centre(ustate->render_roomspace.width,(ustate->render_roomspace.width % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        box->end_y = (!full_slab ? (subtile_coord(stl_y + 1, 0)) : subtile_coord((((ustate->render_roomspace.centreY + calc_distance_from_roomspace_centre(ustate->render_roomspace.height,(ustate->render_roomspace.height % 2 == 0))) + 1) * STL_PER_SLB), 0));
+        box->floor_height_z = floor_height_z;
+        ustate->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
     }
     return (colour != SLC_RED);
 }
 
-void tag_cursor_blocks_place_terrain(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
+void tag_cursor_blocks_place_terrain(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
 {
     SYNCDBG(7,"Starting");
+    PlayerNumber plyr_idx = get_net_user_player_number(user);
     MapSlabCoord slb_x = subtile_slab(stl_x);
     MapSlabCoord slb_y = subtile_slab(stl_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
-    if ( is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && game.small_map_state != 2 )
-    {
-        map_volume_box.visible = true;
-        map_volume_box.beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
-        map_volume_box.beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
-        map_volume_box.end_x = subtile_coord(slab_subtile(slb_x, STL_PER_SLB), 0);
-        map_volume_box.end_y = subtile_coord(slab_subtile(slb_y, STL_PER_SLB), 0);
-        map_volume_box.floor_height_z = floor_height_z;
-        map_volume_box.color = SLC_GREEN;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        box->visible = true;
+        box->beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
+        box->beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
+        box->end_x = subtile_coord(slab_subtile(slb_x, STL_PER_SLB), 0);
+        box->end_y = subtile_coord(slab_subtile(slb_y, STL_PER_SLB), 0);
+        box->floor_height_z = floor_height_z;
+        box->color = SLC_GREEN;
     }
 }
 
-TbBool tag_cursor_blocks_place_thing(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
+TbBool tag_cursor_blocks_place_thing(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
 {
     SYNCDBG(7,"Starting");
+    PlayerNumber plyr_idx = get_net_user_player_number(user);
     MapSlabCoord slb_x = subtile_slab(stl_x);
     MapSlabCoord slb_y = subtile_slab(stl_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
@@ -287,24 +363,25 @@ TbBool tag_cursor_blocks_place_thing(PlayerNumber plyr_idx, MapSubtlCoord stl_x,
     {
         colour = SLC_GREEN;
     }
-    if ( is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && game.small_map_state != 2 )
-    {
-        struct PlayerInfo* player = get_player(plyr_idx);
-        map_volume_box.visible = true;
-        map_volume_box.beg_x = subtile_coord(stl_x, 0);
-        map_volume_box.beg_y = subtile_coord(stl_y, 0);
-        map_volume_box.end_x = subtile_coord(stl_x + 1, 0);
-        map_volume_box.end_y = subtile_coord(stl_y + 1, 0);
-        map_volume_box.floor_height_z = floor_height_z;
-        map_volume_box.color = colour;
-        player->render_roomspace.is_roomspace_a_single_subtile = true;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        struct UserState* ustate = get_user_state(user);
+        box->visible = true;
+        box->beg_x = subtile_coord(stl_x, 0);
+        box->beg_y = subtile_coord(stl_y, 0);
+        box->end_x = subtile_coord(stl_x + 1, 0);
+        box->end_y = subtile_coord(stl_y + 1, 0);
+        box->floor_height_z = floor_height_z;
+        box->color = colour;
+        ustate->render_roomspace.is_roomspace_a_single_subtile = true;
     }
     return (colour != SLC_RED);
 }
 
-TbBool tag_cursor_blocks_order_creature(PlayerNumber plyr_idx, MapSubtlCoord stl_x, MapSubtlCoord stl_y, struct Thing* creatng)
+TbBool tag_cursor_blocks_order_creature(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y, struct Thing* creatng)
 {
     SYNCDBG(7,"Starting");
+    PlayerNumber plyr_idx = get_net_user_player_number(user);
     MapSlabCoord slb_x = subtile_slab(stl_x);
     MapSlabCoord slb_y = subtile_slab(stl_y);
     int floor_height_z = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
@@ -323,17 +400,17 @@ TbBool tag_cursor_blocks_order_creature(PlayerNumber plyr_idx, MapSubtlCoord stl
     {
         colour = SLC_GREEN;
     }
-    if ( is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && game.small_map_state != 2 )
-    {
-        struct PlayerInfo* player = get_player(plyr_idx);
-        map_volume_box.visible = true;
-        map_volume_box.beg_x = subtile_coord(stl_x, 0);
-        map_volume_box.beg_y = subtile_coord(stl_y, 0);
-        map_volume_box.end_x = subtile_coord(stl_x + 1, 0);
-        map_volume_box.end_y = subtile_coord(stl_y + 1, 0);
-        map_volume_box.floor_height_z = floor_height_z;
-        map_volume_box.color = colour;
-        player->render_roomspace.is_roomspace_a_single_subtile = true;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        struct UserState* ustate = get_user_state(user);
+        box->visible = true;
+        box->beg_x = subtile_coord(stl_x, 0);
+        box->beg_y = subtile_coord(stl_y, 0);
+        box->end_x = subtile_coord(stl_x + 1, 0);
+        box->end_y = subtile_coord(stl_y + 1, 0);
+        box->floor_height_z = floor_height_z;
+        box->color = colour;
+        ustate->render_roomspace.is_roomspace_a_single_subtile = true;
     }
     return (colour != SLC_RED);
 }
@@ -357,15 +434,15 @@ TbBool tag_cursor_blocks_steal_slab(NetUserId user, MapSubtlCoord stl_x, MapSubt
     {
         colour = SLC_RED;
     }
-    if ( is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && game.small_map_state != 2 )
-    {
-        map_volume_box.visible = true;
-        map_volume_box.beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
-        map_volume_box.beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
-        map_volume_box.end_x = subtile_coord(slab_subtile(slb_x, STL_PER_SLB), 0);
-        map_volume_box.end_y = subtile_coord(slab_subtile(slb_y, STL_PER_SLB), 0);
-        map_volume_box.floor_height_z = floor_height_z;
-        map_volume_box.color = colour;
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
+        box->visible = true;
+        box->beg_x = subtile_coord(slab_subtile(slb_x, 0), 0);
+        box->beg_y = subtile_coord(slab_subtile(slb_y, 0), 0);
+        box->end_x = subtile_coord(slab_subtile(slb_x, STL_PER_SLB), 0);
+        box->end_y = subtile_coord(slab_subtile(slb_y, STL_PER_SLB), 0);
+        box->floor_height_z = floor_height_z;
+        box->color = colour;
     }
     return (colour != SLC_RED);
 }
@@ -378,22 +455,52 @@ TbBool tag_cursor_blocks_place_trap(NetUserId user, MapSubtlCoord stl_x, MapSubt
     MapSlabCoord slb_y = subtile_slab(stl_y);
     TbBool can_place = can_place_trap_on(plyr_idx, stl_x, stl_y, trpkind);
     int floor_height = floor_height_for_volume_box(plyr_idx, slb_x, slb_y);
-    struct PlayerInfo* player = get_player(plyr_idx);
     struct UserState* ustate = get_user_state(user);
     TbBool full_slab = !get_trap_model_stats(trpkind)->place_on_subtile;
     ustate->full_slab_cursor = full_slab;
-    if (is_my_player_number(plyr_idx) && !game_is_busy_doing_gui() && (game.small_map_state != 2)) {
+    struct MapVolumeBox *box = get_user_cursor_box(user);
+    if (box != NULL) {
         MapSubtlCoord box_size = 1;
         if (full_slab) {
             stl_x = slab_subtile(slb_x, 0);
             stl_y = slab_subtile(slb_y, 0);
             box_size = STL_PER_SLB;
         }
-        player->render_roomspace.is_roomspace_a_box = true;
-        player->render_roomspace.render_roomspace_as_box = true;
-        player->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
-        draw_map_volume_box(subtile_coord(stl_x, 0), subtile_coord(stl_y, 0), subtile_coord(stl_x + box_size, 0), subtile_coord(stl_y + box_size, 0), floor_height, can_place);
+        ustate->render_roomspace.is_roomspace_a_box = true;
+        ustate->render_roomspace.render_roomspace_as_box = true;
+        ustate->render_roomspace.is_roomspace_a_single_subtile = !full_slab;
+        draw_map_volume_box(box, subtile_coord(stl_x, 0), subtile_coord(stl_y, 0), subtile_coord(stl_x + box_size, 0), subtile_coord(stl_y + box_size, 0), floor_height, can_place);
     }
     return can_place;
+}
+
+TbBool tag_cursor_blocks_for_work_state(NetUserId user, MapSubtlCoord stl_x, MapSubtlCoord stl_y)
+{
+    PlayerNumber plyr_idx = get_net_user_player_number(user);
+    struct UserState* ustate = get_user_state(user);
+    MapSlabCoord slb_x = subtile_slab(stl_x);
+    MapSlabCoord slb_y = subtile_slab(stl_y);
+    switch (ustate->work_state)
+    {
+    case PSt_PlaceTrap:
+        return tag_cursor_blocks_place_trap(user, stl_x, stl_y, ustate->chosen_trap_kind);
+    case PSt_PlaceDoor:
+        return tag_cursor_blocks_place_door(plyr_idx, user, stl_x, stl_y);
+    case PSt_MkDigger:
+    case PSt_MkGoodCreatr:
+    case PSt_MkBadCreatr:
+    case PSt_MkGoldPot:
+        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
+        return tag_cursor_blocks_place_thing(user, stl_x, stl_y);
+    case PSt_StealSlab:
+        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
+        return tag_cursor_blocks_steal_slab(user, stl_x, stl_y);
+    case PSt_PlaceTerrain:
+        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
+        tag_cursor_blocks_place_terrain(user, stl_x, stl_y);
+        return true;
+    default:
+        return false;
+    }
 }
 /******************************************************************************/

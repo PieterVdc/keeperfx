@@ -122,10 +122,10 @@ enum GameFlags2 {
  */
 struct TextScrollWindow {
     char text[MESSAGE_TEXT_LEN];
-    long start_y;
-    char action;
-    long text_height;
-    long window_height;
+    int32_t start_y;
+    int8_t action;
+    int32_t text_height;
+    int32_t window_height;
 };
 
 struct LevelEnsignOverride {
@@ -161,7 +161,14 @@ extern unsigned long game_flags2; // Should be reset to zero on new level
 
 /******************************************************************************/
 extern struct IntralevelData intralvl;
+#define CUSTOM_INTRALEVEL_DATA_MAX_SIZE (1024 * 1024)
+#define CUSTOM_INTRALEVEL_DATA_MAX_COMPRESSION_RATIO 64
+
+extern char *custom_intralevel_data;
+extern uint32_t custom_intralevel_data_len;
 /******************************************************************************/
+TbBool set_custom_intralevel_data(const void *data, uint32_t len);
+void clear_custom_intralevel_data(void);
 LevelNumber get_loaded_level_number(void);
 LevelNumber set_loaded_level_number(LevelNumber lvnum);
 LevelNumber get_continue_level_number(void);

@@ -524,10 +524,8 @@ static TbBool imp_will_soon_be_converting_at_excluding(struct Thing *creatng, Ma
     struct CreatureControl *cctrl;
     struct Coord3d pos2;
 
-    pos2.x.stl.num = stl_x;
-    pos2.x.stl.pos = 0;
-    pos2.y.stl.num = stl_y;
-    pos2.y.stl.pos = 0;
+    pos2.x.val = subtile_coord(stl_x, 0);
+    pos2.y.val = subtile_coord(stl_y, 0);
     owner = creatng->owner;
     struct Dungeon *dungeon = get_dungeon(owner);
     struct Thing *thing = thing_get(dungeon->digger_list_start);
@@ -3329,8 +3327,7 @@ long check_out_worker_pickup_trap_for_workshop(struct Thing *thing, struct Digge
         if (evidx > 0)
         {
 
-            if ( (is_my_player_number(thing->owner)) && (!is_my_player_number(sectng->owner)) )
-            {
+            if ( (is_my_player_number(thing->owner)) && (!is_my_player_number(sectng->owner)) ) {
                 if (sectng->owner == game.neutral_player_num)
                 {
                     output_message(SMsg_DiscoveredTrap, 0);
@@ -3345,8 +3342,7 @@ long check_out_worker_pickup_trap_for_workshop(struct Thing *thing, struct Digge
           EvKind_DoorCrateFound, thing->owner, sectng->index);
         if (evidx > 0)
         {
-            if ( (is_my_player_number(thing->owner)) && (!is_my_player_number(sectng->owner)) )
-            {
+            if ( (is_my_player_number(thing->owner)) && (!is_my_player_number(sectng->owner)) ) {
                 if (sectng->owner == game.neutral_player_num)
                 {
                     output_message(SMsg_DiscoveredDoor, 0);

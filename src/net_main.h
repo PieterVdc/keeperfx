@@ -21,6 +21,7 @@
 
 #include "bflib_basics.h"
 #include "bflib_netsession.h"
+#include "user_prefs.h"
 #include "ver_defs.h"
 
 #ifdef __cplusplus
@@ -32,24 +33,30 @@ extern "C" {
 #define TIMEOUT_CONNECT_DIRECT_IPV4 5000
 #define TIMEOUT_JOIN_LOBBY 5000
 #define TIMEOUT_LOBBY_EXCHANGE 5000
-#define TIMEOUT_WAIT_FOR_ALL_PLAYERS 30000
 #define PEER_TIMEOUT_LIMIT 0
-#define PEER_TIMEOUT_MIN_MS 5000
-#define PEER_TIMEOUT_MAX_MS 30000
+#define PEER_TIMEOUT_MS 15000
 
 #define MIN_NET_USERS 2
 #define MAX_NET_USERS 4
+#define MAX_NET_SPECTATORS 50
+#define MAX_NET_CONNECTIONS (MAX_NET_USERS + MAX_NET_SPECTATORS)
+#define SPECTATOR_CONNECT_DATA 0x53504543
+#define ALL_NET_USERS_MASK ((1 << MAX_NET_USERS) - 1)
 #define MAX_NET_PEERS (MAX_NET_USERS - 1)
 #define SERVER_ID 0
 #define SOLO_HUMAN_ID 0 /* human player's user id in non-multiplayer, when relevant */
-#define NET_MSG_BUFFER_SIZE 5000
+#define OBSERVER_USER MAX_NET_CONNECTIONS /* dummy user for observers */
+#define NO_USER -1
+#define NET_MSG_BUFFER_SIZE 20480
+#define NET_UNSEATED_MSG_MAX_SIZE 5000
 #define INVALID_USER_ID 23456
 
 typedef int NetUserId;
 
 enum NetDropReason {
     NETDROP_MANUAL,
-    NETDROP_ERROR,
+    NETDROP_DISCONNECT,
+    NETDROP_TIMEOUT,
 };
 
 enum NetMessageType {
@@ -65,24 +72,45 @@ enum NetMessageType {
     NETMSG_CHATMESSAGE,
     NETMSG_GAMEPLAY_REPAIR,
     NETMSG_GAMEPLAY_TURN_SYNC,
+    NETMSG_SPECTATOR_TURN,
+    NETMSG_SPECTATOR_BOOTSTRAP,
+    NETMSG_SPECTATOR_READY,
+    NETMSG_SPECTATOR_CHAT,
+    NETMSG_SPECTATOR_NOTICE,
+    NETMSG_SPECTATOR_CONVERSION,
+    NETMSG_LOBBY_SETTINGS,
+    NETMSG_SPECTATOR_SEAT,
 };
 
-typedef enum NetJoinRejection (*NetNewUserCallback)(NetUserId *assigned_id);
+enum NetConnectionRole {
+    NetRole_Player,
+    NetRole_Spectator,
+};
+
+enum NetSpectatorState {
+    NetSpectator_Loading,
+    NetSpectator_SnapshotPending,
+    NetSpectator_Streaming,
+};
+
 typedef void (*NetDropCallback)(NetUserId id, enum NetDropReason reason);
 
 struct NetSP
 {
     TbError (*init)(NetDropCallback drop_callback);
     void (*exit)();
+    void (*disconnect)();
     TbError (*host)(const char *session, void *options);
     TbError (*join)(const char *session, void *options);
-    void (*update)(NetNewUserCallback new_user);
+    void (*update)(enum NetJoinRejection (*new_user)(NetUserId *assigned_id, enum NetConnectionRole role));
     void (*sendmsg_single)(NetUserId destination, const char *buffer, size_t size);
     void (*sendmsg_single_unsequenced)(NetUserId destination, const char *buffer, size_t size);
     void (*sendmsg_all)(const char *buffer, size_t size);
     size_t (*msgready)(NetUserId source, unsigned timeout);
+    size_t (*peekmsg)(NetUserId source, const char **buffer);
     size_t (*readmsg)(NetUserId source, char *buffer, size_t max_size);
     void (*drop_user)(NetUserId id, enum NetJoinRejection reason);
+    void (*reassign_user)(NetUserId old_id, NetUserId new_id);
 };
 
 enum NetUserProgress {
@@ -98,12 +126,24 @@ struct GameVersionPacket {
     int32_t build;
 };
 
+#define NET_USER_NAME_SIZE 32
+
 struct NetUser {
     NetUserId id;
-    char name[32];
+    char name[NET_USER_NAME_SIZE];
     enum NetUserProgress progress;
     int ack;
     struct GameVersionPacket version;
+    uint32_t connected_at;
+    enum NetSpectatorState spectator_state;
+    uint8_t spectator_icon;
+    TbBool spectator_resync_requested;
+    uint32_t spectator_resync_requested_at;
+    TbBool spectator_conversion_requested;
+    uint64_t reconnect_token;
+    TbBool seat_requested;
+    NetUserId seat_user;
+    UserPreferences seat_prefs;
 };
 
 struct NetFrame {
@@ -115,20 +155,26 @@ struct NetFrame {
 
 struct NetState {
     const struct NetSP *sp;
-    struct NetUser users[MAX_NET_USERS];
+    struct NetUser users[MAX_NET_CONNECTIONS];
+    TbBool users_timed_out[MAX_NET_CONNECTIONS];
+    uint64_t reconnect_tokens[MAX_NET_USERS];
     struct NetFrame *exchg_queue;
     char password[32];
     NetUserId my_id;
     int seq_nbr;
     unsigned max_users;
+    uint32_t gameplay_generation;
     char msg_buffer[NET_MSG_BUFFER_SIZE];
     char msg_buffer_null;
+    TbBool resync_pending;
+    TbBool simulating_disconnect;
+    NetUserId pending_spectator_id;
     TbBool locked;
     enum NetSessionPhase phase;
 };
 
 struct TbNetworkUserInfo {
-    char name[32];
+    char name[NET_USER_NAME_SIZE];
     int32_t network_user_active;
     uint32_t connection_id;
 };
@@ -145,6 +191,7 @@ enum TbNetworkService {
 };
 
 extern struct NetState netstate;
+extern enum NetConnectionRole net_join_role;
 
 static const struct GameVersionPacket net_current_version = { VER_MAJOR, VER_MINOR, VER_RELEASE, VER_BUILD };
 
@@ -157,15 +204,17 @@ static inline TbBool net_versions_match(const struct GameVersionPacket *version_
 }
 
 TbError LbNetwork_Init(uint32_t srvcindex, uint32_t maxplayrs, struct TbNetworkUserInfo *locplayr, struct ServiceInitData *init_data);
-enum NetJoinRejection OnNewUser(NetUserId *assigned_id);
+enum NetJoinRejection OnNewUser(NetUserId *assigned_id, enum NetConnectionRole role);
 void OnDroppedUser(NetUserId id, enum NetDropReason reason);
 TbBool IsUserActive(NetUserId id);
+NetUserId find_unused_user_id(NetUserId first_id, NetUserId last_id);
 int32_t GetRemoteUserCount(void);
 void UpdateLocalPlayerInfo(NetUserId id);
 char *begin_net_message(enum NetMessageType msg_type);
 void send_message_buffer(NetUserId dest, const char *end_ptr);
 void send_remote_buffer(const char *end_ptr);
 void SendUserUpdate(NetUserId dest, NetUserId updated_user);
+void SendNewUserUpdates(NetUserId new_user);
 
 #ifdef __cplusplus
 }

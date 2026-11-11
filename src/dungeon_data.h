@@ -47,7 +47,6 @@ extern "C" {
 #define DUNGEONS_COUNT              9
 #define DIGGER_TASK_MAX_COUNT       64
 #define DUNGEON_RESEARCH_COUNT      2000
-#define MAX_THINGS_IN_HAND          64
 #define TURN_TIMERS_COUNT           8
 #define SCRIPT_FLAGS_COUNT          8
 #define MAX_SOE_RADIUS              13
@@ -149,8 +148,12 @@ struct Dungeon {
     short digger_list_start;
     ThingIndex summon_list[MAX_SUMMONS];
     unsigned short num_summon;
+
+    /* FIXME: rename to "drop_queue".
+     * Once per turn, a Thing in this list will be dropped at essential_pos. */
     ThingIndex things_in_hand[MAX_THINGS_IN_HAND];
-    unsigned char num_things_in_hand;
+    uint8_t num_things_in_hand;
+    
     unsigned short crmodel_state_type_count[CREATURE_TYPES_MAX][STATE_TYPES_COUNT];
     unsigned short guijob_all_creatrs_count[CREATURE_TYPES_MAX][3];
     unsigned short guijob_angry_creatrs_count[CREATURE_TYPES_MAX][3];
@@ -194,7 +197,9 @@ struct Dungeon {
     CrtrExpLevel creature_max_level[CREATURE_TYPES_MAX];
     unsigned short creatures_annoyed;
     unsigned short battles_lost;
+    unsigned short battles_lost_vs[PLAYERS_COUNT+1];
     unsigned short battles_won;
+    unsigned short battles_won_vs[PLAYERS_COUNT+1];
     /** Amount of room tiles a player had which were destroyed (vandalized or damaged by enemy). */
     unsigned short rooms_destroyed;
     unsigned short spells_stolen;

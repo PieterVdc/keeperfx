@@ -19,19 +19,30 @@
 #include "pre_inc.h"
 #include "net_resync.h"
 #include "bflib_datetm.h"
+#include "bflib_enet.h"
 #include "net_exchange_gameplay.h"
+#include "net_exchange_common.h"
 #include "net_main.h"
 #include <zlib.h>
 #include "globals.h"
 #include "frontend.h"
+#include "frontmenu_ingame_map.h"
 #include "player_data.h"
 #include "net_game.h"
+#include "net_lobby.h"
 #include "game_legacy.h"
+#include "game_merge.h"
 #include "lens_api.h"
+#include "light_data.h"
 #include "lua_base.h"
 #include "net_input_lag.h"
-#include "net_checksums.h"
+#include "net_checksum_turn.h"
+#include "net_spectator.h"
+#include "ariadne_update.h"
 #include "keeperfx.hpp"
+#include "kjm_input.h"
+#include "kfx/save/core/save_resync.h"
+#include "kfx/save/core/save_config_overlay.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -40,10 +51,6 @@ extern "C" {
 
 struct Boing {
   unsigned char active_panel_menu_index;
-  unsigned char comp_player_aggressive;
-  unsigned char comp_player_defensive;
-  unsigned char comp_player_construct;
-  unsigned char comp_player_creatrsonly;
   unsigned char creatures_tend_imprison;
   unsigned char creatures_tend_flee;
   unsigned short hand_over_subtile_x;
@@ -57,9 +64,12 @@ struct Boing {
   unsigned long manufactr_element;
   unsigned long manufactr_spridx;
   unsigned long manufactr_tooltip;
+  struct GuiMessage messages[GUI_MESSAGES_COUNT];
+  unsigned char active_messages_count;
 };
 
 static struct Boing boing;
+static TbBool resync_progress_visible;
 
 TbBool detailed_multiplayer_logging = false;
 
@@ -70,12 +80,13 @@ struct ResyncHeader {
     uint32_t compressed_length;
     uint32_t original_length;
     uint32_t data_checksum;
+    uint32_t gameplay_generation;
 };
 
-
 // function to intentionally desync the game state for testing purposes
-void intentional_desync() {
-    if (!is_my_player_number(0)) {
+void intentional_desync()
+{
+    if (!network_is_active() || network_is_host()) {
         return;
     }
     struct Room* start_rooms = &game.rooms[1];
@@ -94,27 +105,25 @@ void intentional_desync() {
             thing->health += 1;
         }
     }
-    get_player(0)->instance_remain_turns += 1;
+    get_user_state(0)->instance_remain_turns += 1;
 }
 
-void animate_resync_progress_bar(int current_phase, int total_phases) {
-    if (get_gameturn() == 0) {
+void animate_resync_progress_bar(int current_phase, int total_phases)
+{
+    if (!resync_progress_visible || get_gameturn() == 0) {
         return;
     }
     if ((game.operation_flags & GOF_Paused) != 0) {
         return;
     }
-    const long max_progress = (long)(32 * units_per_pixel / 16);
-    const long progress_pixels = (long)((double)max_progress * current_phase / total_phases);
+    const int32_t max_progress = 32 * units_per_pixel / 16;
+    const int32_t progress_pixels = (int32_t)((double)max_progress * current_phase / total_phases);
     draw_out_of_sync_box(progress_pixels, max_progress, status_panel_width);
 }
 
-void store_localised_game_structure(void) {
+void store_localised_game_structure(void)
+{
     boing.active_panel_menu_index = game.active_panel_mnu_idx;
-    boing.comp_player_aggressive = game.comp_player_aggressive;
-    boing.comp_player_defensive = game.comp_player_defensive;
-    boing.comp_player_construct = game.comp_player_construct;
-    boing.comp_player_creatrsonly = game.comp_player_creatrsonly;
     boing.creatures_tend_imprison = game.creatures_tend_imprison;
     boing.creatures_tend_flee = game.creatures_tend_flee;
     boing.hand_over_subtile_x = game.hand_over_subtile_x;
@@ -128,14 +137,13 @@ void store_localised_game_structure(void) {
     boing.manufactr_element = game.manufactr_element;
     boing.manufactr_spridx = game.manufactr_spridx;
     boing.manufactr_tooltip = game.manufactr_tooltip;
+    memcpy(boing.messages, game.messages, sizeof(boing.messages));
+    boing.active_messages_count = game.active_messages_count;
 }
 
-void recall_localised_game_structure(void) {
+void recall_localised_game_structure(void)
+{
     game.active_panel_mnu_idx = boing.active_panel_menu_index;
-    game.comp_player_aggressive = boing.comp_player_aggressive;
-    game.comp_player_defensive = boing.comp_player_defensive;
-    game.comp_player_construct = boing.comp_player_construct;
-    game.comp_player_creatrsonly = boing.comp_player_creatrsonly;
     game.creatures_tend_imprison = boing.creatures_tend_imprison;
     game.creatures_tend_flee = boing.creatures_tend_flee;
     game.hand_over_subtile_x = boing.hand_over_subtile_x;
@@ -149,11 +157,14 @@ void recall_localised_game_structure(void) {
     game.manufactr_element = boing.manufactr_element;
     game.manufactr_spridx = boing.manufactr_spridx;
     game.manufactr_tooltip = boing.manufactr_tooltip;
+    memcpy(game.messages, boing.messages, sizeof(game.messages));
+    game.active_messages_count = boing.active_messages_count;
 }
 
 // resync message: ResyncHeader, then the zlib-compressed data
-static char *encode_resync_message(const void * buffer, size_t total_length, size_t *message_size)
+char *encode_resync_message(const void * buffer, size_t total_length, size_t *message_size)
 {
+    TbClockMSec start_time = LbTimerClock();
     if (total_length > UINT32_MAX) {
         ERRORLOG("Resync data too large");
         return NULL;
@@ -171,7 +182,7 @@ static char *encode_resync_message(const void * buffer, size_t total_length, siz
         return NULL;
     }
 
-    int compress_result = compress((Bytef *)(message_buffer + sizeof(ResyncHeader)), &compressed_size, (const Bytef *)buffer, total_length);
+    int compress_result = compress2((Bytef *)(message_buffer + sizeof(ResyncHeader)), &compressed_size, (const Bytef *)buffer, total_length, Z_BEST_SPEED);
     if (compress_result != Z_OK) {
         ERRORLOG("Compression failed: zlib error %d", compress_result);
         free(message_buffer);
@@ -180,7 +191,7 @@ static char *encode_resync_message(const void * buffer, size_t total_length, siz
 
     uLong data_crc = crc32(0L, Z_NULL, 0);
     data_crc = crc32(data_crc, (const Bytef *)buffer, total_length);
-    NETLOG("Compression successful: %u -> %u bytes", (uint32_t)total_length, (uint32_t)compressed_size);
+    NETLOG("Compression successful: %u -> %u bytes in %u ms", (uint32_t)total_length, (uint32_t)compressed_size, (uint32_t)(LbTimerClock() - start_time));
 
     ResyncHeader header;
     memset(&header, 0, sizeof(header));
@@ -188,6 +199,7 @@ static char *encode_resync_message(const void * buffer, size_t total_length, siz
     header.compressed_length = (uint32_t)compressed_size;
     header.original_length = (uint32_t)total_length;
     header.data_checksum = (uint32_t)data_crc;
+    header.gameplay_generation = netstate.gameplay_generation;
     memcpy(message_buffer, &header, sizeof(ResyncHeader));
     *message_size = sizeof(ResyncHeader) + compressed_size;
     return message_buffer;
@@ -196,8 +208,8 @@ static char *encode_resync_message(const void * buffer, size_t total_length, siz
 static void send_resync_message(const char * message_buffer, size_t message_size)
 {
     NETLOG("Host: Sending resync data to all clients");
-    for (NetUserId user_index = 0; user_index < MAX_NET_USERS; ++user_index) {
-        if (netstate.users[user_index].progress != USER_LOGGEDIN) {
+    for (NetUserId user_index = 0; user_index < MAX_NET_CONNECTIONS; ++user_index) {
+        if (user_index == SERVER_ID || netstate.users[user_index].progress != USER_LOGGEDIN || (user_index >= MAX_NET_USERS && netstate.users[user_index].spectator_state != NetSpectator_Streaming)) {
             continue;
         }
         netstate.sp->sendmsg_single(netstate.users[user_index].id, message_buffer, message_size);
@@ -239,6 +251,9 @@ static TbBool decode_resync_message(const char * message_buffer, size_t message_
     }
 
     size_t output_size = header.original_length;
+    if (output_size > sizeof(game) + 16 * 1024 * 1024) {
+        return false;
+    }
     if (output_size == 0) {
         output_size = 1;
     }
@@ -271,25 +286,56 @@ static TbBool decode_resync_message(const char * message_buffer, size_t message_
     return true;
 }
 
-static TbBool receive_resync_message(char ** message_out, size_t * message_size_out)
+static TbBool receive_resync_message(char **message_out, size_t *message_size_out)
 {
+    netstate.resync_pending = false;
     NETLOG("Starting to receive resync data");
 
     TbClockMSec start_time = LbTimerClock();
-    while (LbTimerClock() - start_time < RESYNC_RECEIVE_TIMEOUT_MS) {
+    TbClockMSec last_progress_time = start_time;
+    int32_t last_progress = 0;
+    while (LbTimerClock() - start_time < RESYNC_RECEIVE_TIMEOUT_MS && netstate.users[SERVER_ID].progress != USER_UNUSED) {
         netstate.sp->update(OnNewUser);
-        size_t received_size = netstate.sp->msgready(SERVER_ID, 0);
+        if (!poll_inputs()) {
+            exit_keeper = 1;
+            return false;
+        }
+        int32_t progress = GetResyncProgress() * 80 / 100;
+        if (progress > last_progress && LbTimerClock() - last_progress_time >= 50) {
+            animate_resync_progress_bar(progress, 100);
+            last_progress = progress;
+            last_progress_time = LbTimerClock();
+        }
+        size_t received_size = netstate.sp->msgready(SERVER_ID, 10);
         if (received_size == 0) {
             continue;
         }
 
-        char * message_buffer = (char *) malloc(received_size);
+        if (received_size > 16 * 1024 * 1024) {
+            return false;
+        }
+        size_t expected_size = received_size;
+        char *message_buffer = (char *)malloc(received_size);
         if (message_buffer == NULL) {
             ERRORLOG("Failed to allocate message buffer");
             return false;
         }
 
         received_size = netstate.sp->readmsg(SERVER_ID, message_buffer, received_size);
+        if (received_size != expected_size) {
+            free(message_buffer);
+            return false;
+        }
+        if (received_size > 0 && received_size <= sizeof(netstate.msg_buffer) && message_buffer[0] == NETMSG_USERUPDATE) {
+            memcpy(netstate.msg_buffer, message_buffer, received_size);
+            netstate.msg_buffer_null = '\0';
+            if (received_size < sizeof(netstate.msg_buffer)) {
+                netstate.msg_buffer[received_size] = '\0';
+            }
+            process_user_update_message(SERVER_ID, netstate.msg_buffer + 1, netstate.msg_buffer + received_size);
+            free(message_buffer);
+            continue;
+        }
         if (received_size < sizeof(ResyncHeader)) {
             if (received_size > 0 && message_buffer[0] == NETMSG_RESYNC_DATA) {
                 ERRORLOG("Received incomplete resync data: %u bytes", (uint32_t)received_size);
@@ -305,12 +351,14 @@ static TbBool receive_resync_message(char ** message_out, size_t * message_size_
             continue;
         }
         MULTIPLAYER_LOG("Client: Received resync message, %u bytes", (uint32_t)received_size);
+        NETLOG("Resync transfer received: %u bytes in %u ms", (uint32_t)received_size, (uint32_t)(LbTimerClock() - start_time));
+        animate_resync_progress_bar(80, 100);
         *message_out = message_buffer;
         *message_size_out = received_size;
         return true;
     }
 
-    ERRORLOG("Client: Timeout waiting for resync data after %dms", RESYNC_RECEIVE_TIMEOUT_MS);
+    ERRORLOG("Client: Gave up waiting for resync data after %dms", (int32_t)(LbTimerClock() - start_time));
     return false;
 }
 
@@ -357,67 +405,176 @@ TbBool LbNetwork_Resync(void * data_buffer, size_t buffer_length)
     return true;
 }
 
-// game struct, then uint32 Lua data length, then the Lua data
-static char *build_resync_game_data(size_t *full_resync_len)
+static TbBool encode_resync_config(struct SaveBuffer *conf_buf)
 {
-    const char * lua_data = "";
+    if (conf_baseline == NULL) {
+        return save_buf_u32(conf_buf, 0) == 0;
+    }
+    struct SaveError save_err;
+    if (save_config_overlay_write(&game.conf, conf_baseline, conf_buf, &save_err) != SVR_Ok) {
+        ERRORLOG("Resync config encode failed: %s", save_err.message);
+        return false;
+    }
+    return true;
+}
+
+static TbBool apply_resync_config(const char *conf_data, uint32_t conf_len)
+{
+    if (conf_baseline != NULL) {
+        memcpy(&game.conf, conf_baseline, sizeof(game.conf));
+    }
+    struct SaveError save_err;
+    if (save_config_overlay_apply((const uint8_t *)conf_data, conf_len, &game.conf, &save_err) != SVR_Ok) {
+        ERRORLOG("Resync config apply failed: %s", save_err.message);
+        return false;
+    }
+    return true;
+}
+
+// The full resync data: [u32 len][game] [u32 len][intralevel] [u32 len][config] [u32 len][lua] [u32 len][custom intralevel] [navigation]
+enum ResyncSection {
+    RSec_Game,
+    RSec_Intralevel,
+    RSec_Config,
+    RSec_Lua,
+    RSec_CustomIntralevel,
+    RSec_COUNT
+};
+
+char *build_resync_game_data(size_t *full_resync_len)
+{
+    // Light system state lives outside Game; the same as for a savegame
+    light_export_system_state(&game.lightst);
+
+    // Field-table encode, not a raw memcpy: lets host and client resync even when
+    // their struct Game layouts differ (mixed Windows/Linux, x86/x64 lobbies).
+    SaveBufferOwner game_buf;
+    SaveBufferOwner ilvl_buf;
+    struct SaveError save_err;
+    if ((save_resync_encode_game(&game_buf, &game, &save_err) != SVR_Ok)
+     || (save_resync_encode_intralevel(&ilvl_buf, &intralvl, &save_err) != SVR_Ok)) {
+        ERRORLOG("Resync game encode failed: %s", save_err.message);
+        return NULL;
+    }
+    SaveBufferOwner conf_buf;
+    if (!encode_resync_config(&conf_buf)) {
+        return NULL;
+    }
+
+    char *lua_data = NULL;
     size_t lua_data_len = 0;
     if (Lvl_script != NULL) {
         lua_data = lua_get_serialised_data(&lua_data_len);
         if (lua_data == NULL) {
-            cleanup_serialized_data();
             return NULL;
         }
     }
-    size_t lua_data_offset = sizeof(game) + sizeof(uint32_t);
-    if (lua_data_len > UINT32_MAX - lua_data_offset) {
-        ERRORLOG("Full resync data too large");
-        cleanup_serialized_data();
-        return NULL;
+    const void *section_data[RSec_COUNT];
+    size_t section_len[RSec_COUNT];
+    section_data[RSec_Game] = game_buf.data;
+    section_len[RSec_Game] = game_buf.len;
+    section_data[RSec_Intralevel] = ilvl_buf.data;
+    section_len[RSec_Intralevel] = ilvl_buf.len;
+    section_data[RSec_Config] = conf_buf.data;
+    section_len[RSec_Config] = conf_buf.len;
+    section_data[RSec_Lua] = lua_data;
+    section_len[RSec_Lua] = lua_data_len;
+    section_data[RSec_CustomIntralevel] = custom_intralevel_data;
+    section_len[RSec_CustomIntralevel] = custom_intralevel_data_len;
+    size_t navigation_size = transfer_navigation_state(NULL, NavigationState_Store);
+    size_t total_len = navigation_size;
+    for (int i = 0; i < RSec_COUNT; i++) {
+        if (section_len[i] > UINT32_MAX - sizeof(uint32_t) - total_len) {
+            ERRORLOG("Full resync data too large");
+            free(lua_data);
+            return NULL;
+        }
+        total_len += sizeof(uint32_t) + section_len[i];
     }
 
-    *full_resync_len = lua_data_offset + lua_data_len;
-    char * full_resync_data = (char *) malloc(*full_resync_len);
+    char * full_resync_data = (char *) malloc(total_len);
     if (full_resync_data == NULL) {
         ERRORLOG("Failed to allocate full resync buffer");
-        cleanup_serialized_data();
+        free(lua_data);
         return NULL;
     }
-
-    uint32_t lua_data_len32 = (uint32_t)lua_data_len;
-    memcpy(full_resync_data, &game, sizeof(game));
-    memcpy(full_resync_data + sizeof(game), &lua_data_len32, sizeof(lua_data_len32));
-    memcpy(full_resync_data + lua_data_offset, lua_data, lua_data_len);
-    cleanup_serialized_data();
+    char *pos = full_resync_data;
+    for (int i = 0; i < RSec_COUNT; i++) {
+        uint32_t len32 = (uint32_t)section_len[i];
+        memcpy(pos, &len32, sizeof(len32));
+        pos += sizeof(len32);
+        if (len32 > 0) {
+            memcpy(pos, section_data[i], len32);
+        }
+        pos += len32;
+    }
+    transfer_navigation_state(pos, NavigationState_Store);
+    free(lua_data);
+    *full_resync_len = total_len;
     return full_resync_data;
 }
 
 static TbBool apply_resync_game_data(const char * full_resync_data, size_t full_resync_len)
 {
-    uint32_t lua_data_len = 0;
-    size_t lua_data_offset = sizeof(game) + sizeof(lua_data_len);
-    if (full_resync_len < lua_data_offset) {
-        ERRORLOG("Full resync data too small: %u bytes", (uint32_t)full_resync_len);
+    const char *section_data[RSec_COUNT];
+    uint32_t section_len[RSec_COUNT];
+    size_t offset = 0;
+    for (int i = 0; i < RSec_COUNT; i++) {
+        if (full_resync_len - offset < sizeof(uint32_t)) {
+            ERRORLOG("Full resync data too small: %u bytes", (uint32_t)full_resync_len);
+            return false;
+        }
+        memcpy(&section_len[i], full_resync_data + offset, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+        if (section_len[i] > full_resync_len - offset) {
+            ERRORLOG("Received resync section %d with wrong size: %u > %u", i, section_len[i], (uint32_t)(full_resync_len - offset));
+            return false;
+        }
+        section_data[i] = full_resync_data + offset;
+        offset += section_len[i];
+    }
+    size_t navigation_size = full_resync_len - offset;
+    if (navigation_size != 0 && navigation_size != transfer_navigation_state(NULL, NavigationState_Store)) {
+        ERRORLOG("Received navigation data with wrong size: %u", (uint32_t)navigation_size);
         return false;
     }
-    memcpy(&lua_data_len, full_resync_data + sizeof(game), sizeof(lua_data_len));
-    if (lua_data_len != full_resync_len - lua_data_offset) {
-        ERRORLOG("Received lua data with wrong size: %u != %u", lua_data_len, (uint32_t)(full_resync_len - lua_data_offset));
-        return false;
-    }
-    if (Lvl_script == NULL && lua_data_len > 0) {
+    if (Lvl_script == NULL && section_len[RSec_Lua] > 0) {
         ERRORLOG("Lua state is not initialized");
         return false;
     }
-    if (Lvl_script != NULL && !lua_set_serialised_data(full_resync_data + lua_data_offset, lua_data_len)) {
+    if (Lvl_script != NULL && !lua_set_serialised_data(section_data[RSec_Lua], section_len[RSec_Lua])) {
         return false;
     }
-    memcpy(&game, full_resync_data, sizeof(game));
+    if (!set_custom_intralevel_data(section_data[RSec_CustomIntralevel], section_len[RSec_CustomIntralevel])) {
+        ERRORLOG("Failed to allocate custom intralevel data: %u bytes", section_len[RSec_CustomIntralevel]);
+        return false;
+    }
+    // Decoded in place: fields the table excludes from sync (local UI/per-player
+    // state -- see save_resync_decode_game) are left exactly as they already are
+    // in game, not zeroed.
+    struct SaveError save_err;
+    if (save_resync_decode_intralevel((const uint8_t *)section_data[RSec_Intralevel], section_len[RSec_Intralevel], &intralvl, &save_err) != SVR_Ok) {
+        ERRORLOG("Resync intralevel decode failed: %s", save_err.message);
+        return false;
+    }
+    if (save_resync_decode_game((const uint8_t *)section_data[RSec_Game], section_len[RSec_Game], &game, &save_err) != SVR_Ok) {
+        ERRORLOG("Resync game decode failed: %s", save_err.message);
+        return false;
+    }
+    if (!apply_resync_config(section_data[RSec_Config], section_len[RSec_Config])) {
+        return false;
+    }
+    if (navigation_size != 0) {
+        transfer_navigation_state((char *)full_resync_data + offset, NavigationState_Restore);
+    } else {
+        init_navigation();
+    }
     return true;
 }
 
 static TbBool apply_resync_game_message(const char * message_buffer, size_t message_size)
 {
+    TbClockMSec start_time = LbTimerClock();
     char * full_resync_data = NULL;
     size_t full_resync_len = 0;
     if (!decode_resync_message(message_buffer, message_size, 0, &full_resync_data, &full_resync_len)) {
@@ -425,40 +582,55 @@ static TbBool apply_resync_game_message(const char * message_buffer, size_t mess
     }
     TbBool result = apply_resync_game_data(full_resync_data, full_resync_len);
     free(full_resync_data);
+    if (result) {
+        ResyncHeader header;
+        memcpy(&header, message_buffer, sizeof(header));
+        netstate.gameplay_generation = header.gameplay_generation;
+    }
+    NETLOG("Resync decompression and state application took %u ms", (uint32_t)(LbTimerClock() - start_time));
     return result;
+}
+
+static char *create_resync_game_message(size_t *message_size)
+{
+    size_t full_resync_len = 0;
+    char * full_resync_data = build_resync_game_data(&full_resync_len);
+    if (full_resync_data == NULL) {
+        return NULL;
+    }
+    char *message_buffer = encode_resync_message(full_resync_data, full_resync_len, message_size);
+    free(full_resync_data);
+    return message_buffer;
 }
 
 TbBool send_resync_game(void)
 {
+    netstate.resync_pending = false;
     pack_desync_history_for_resync();
     clear_flag(game.operation_flags, GOF_Paused);
-    animate_resync_progress_bar(0, 6);
+    animate_resync_progress_bar(0, 100);
     NETLOG("Initiating re-synchronization of network game");
+    take_game_timestamp();
 
-    size_t full_resync_len = 0;
-    char * full_resync_data = build_resync_game_data(&full_resync_len);
-    if (full_resync_data == NULL) {
-        return false;
-    }
     size_t message_size = 0;
-    char * message_buffer = encode_resync_message(full_resync_data, full_resync_len, &message_size);
-    free(full_resync_data);
+    netstate.gameplay_generation += 1;
+    char *message_buffer = create_resync_game_message(&message_size);
     if (message_buffer == NULL) {
+        netstate.gameplay_generation -= 1;
         return false;
     }
     send_resync_message(message_buffer, message_size);
     replay_record_resync(message_buffer, message_size);
     free(message_buffer);
-    animate_resync_progress_bar(2, 6);
-    animate_resync_progress_bar(6, 6);
-    NETLOG("Host: Resync complete");
+    animate_resync_progress_bar(90, 100);
+    NETLOG("Host: Resync data queued");
     return true;
 }
 
 TbBool receive_resync_game(void)
 {
     clear_flag(game.operation_flags, GOF_Paused);
-    animate_resync_progress_bar(0, 6);
+    animate_resync_progress_bar(0, 100);
     NETLOG("Initiating re-synchronization of network game");
     char * message_buffer = NULL;
     size_t message_size = 0;
@@ -474,11 +646,11 @@ TbBool receive_resync_game(void)
         return false;
     }
 
-    animate_resync_progress_bar(2, 6);
-    animate_resync_progress_bar(6, 6);
-    NETLOG("Client: Resync complete");
+    animate_resync_progress_bar(90, 100);
 
-    compare_desync_history_from_host();
+    if ((local_system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0) {
+        compare_desync_history_from_host();
+    }
 
     return true;
 }
@@ -490,9 +662,14 @@ static void finish_resync(const struct Packet *saved_packets)
     }
     recall_localised_game_structure();
     reinit_level_after_load();
+    light_import_system_state(&game.lightst);
+    light_rebuild_after_load();
+    network_spectator_finish_seat();
     memcpy(game.packets, saved_packets, sizeof(game.packets));
 
-    game.skip_initial_input_turns = calculate_skip_input();
+    if (!network_is_active() || !network_user_is_spectator(netstate.my_id)) {
+        game.skip_initial_input_turns = calculate_skip_input();
+    }
     initialize_packet_history();
     NETLOG("Input lag after resync: %d turns", game.input_lag_turns);
 
@@ -502,8 +679,9 @@ static void finish_resync(const struct Packet *saved_packets)
 
 void resync_game(void)
 {
+    TbClockMSec start_time = LbTimerClock();
     SYNCDBG(2,"Starting");
-    draw_out_of_sync_box(0, 32*units_per_pixel/16, local_state.engine_window_x);
+    resync_progress_visible = (local_system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0;
     reset_eye_lenses();
     store_localised_game_structure();
     struct Packet saved_packets[PACKETS_COUNT];
@@ -519,6 +697,11 @@ void resync_game(void)
         return;
     }
     finish_resync(saved_packets);
+    wait_for_all_players();
+    animate_resync_progress_bar(100, 100);
+    update_gameplay_delta_time();
+    local_state.process_turn_time = 1.0;
+    NETLOG("Resync finished locally in %u ms", (uint32_t)(LbTimerClock() - start_time));
 }
 
 TbBool apply_recorded_resync(const char * message_buffer, size_t message_size)
@@ -532,6 +715,10 @@ TbBool apply_recorded_resync(const char * message_buffer, size_t message_size)
         return false;
     }
     finish_resync(saved_packets);
+    if (network_is_active() && network_user_is_spectator(netstate.my_id)) {
+        network_spectator_reset();
+        network_spectator_resync_pending = true;
+    }
     return true;
 }
 

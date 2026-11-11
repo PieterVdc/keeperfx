@@ -107,7 +107,7 @@ static struct LandViewTextBox landview_textbox;
 /******************************************************************************/
 static LevelNumber landview_textbox_lvnum;
 
-static void make_palette_remap(unsigned char *remap, const unsigned char *source_palette, const unsigned char *destination_palette)
+void make_palette_remap(unsigned char *remap, const unsigned char *source_palette, const unsigned char *destination_palette)
 {
     for (int i = 0; i < PALETTE_COLORS; i++)
     {
@@ -126,15 +126,13 @@ void landview_set_text(const char *text)
 
 static void landview_build_glass_map(void)
 {
-    for (int screen_colour = 0; screen_colour < PALETTE_COLORS; screen_colour++)
-    {
+    for (int screen_colour = 0; screen_colour < PALETTE_COLORS; screen_colour++) {
         const unsigned char *colour = &frontend_palette[3 * screen_colour];
-        unsigned char darkened = LbPaletteFindColour(frontend_palette,
-            colour[0] * 96 / 256, colour[1] * 96 / 256, colour[2] * 96 / 256);
+        unsigned char darkened = LbPaletteFindColour(frontend_palette, colour[0] / 4, colour[1] / 4, colour[2] / 4);
 
-        /* TRANSPAR4 indexes the table as [drawn colour][screen colour]. */
-        for (int drawn_colour = 0; drawn_colour < PALETTE_COLORS; drawn_colour++)
-            landview_glass_map[drawn_colour * PALETTE_COLORS + screen_colour] = darkened;
+        for (int drawn_colour = 0; drawn_colour < PALETTE_COLORS; drawn_colour++) {
+            landview_glass_map[screen_colour * PALETTE_COLORS + drawn_colour] = darkened;
+        }
     }
 }
 
@@ -207,9 +205,9 @@ void draw_map_screen(void)
     RendererPresentImage(&desc);
 }
 
-TbBool init_netfont_palette_remap(void)
+TbBool init_netfont_palette_remap(char* land_view)
 {
-    const char *fname = prepare_file_path(FGrp_LandView, "rgmap00.pal");
+    const char *fname  = prepare_file_fmtpath(FGrp_LandView, "%s.pal", land_view);
 
     if (LbFileLoadAt(fname, netfont_source_palette) != PALETTE_SIZE)
     {
@@ -1011,6 +1009,8 @@ TbBool load_map_and_window(LevelNumber lvnum)
         unload_map_and_window();
         return false;
     }
+    
+    init_netfont_palette_remap(land_view);  
     SYNCDBG(9,"Finished");
     return true;
 }
@@ -1067,7 +1067,7 @@ TbBool frontmap_update_zoom(void)
     {
         process_map_zoom_out();
     }
-    map_info.fade_pos += map_info.fade_step * game.delta_time;
+    map_info.fade_pos += map_info.fade_step * local_state.delta_time;
     if (map_info.fade_pos < 0 || map_info.fade_pos >= FRONTMAP_ZOOM_LENGTH)
     {
         SYNCDBG(8,"Stopping fade");
@@ -1125,7 +1125,6 @@ TbBool frontmap_load(void)
     }
     // append any custom ensigns to the sheet
     map_flag = load_custom_ensigns_into_sheet(map_flag, frontend_palette);      
-    init_netfont_palette_remap();  
     pop_palette_remap();
     map_font = load_spritesheet("ldata/netfont.dat", "ldata/netfont.tab");
     winfont = load_font("data/font2-64.dat", "data/font2-64.tab");
@@ -1204,7 +1203,7 @@ void check_mouse_scroll(void)
     long mx = GetMouseX();
     if ( (mx < 8) || ( (is_game_key_pressed(Gkey_MoveLeft, false, false)) || (is_key_pressed(KC_LEFT,KMod_DONTCARE)) ) )
     {
-        map_info.velocity_x -= LANDVIEW_PAN_ACCEL * game.delta_time;
+        map_info.velocity_x -= LANDVIEW_PAN_ACCEL * local_state.delta_time;
         if (map_info.velocity_x < -LANDVIEW_PAN_MAX_SPEED)
             map_info.velocity_x = -LANDVIEW_PAN_MAX_SPEED;
         if (map_info.velocity_x > LANDVIEW_PAN_MAX_SPEED)
@@ -1212,7 +1211,7 @@ void check_mouse_scroll(void)
   } else
   if ( (mx >= RendererPhysicalWidth()-8) || ( (is_game_key_pressed(Gkey_MoveRight, false, false)) || (is_key_pressed(KC_RIGHT,KMod_DONTCARE)) ) )
   {
-    map_info.velocity_x += LANDVIEW_PAN_ACCEL * game.delta_time;
+    map_info.velocity_x += LANDVIEW_PAN_ACCEL * local_state.delta_time;
     if (map_info.velocity_x < -LANDVIEW_PAN_MAX_SPEED)
       map_info.velocity_x = -LANDVIEW_PAN_MAX_SPEED;
     if (map_info.velocity_x > LANDVIEW_PAN_MAX_SPEED)
@@ -1221,7 +1220,7 @@ void check_mouse_scroll(void)
   long my = GetMouseY();
   if ( (my < 8) || ( (is_game_key_pressed(Gkey_MoveUp, false, false)) || (is_key_pressed(KC_UP,KMod_DONTCARE)) ) )
   {
-    map_info.velocity_y -= LANDVIEW_PAN_ACCEL * game.delta_time;
+    map_info.velocity_y -= LANDVIEW_PAN_ACCEL * local_state.delta_time;
     if (map_info.velocity_y < -LANDVIEW_PAN_MAX_SPEED)
       map_info.velocity_y = -LANDVIEW_PAN_MAX_SPEED;
     if (map_info.velocity_y > LANDVIEW_PAN_MAX_SPEED)
@@ -1229,7 +1228,7 @@ void check_mouse_scroll(void)
   } else
   if ( (my >= lbDisplay.PhysicalScreenHeight-8) || ( (is_game_key_pressed(Gkey_MoveDown, false, false)) || (is_key_pressed(KC_DOWN,KMod_DONTCARE)) ) )
   {
-    map_info.velocity_y += LANDVIEW_PAN_ACCEL * game.delta_time;
+    map_info.velocity_y += LANDVIEW_PAN_ACCEL * local_state.delta_time;
     if (map_info.velocity_y < -LANDVIEW_PAN_MAX_SPEED)
       map_info.velocity_y = -LANDVIEW_PAN_MAX_SPEED;
     if (map_info.velocity_y > LANDVIEW_PAN_MAX_SPEED)
@@ -1241,34 +1240,34 @@ void update_velocity(void)
 {
     if (map_info.velocity_x != 0)
     {
-      map_info.screen_shift_x += (map_info.velocity_x / 4) * game.delta_time;
+      map_info.screen_shift_x += (map_info.velocity_x / 4) * local_state.delta_time;
       if (map_info.screen_shift_x > LANDVIEW_MAP_WIDTH - RendererPhysicalWidth()*16/units_per_pixel_landview)
         map_info.screen_shift_x = LANDVIEW_MAP_WIDTH - RendererPhysicalWidth()*16/units_per_pixel_landview;
       if (map_info.screen_shift_x < 0)
         map_info.screen_shift_x = 0;
       if (map_info.velocity_x < 0) {
-        map_info.velocity_x += LANDVIEW_PAN_DECEL * game.delta_time;
+        map_info.velocity_x += LANDVIEW_PAN_DECEL * local_state.delta_time;
         if (map_info.velocity_x > 0)
           map_info.velocity_x = 0;
       } else {
-        map_info.velocity_x -= LANDVIEW_PAN_DECEL * game.delta_time;
+        map_info.velocity_x -= LANDVIEW_PAN_DECEL * local_state.delta_time;
         if (map_info.velocity_x < 0)
           map_info.velocity_x = 0;
       }
     }
     if (map_info.velocity_y != 0)
     {
-      map_info.screen_shift_y += (map_info.velocity_y / 4) * game.delta_time;
+      map_info.screen_shift_y += (map_info.velocity_y / 4) * local_state.delta_time;
       if (map_info.screen_shift_y > LANDVIEW_MAP_HEIGHT - lbDisplay.PhysicalScreenHeight*16/units_per_pixel_landview)
         map_info.screen_shift_y = LANDVIEW_MAP_HEIGHT - lbDisplay.PhysicalScreenHeight*16/units_per_pixel_landview;
       if (map_info.screen_shift_y < 0)
         map_info.screen_shift_y = 0;
       if (map_info.velocity_y < 0) {
-        map_info.velocity_y += LANDVIEW_PAN_DECEL * game.delta_time;
+        map_info.velocity_y += LANDVIEW_PAN_DECEL * local_state.delta_time;
         if (map_info.velocity_y > 0)
           map_info.velocity_y = 0;
       } else {
-        map_info.velocity_y -= LANDVIEW_PAN_DECEL * game.delta_time;
+        map_info.velocity_y -= LANDVIEW_PAN_DECEL * local_state.delta_time;
         if (map_info.velocity_y < 0)
           map_info.velocity_y = 0;
       }
@@ -1390,7 +1389,7 @@ void frontmap_input(void)
       check_mouse_scroll();
       if (is_game_key_pressed(Gkey_LVShowAllEnsigns, true, false))
       {
-        if (game.easter_eggs_enabled == true)
+        if (start_params.easter_egg == true)
         {
           set_all_ensigns_state(LvSt_Visible);
           return;
@@ -1398,7 +1397,7 @@ void frontmap_input(void)
       }
       if (is_game_key_pressed(Gkey_LVNextLevel, true, false))
       {
-        if (game.easter_eggs_enabled == true)
+        if (start_params.easter_egg == true)
         {
           move_campaign_to_next_level();
           frontmap_unload();
@@ -1409,7 +1408,7 @@ void frontmap_input(void)
       }
       if (is_game_key_pressed(Gkey_LVPrevLevel, true, false))
       {
-        if (game.easter_eggs_enabled == true)
+        if (start_params.easter_egg == true)
         {
           move_campaign_to_prev_level();
           frontmap_unload();

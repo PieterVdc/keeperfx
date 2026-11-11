@@ -36,23 +36,48 @@
 #include "custom_sprites.h"
 #include "keeperfx.hpp"
 #include "timer.h"
+#include "observer.h"
+#include "player_instances.h"
 #include "post_inc.h"
 
 /******************************************************************************/
+
+int chat_font_size = 20;
+
+static void draw_archon_digit(long icon_x, long icon_y, int units_per_px, const struct TbSprite *icon_spr, int digit)
+{
+    const struct TbSprite *digit_spr = get_button_sprite(GBS_creature_flower_level_01 + digit - 1);
+    int icon_left;
+    int icon_top;
+    int icon_right;
+    int icon_bottom;
+    sprite_visible_box(icon_spr, &icon_left, &icon_top, &icon_right, &icon_bottom);
+    int left;
+    int top;
+    int right;
+    int bottom;
+    sprite_visible_box(digit_spr, &left, &top, &right, &bottom);
+    // the horns are the widest part, so overlap the shield instead
+    const long x = icon_x + (icon_right - right - (right - left) / 2) * units_per_px / 16;
+    const long y = icon_y + (icon_bottom - bottom) * units_per_px / 16;
+    LbSpriteDrawResized(x, y, units_per_px, digit_spr);
+}
 
 void message_draw(void)
 {
     SYNCDBG(7,"Starting");
     LbTextSetFont(winfont);
     int ps_units_per_px;
+    int icon_units_per_px;
+    int tx_units_per_px = font_size_units_per_px(chat_font_size);
     const struct TbSprite* spr;
     {
         //just used for height, color irrelevant here
         spr = get_panel_sprite(GPS_plyrsym_symbol_player_red_std_b);
         ps_units_per_px = (22 * units_per_pixel) / spr->SHeight;
+        icon_units_per_px = (LbTextLineHeight() * tx_units_per_px) / spr->SHeight;
     }
     TbBool low_res = (MyScreenHeight < 400);
-    int tx_units_per_px = ( (low_res) && (dbc_initialized && dbc_enabled) ) ? ps_units_per_px : (22 * units_per_pixel) / LbTextLineHeight();
     int h = LbTextLineHeight();
     long y = 28 * units_per_pixel / 16;
     if (game.armageddon_cast_turn != 0)
@@ -64,12 +89,16 @@ void message_draw(void)
     }
     for (int i = 0; i < game.active_messages_count; i++)
     {
-        if ( (game.messages[i].target_idx == my_player_number) || (game.messages[i].target_idx == -1) )
-        {
+        if (game.messages[i].target_idx == my_player_number || game.messages[i].target_idx == -1
+         || (observer_is_active() && game.messages[i].target_idx == PLAYER_NEUTRAL)) {
             long x = 148 * units_per_pixel / 16;
             LbTextSetWindow(0, 0, MyScreenWidth, MyScreenHeight);
             RendererClearDrawFlags(Lb_TEXT_ONE_COLOR);
-            LbTextDrawResized(x+32*units_per_pixel/16, y, tx_units_per_px, game.messages[i].text);
+            int text_offset = 32 * units_per_pixel / 16;
+            if ((game.messages[i].type == MsgType_Player) || (game.messages[i].type == MsgType_Spectator) || (game.messages[i].type == MsgType_Local)) {
+                text_offset = text_offset * icon_units_per_px / ps_units_per_px;
+            }
+            LbTextDrawResized(x + text_offset, y, tx_units_per_px, game.messages[i].text);
             unsigned long spr_idx = 0;
             PlayerNumber plyr_idx = game.messages[i].plyr_idx;
             switch (game.messages[i].type)
@@ -130,11 +159,13 @@ void message_draw(void)
                     break;
                 }
                 case MsgType_Custom:
+                case MsgType_Spectator:
                 {
                     spr_idx = game.messages[i].plyr_idx;
                     break;
                 }
                 case MsgType_Blank:
+                case MsgType_Local:
                 {
                     break;
                 }
@@ -154,9 +185,18 @@ void message_draw(void)
             }
             switch (game.messages[i].type)
             {
+                case MsgType_Spectator: {
+                    spr = get_panel_sprite(spr_idx);
+                    int32_t creature_units_per_px = spr->SHeight * icon_units_per_px / 50;
+                    LbSpriteDrawResized(x - 4 * creature_units_per_px / 16, y - creature_units_per_px, icon_units_per_px * 18 / 21, spr);
+                    break;
+                }
                 case MsgType_Player:
                 {
-                    draw_gui_panel_sprite_left_player(x, y, ps_units_per_px, spr_idx, plyr_idx);
+                    draw_gui_panel_sprite_left_player(x, y, icon_units_per_px, spr_idx, plyr_idx);
+                    if (game.messages[i].archon_digit > 0) {
+                        draw_archon_digit(x, y, icon_units_per_px, get_panel_sprite(spr_idx), game.messages[i].archon_digit);
+                    }
                     break;
                 }
                 case MsgType_Creature:
@@ -172,12 +212,12 @@ void message_draw(void)
                 case MsgType_CreatureInstance:
                 case MsgType_Custom:
                 {
-                    spr = get_panel_sprite(spr_idx);                    
+                    spr = get_panel_sprite(spr_idx);
                     LbSpriteDrawResized(x, y, ps_units_per_px, spr);
                     break;
                 }
             }
-            y += (h*units_per_pixel/16) << (unsigned char)low_res;
+            y += tx_units_per_px * CHAT_LINE_SPACING_PERCENT / 100;
             switch (game.messages[i].type)
             {
                 case MsgType_Player:
@@ -270,6 +310,7 @@ void message_add(char type, short idx, const char *text)
     game.messages[0].target_idx = -1;
     game.messages[0].type = type;
     game.messages[0].icon_idx = 0;
+    game.messages[0].archon_digit = 0;
     if (game.active_messages_count < GUI_MESSAGES_COUNT) {
         game.active_messages_count++;
     }
@@ -302,6 +343,7 @@ void targeted_message_add(char type, PlayerNumber plyr_idx, PlayerNumber target_
     game.messages[0].target_idx = target_idx;
     game.messages[0].type = type;
     game.messages[0].icon_idx = 0;
+    game.messages[0].archon_digit = 0;
     if (game.active_messages_count < GUI_MESSAGES_COUNT) {
         game.active_messages_count++;
     }
@@ -313,13 +355,13 @@ void show_game_time_taken(unsigned long fps, unsigned long turns)
     struct GameTime gt;
     get_game_time(&gt, turns, fps);
     struct PlayerInfo* player = get_my_player();
-    targeted_message_add(MsgType_Player, player->id_number, player->id_number, GUI_MESSAGES_DELAY, "%s: %02ld:%02ld:%02ld", get_string(GUIStr_Time), gt.Hours, gt.Minutes, gt.Seconds);
+    targeted_message_add(MsgType_Local, player->id_number, player->id_number, GUI_MESSAGES_DELAY, "%s: %02ld:%02ld:%02ld", get_string(GUIStr_Time), gt.Hours, gt.Minutes, gt.Seconds);
 }
 
 void show_real_time_taken(void)
 {
     update_time();
     struct PlayerInfo* player = get_my_player();
-    targeted_message_add(MsgType_Player, player->id_number, player->id_number, GUI_MESSAGES_DELAY, "%s: %02ld:%02ld:%02ld:%03ld", get_string(GUIStr_Time), Timer.Hours, Timer.Minutes, Timer.Seconds, Timer.MSeconds);
+    targeted_message_add(MsgType_Local, player->id_number, player->id_number, GUI_MESSAGES_DELAY, "%s: %02ld:%02ld:%02ld:%03ld", get_string(GUIStr_Time), Timer.Hours, Timer.Minutes, Timer.Seconds, Timer.MSeconds);
 }
 /******************************************************************************/

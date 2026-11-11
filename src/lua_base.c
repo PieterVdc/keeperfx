@@ -9,9 +9,12 @@
 #include "bflib_basics.h"
 #include "bflib_fileio.h"
 #include "config_keeperfx.h"
+#include "lens_api.h"
 #include "game_legacy.h"
 #include "globals.h"
 #include "gui_msgs.h"
+#include "net_filecheck.h"
+#include "replay.h"
 
 #include "config_creature.h"
 #include "config_terrain.h"
@@ -27,19 +30,66 @@
 extern "C" {
 #endif
 
+#define LUA_MODULE_LOADER_LUA 2
+#define LUA_MODULE_LOADER_C 3
+#define LUA_MODULE_LOADER_C_ROOT 4
+
 struct lua_State *Lvl_script = NULL;
 
 
 static int lua_disabled_os_function(lua_State *L)
 {
     const char *func_name = lua_tostring(L, lua_upvalueindex(1));
-    WARNLOG("os.%s is disabled because it is not synchronized in multiplayer", func_name);
-    return luaL_error(L, "os.%s is disabled because it is not synchronized in multiplayer", func_name);
+    WARNLOG("os.%s is disabled because it is not synchronized in multiplayer; use GetGameTimestamp", func_name);
+    return luaL_error(L, "os.%s is disabled because it is not synchronized in multiplayer; use GetGameTimestamp", func_name);
 }
 
 
+static void lua_blacklist(lua_State *L, const char *libname, const char *name)
+{
+    lua_getglobal(L, libname);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return;
+    }
+    lua_pushnil(L);
+    lua_setfield(L, -2, name);
+    lua_pop(L, 1);
+}
+
+static void lua_whitelist(lua_State *L, const char *libname, const char *keep)
+{
+    lua_getglobal(L, libname);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return;
+    }
+    int t = lua_gettop(L);
+    lua_pushnil(L);
+    while (lua_next(L, t) != 0) {
+        if (lua_type(L, -2) == LUA_TSTRING) {
+            const char *key = lua_tostring(L, -2);
+            if (strcmp(key, keep) != 0) {
+                lua_pushnil(L);
+                lua_setfield(L, t, key);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+}
+
+// Remove Lua functions which can break the sandbox/determinism
 static void disable_lua_functions(lua_State *L)
 {
+    // TODO - remove/replace these
+    lua_whitelist(L, "io", "open");
+
+    // TODO - remove/replace these
+    lua_whitelist(L, "os", "remove");
+
+    lua_blacklist(L, "package", "loadlib");
+
     if (game.game_kind != GKind_MultiGame) {
         return;
     }
@@ -60,17 +110,13 @@ static void disable_lua_functions(lua_State *L)
 TbBool CheckLua(lua_State *L, int result, const char* func)
 {
     if (result != LUA_OK) {
-        // Coerce error to string using tostring()
-        if (!lua_isstring(L, -1)) {
-            lua_getglobal(L, "tostring"); // push tostring
-            lua_pushvalue(L, -2);         // push error object
-            lua_call(L, 1, 1);            // call tostring(err)
-            lua_remove(L, -2);            // remove original error
+        int error_type = lua_type(L, -1);
+        const char *message = lua_typename(L, error_type);
+        if (error_type == LUA_TSTRING) {
+            message = lua_tostring(L, -1);
         }
-
-        const char *message = lua_tostring(L, -1);
-        ERRORLOG("Lua error in %s: %s", func, message ? message : "Unknown error");
-        lua_pop(L, 1); // pop error string
+        ERRORLOG("Lua error in %s: %s", func, message);
+        lua_pop(L, 1); // pop error object
 
         if (exit_on_lua_error) {
             ERRORLOG("Exiting due to Lua error");
@@ -84,6 +130,7 @@ TbBool CheckLua(lua_State *L, int result, const char* func)
 
 void close_lua_script()
 {
+    LensManager_ClearCustomLenses(LensManager_GetInstance());
     if(Lvl_script)
         lua_close(Lvl_script);
     Lvl_script = NULL;
@@ -111,6 +158,68 @@ int setLuaPath( lua_State* L)
     lua_setfield(L, -2, "path"); // set the field "path" in table at -2 with value at top of stack
     lua_pop(L, 1); // get rid of package table from top of stack
     return 0; // all done!
+}
+
+static int load_checksummed_lua_file(lua_State *L, const char *fname)
+{
+    add_loaded_file_checksum(fname);
+    return luaL_loadfile(L, fname);
+}
+
+static int load_checksummed_lua_module(lua_State *L)
+{
+    const char *module_name = luaL_checkstring(L, 1);
+    lua_getglobal(L, "package");
+    lua_getfield(L, -1, "searchpath");
+    lua_pushstring(L, module_name);
+    lua_getfield(L, -3, "path");
+    lua_call(L, 2, 2);
+    if (lua_isnil(L, -2)) {
+        return 1;
+    }
+    const char *fname = lua_tostring(L, -2);
+    if (load_checksummed_lua_file(L, fname) != LUA_OK) {
+        return luaL_error(L, "error loading module '%s' from file '%s':\n\t%s", module_name, fname, lua_tostring(L, -1));
+    }
+    return 1;
+}
+
+static int call_checksummed_file_function(lua_State *L)
+{
+    if (lua_type(L, 1) == LUA_TSTRING) {
+        add_loaded_file_checksum(lua_tostring(L, 1));
+    }
+    lua_pushvalue(L, lua_upvalueindex(1));
+    lua_insert(L, 1);
+    lua_call(L, lua_gettop(L) - 1, LUA_MULTRET);
+    return lua_gettop(L);
+}
+
+static void checksum_file_function(lua_State *L, const char *function_name)
+{
+    lua_getglobal(L, function_name);
+    lua_pushcclosure(L, call_checksummed_file_function, 1);
+    lua_setglobal(L, function_name);
+}
+
+static void install_checksummed_lua_loaders(lua_State *L)
+{
+    checksum_file_function(L, "loadfile");
+    checksum_file_function(L, "dofile");
+    lua_getglobal(L, "package");
+    lua_getfield(L, -1, "loaders");
+    lua_pushcfunction(L, load_checksummed_lua_module);
+    lua_rawseti(L, -2, LUA_MODULE_LOADER_LUA);
+    lua_pushnil(L);
+    lua_rawseti(L, -2, LUA_MODULE_LOADER_C);
+    lua_pushnil(L);
+    lua_rawseti(L, -2, LUA_MODULE_LOADER_C_ROOT);
+    lua_pop(L, 2);
+}
+
+static TbBool run_lua_file(lua_State *L, const char *fname, const char *func)
+{
+    return CheckLua(L, load_checksummed_lua_file(L, fname) || lua_pcall(L, 0, LUA_MULTRET, 0), func);
 }
 
 
@@ -212,7 +321,7 @@ static TbBool open_lua_script_for_mod(lua_State* L, LevelNumber lvnum, const str
         fname = prepare_file_fmtpath_mod(mod_dir, FGrp_FxData, "lua/init.lua");
         if (LbFileExists(fname))
         {
-            if (CheckLua(L, luaL_dofile(L, fname), "mod_fxdata_lua_file"))
+            if (run_lua_file(L, fname, "mod_fxdata_lua_file"))
             {
                 result = true;
             }
@@ -228,7 +337,7 @@ static TbBool open_lua_script_for_mod(lua_State* L, LevelNumber lvnum, const str
         fname = prepare_file_fmtpath_mod(mod_dir, FGrp_CmpgConfig, "lua/init.lua");
         if (LbFileExists(fname))
         {
-            if (CheckLua(L, luaL_dofile(L, fname), "mod_campaign_lua_file"))
+            if (run_lua_file(L, fname, "mod_campaign_lua_file"))
             {
                 result = true;
             }
@@ -245,7 +354,7 @@ static TbBool open_lua_script_for_mod(lua_State* L, LevelNumber lvnum, const str
         fname = prepare_file_fmtpath_mod(mod_dir, fgroup, "map%05lu.lua", (unsigned long)lvnum);
         if (LbFileExists(fname))
         {
-            if(CheckLua(L, luaL_dofile(L, fname), "mod_level_script_loading"))
+            if(run_lua_file(L, fname, "mod_level_script_loading"))
             {
                 result = true;
             }
@@ -289,33 +398,95 @@ static void open_lua_script_for_mod_all(lua_State* L, LevelNumber lvnum)
     }
 }
 
+// disable filesystem io during replays
+// TODO: replay-correct save/load/logging API for Lua
+static const char replay_file_io_stubs[] =
+    "local function nop() end\n"
+    "local f = {}\n"
+    "function f:read() return nil end\n"
+    "function f:write() return self end\n"
+    "function f:lines() return nop end\n"
+    "function f:seek() return 0 end\n"
+    "function f:flush() return self end\n"
+    "function f:setvbuf() return true end\n"
+    "function f:close() return true end\n"
+    "io.open = function(_, mode)\n"
+    "    if mode == nil or mode:sub(1, 1) == 'r' and not mode:find('+', 1, true) then return nil, 'file access is disabled in replays' end\n"
+    "    return f\n"
+    "end\n"
+    "io.lines = function() return nop end\n"
+    "io.read = function() return nil end\n"
+    "io.write = function() return f end\n"
+    "io.input = function() return f end\n"
+    "io.output = function() return f end\n"
+    "io.close = function() return true end\n"
+    "io.popen = function() return nil, 'file access is disabled in replays' end\n"
+    "io.tmpfile = function() return f end\n"
+    "os.remove = function() return true end\n";
+
+static void disable_lua_file_io(lua_State *L)
+{
+    if (!replay.load_enable)
+        return;
+    CheckLua(L, luaL_dostring(L, replay_file_io_stubs), "replay_file_io_stubs");
+}
+
 
 /* @comment
  *     The loading items of open_lua_script and open_lua_script_for_mod need to be consistent.
  */
+static void open_lua_standard_libraries(lua_State *L)
+{
+    static const luaL_Reg stdlib[] = {
+        {"",               luaopen_base},
+        {LUA_TABLIBNAME,   luaopen_table},
+        {LUA_IOLIBNAME,    luaopen_io},
+        {LUA_OSLIBNAME,    luaopen_os},
+        {LUA_STRLIBNAME,   luaopen_string},
+        {LUA_MATHLIBNAME,  luaopen_math},
+        {LUA_DBLIBNAME,    luaopen_debug},
+        {LUA_LOADLIBNAME,  luaopen_package},
+        {LUA_BITLIBNAME,   luaopen_bit},
+        // {LUA_JITLIBNAME,   luaopen_jit},
+        // {LUA_FFILIBNAME,   luaopen_ffi},
+        {NULL, NULL}
+    };
+    for (const luaL_Reg *lib = stdlib; lib->func != NULL; lib++) {
+        lua_pushcfunction(L, lib->func);
+        lua_pushstring(L, lib->name);
+        lua_call(L, 1, 0);
+    }
+}
+
 TbBool open_lua_script(LevelNumber lvnum)
 {
+    close_lua_script();
     Lvl_script = luaL_newstate();
+    if (Lvl_script == NULL) {
+        ERRORLOG("Failed to allocate Lua state");
+        return false;
+    }
 
-    luaL_openlibs(Lvl_script);
+    open_lua_standard_libraries(Lvl_script);
     disable_lua_functions(Lvl_script);
+    disable_lua_file_io(Lvl_script);
 
     lua_set_random_seed(game.action_random_seed);
 
     reg_host_functions(Lvl_script);
 
     setLuaPath(Lvl_script);
+    install_checksummed_lua_loaders(Lvl_script);
 
     char* fname = prepare_file_fmtpath(FGrp_FxData, "lua/init.lua");
 
     // Load and parse the Lua File
-    if ( !LbFileExists(fname) )
-    {
+    if (!LbFileExists(fname)) {
         ERRORLOG("file %s missing",fname);
+        close_lua_script();
         return false;
     }
-    if(!CheckLua(Lvl_script, luaL_dofile(Lvl_script, fname), "global_lua_file"))
-    {
+    if (!run_lua_file(Lvl_script, fname, "global_lua_file")) {
         ERRORLOG("failed to load global lua script");
         close_lua_script();
         return false;
@@ -324,7 +495,7 @@ TbBool open_lua_script(LevelNumber lvnum)
     fname = prepare_file_fmtpath(FGrp_CmpgConfig, "lua/init.lua");
     if (LbFileExists(fname))
     {
-        if (!CheckLua(Lvl_script, luaL_dofile(Lvl_script, fname), "campaign_lua_file"))
+        if (!run_lua_file(Lvl_script, fname, "campaign_lua_file"))
         {
             ERRORLOG("failed to load campaign lua script");
         }
@@ -333,10 +504,8 @@ TbBool open_lua_script(LevelNumber lvnum)
     short fgroup = get_level_fgroup(lvnum);
     fname = prepare_file_fmtpath(fgroup, "map%05lu.lua", (unsigned long)lvnum);
     // Load and parse the Lua File
-    if (LbFileExists(fname) )
-    {
-        if(!CheckLua(Lvl_script, luaL_dofile(Lvl_script, fname), "level_script_loading"))
-        {
+    if (LbFileExists(fname)) {
+        if (!run_lua_file(Lvl_script, fname, "level_script_loading")) {
             ERRORLOG("failed to load level lua script");
         }
     }
@@ -347,68 +516,71 @@ TbBool open_lua_script(LevelNumber lvnum)
 }
 
 
-static char* lua_serialized_data = NULL;
+struct LuaSerialization {
+    const char *function_name;
+    const char *input;
+    char *output;
+    size_t length;
+};
 
-const char* lua_get_serialised_data(size_t *len)
+static int process_lua_serialization(lua_State *L)
 {
-    lua_getglobal(Lvl_script, "GetSerializedData");
-	if (lua_isfunction(Lvl_script, -1))
-	{
-        JUSTLOG("calling GetSerializedData");
-        int result = lua_pcall(Lvl_script, 0, 1, 0);
-        JUSTLOG("lua_pcall result: %d", result);
-        if (!CheckLua(Lvl_script, result, "GetSerializedData")) {
-            ERRORLOG("Failed to call GetSerializedData");
-            return NULL;
-        }
-
-        JUSTLOG("called GetSerializedData");
-        if (!lua_isstring(Lvl_script, -1)) {
-            ERRORLOG("Expected 'GetSerializedData' to return a string");
-            lua_pop(Lvl_script, 1);
-            return NULL;
-        }
-		const char *data = lua_tolstring(Lvl_script, -1, len);  // Get the result
-        if (data) {
-            lua_serialized_data = (char*)malloc(*len);
-            memcpy(lua_serialized_data, data, *len);
-            lua_pop(Lvl_script, 1);  // Pop the result
-            return lua_serialized_data;
-        }
-		return NULL;
-	}
-	else
-	{
-		ERRORLOG("failed to find GetSerializedData lua function");
-        lua_pop(Lvl_script, 1);  // Pop nil
-		return NULL;
-	}
+    struct LuaSerialization *operation = lua_touserdata(L, 1);
+    lua_getglobal(L, operation->function_name);
+    if (!lua_isfunction(L, -1)) {
+        return luaL_error(L, "%s is not a function", operation->function_name);
+    }
+    if (operation->input != NULL) {
+        lua_pushlstring(L, operation->input, operation->length);
+        lua_call(L, 1, 0);
+        return 0;
+    }
+    lua_call(L, 0, 1);
+    if (lua_type(L, -1) != LUA_TSTRING) {
+        return luaL_error(L, "%s must return a string", operation->function_name);
+    }
+    const char *data = lua_tolstring(L, -1, &operation->length);
+    size_t buffer_size = operation->length;
+    if (buffer_size == 0) {
+        buffer_size = 1;
+    }
+    operation->output = malloc(buffer_size);
+    if (operation->output == NULL) {
+        return luaL_error(L, "Failed to allocate Lua serialized data buffer");
+    }
+    memcpy(operation->output, data, operation->length);
+    return 0;
 }
 
+static TbBool call_lua_serialization(struct LuaSerialization *operation)
+{
+    if (Lvl_script == NULL) {
+        ERRORLOG("Lua state is not initialized");
+        return false;
+    }
+    return CheckLua(Lvl_script, lua_cpcall(Lvl_script, process_lua_serialization, operation), operation->function_name);
+}
+
+char *lua_get_serialised_data(size_t *len)
+{
+    *len = 0;
+    struct LuaSerialization operation = {"GetSerializedData", NULL, NULL, 0};
+    if (!call_lua_serialization(&operation)) {
+        free(operation.output);
+        return NULL;
+    }
+    *len = operation.length;
+    return operation.output;
+}
 
 TbBool lua_set_serialised_data(const char *data, size_t len)
 {
-    if (Lvl_script == NULL) {
-        ERRORLOG("Lvl_script not initialised");
+    if (data == NULL) {
+        ERRORLOG("Missing serialized Lua data");
         return false;
     }
-
-    lua_getglobal(Lvl_script, "SetSerializedData");
-    if (!lua_isfunction(Lvl_script, -1)) {
-        ERRORLOG("failed to find SetSerializedData lua function");
-        lua_pop(Lvl_script, 1);
-        return false;
-    }
-
-    lua_pushlstring(Lvl_script, data, len);
-    return CheckLua(Lvl_script, lua_pcall(Lvl_script, 1, 0, 0), "SetSerializedData");
-}
-
-void cleanup_serialized_data() {
-    if (lua_serialized_data != NULL) {
-        free(lua_serialized_data);
-        lua_serialized_data = NULL;
-    }
+    struct LuaSerialization operation = {"SetSerializedData", data, NULL, len};
+    return call_lua_serialization(&operation);
 }
 
 void generate_lua_types_file()

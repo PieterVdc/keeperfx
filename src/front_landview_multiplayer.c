@@ -93,6 +93,8 @@ void frontmap_zoom_in_init(LevelNumber lvnum);
 TbBool frontmap_input_active_ensign(long curr_mx, long curr_my);
 TbBool frontmap_update_zoom(void);
 
+#define RANDOM_PLAYER_GREY 40
+
 TbPixel net_player_colours[] = { 251, 58, 182, 11 };
 const int32_t hand_limp_xoffset[] = { 32, 31, 30, 29, 28, 27, 26, 24, 22, 19, 15, 9 };
 const int32_t hand_limp_yoffset[] = { -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0 };
@@ -124,11 +126,6 @@ static void update_net_ensigns_visibility(void)
             break;
         }
     }
-}
-
-static TbBool is_connected_screen_packet(const struct ScreenPacket *nspck)
-{
-    return (nspck->networkstatus_flags & NetStat_PlayerConnected) != 0;
 }
 
 static void set_screen_packet_position(struct ScreenPacket *nspck, int32_t x, int32_t y)
@@ -313,7 +310,12 @@ static void draw_netmap_players_hands(void)
         }
         get_hand_packet(i, &nspck, slap_frame, now);
         plyr_nam = network_user_name(i);
-        colr = net_player_colours[i];
+        colr = net_player_colours[0];
+        if (net_player_colour[i] == NET_PLAYER_COLOUR_RANDOM) {
+            colr = LbPaletteFindColour(frontend_palette, RANDOM_PLAYER_GREY, RANDOM_PLAYER_GREY, RANDOM_PLAYER_GREY);
+        } else if (net_player_colour[i] >= 0) {
+            colr = net_player_colours[net_player_colour[i]];
+        }
         spr = get_hand_sprite_for_packet(&nspck, anim_frame, &x, &y);
         x -= (long)map_info.screen_shift_x;
         y -= (long)map_info.screen_shift_y;
@@ -430,7 +432,6 @@ TbBool frontnetmap_load(void)
     }
     
     map_flag = load_custom_ensigns_into_sheet(map_flag, frontend_palette); 
-    init_netfont_palette_remap();
     pop_palette_remap();
     map_font = load_spritesheet("ldata/netfont.dat", "ldata/netfont.tab");
     prepare_file_path_buf(hand_data_path, sizeof(hand_data_path), FGrp_LandView, "maphand.dat");
@@ -534,18 +535,14 @@ static LevelNumber frontnetmap_update_players(void)
         remote_player = i != my_player_number;
         host_player = i == SERVER_ID;
         if (remote_player && !network_user_active(i)) {
-            LbNetwork_EnableNewPlayers(1);
             frontend_set_state(FeSt_NET_START);
             return SINGLEPLAYER_NOTSTARTED;
         }
         if (nspck->action_par1 == LEVELNUMBER_ERROR) {
             if (network_is_active()) {
-                if (LbNetwork_EnableNewPlayers(1)) {
-                    ERRORLOG("Unable to enable new players joining exchange");
-                }
                 frontend_set_state(FeSt_NET_START);
             } else {
-                frontend_set_state(FeSt_MAIN_MENU);
+                frontend_set_state(FeSt_SKIRMISH_LOBBY);
             }
             return SINGLEPLAYER_NOTSTARTED;
         }
@@ -632,9 +629,6 @@ TbBool frontnetmap_update(void)
             map_info.state_trigger = FeSt_START_MPLEVEL;
         }
         frontmap_zoom_in_init(selected_level_number);
-        if (!fe_network_active) {
-            fe_computer_players = 1;
-        }
     }
     SYNCDBG(8,"Normal end");
     return false;
